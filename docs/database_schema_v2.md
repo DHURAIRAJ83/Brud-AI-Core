@@ -1,6 +1,6 @@
 # Database schema v2
 
-This document remains the reference for the Phase 2 data/control-plane tables. Phase 3 preserves every v2 table and constraint, then applies additive migration `003_phase3_admin_dataset` with schema version 3.
+This document remains the historical reference for the Phase 2 data/control-plane tables. The current consolidated schema is documented in [database_schema_v4.md](database_schema_v4.md).
 
 ## Phase 3 extension
 

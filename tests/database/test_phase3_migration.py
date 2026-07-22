@@ -10,7 +10,9 @@ from backend.database.migrations import (
 )
 
 
-def test_upgrade_v2_to_v3_preserves_dataset_data_and_creates_auth_tables(tmp_path: Path) -> None:
+def test_upgrade_v2_to_current_preserves_dataset_data_and_creates_auth_tables(
+    tmp_path: Path,
+) -> None:
     database = tmp_path / "phase2.db"
     with database_connection(database) as connection:
         _apply_v1(connection)
@@ -27,7 +29,7 @@ def test_upgrade_v2_to_v3_preserves_dataset_data_and_creates_auth_tables(tmp_pat
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
-    assert version == 3 and backup is not None and integrity == "ok"
+    assert version == 4 and backup is not None and integrity == "ok"
     with database_connection(database) as connection:
         assert connection.execute("SELECT name FROM dataset_sources").fetchone()[0] == "Preserved"
         tables = {

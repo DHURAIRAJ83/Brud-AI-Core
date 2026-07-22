@@ -1,6 +1,6 @@
 # Dataset management
 
-Phase 3 implements manual data curation only. Uploads, PDF extraction, CSV/JSON import, automatic OCR, dataset-version building, and training remain unavailable.
+Phase 3 implements manual data curation. Phase 4 adds preview-first JSON, JSONL, CSV, and TXT imports. PDF extraction, OCR, remote URL imports, dataset-version building, and training remain unavailable.
 
 ## Sources
 
@@ -29,3 +29,5 @@ A deterministic SHA-256 hash covers record type, language, instruction, input, o
 ## Audit guarantees
 
 Source and record creation/update, submit, review decisions, archive/restore, duplicates, and meaningful validation failures create bounded audit summaries. Audits identify public IDs and actions but omit full payloads, text bodies, passwords, tokens, hashes, and paths.
+
+Imported records pass the same `validate_record` and deterministic `content_hash` logic as manual records and always begin as drafts. Invalid rows remain preview/report evidence; duplicates remain visible and are either confirmation blockers (`create_only`) or explicit skips (`skip_duplicates`). See [dataset_imports.md](dataset_imports.md).

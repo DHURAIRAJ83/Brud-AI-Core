@@ -12,6 +12,7 @@ dependencies = [
   "uvicorn[standard]>=0.34,<0.35",
   "pydantic-settings>=2.7,<3.0",
   "pwdlib[argon2]>=0.2,<1.0",
+  "python-multipart>=0.0.20,<1.0",
 ]
 
 [project.optional-dependencies]
@@ -33,3 +34,4 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.ruff.lint.per-file-ignores]
 "backend/database/schema.py" = ["E501"]
+"backend/services/import_service.py" = ["E501"]

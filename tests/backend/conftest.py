@@ -21,6 +21,9 @@ def api_app(tmp_path: Path) -> FastAPI:
     settings = Settings(
         database_path=tmp_path / "api.db",
         database_backup_dir=tmp_path / "backups",
+        allowed_data_dir=tmp_path,
+        import_dir=tmp_path / "imports",
+        import_report_dir=tmp_path / "imports" / "reports",
         allow_external_storage=True,
         log_level="CRITICAL",
     )

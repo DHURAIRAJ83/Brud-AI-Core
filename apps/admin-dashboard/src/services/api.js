@@ -4,7 +4,7 @@ let csrfHeaderName = 'X-CSRF-Token'
 
 async function request(path, options = {}) {
   const headers = { ...(options.headers ?? {}) }
-  if (options.body) headers['Content-Type'] = 'application/json'
+  if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
   if (options.method && options.method !== 'GET') {
     if (!csrfToken) await getCsrf()
     headers[csrfHeaderName] = csrfToken
@@ -59,3 +59,17 @@ export const updateDatasetRecord = (id, body) => request(`/api/admin/datasets/re
 export const datasetDuplicates = () => request('/api/admin/datasets/duplicates')
 export const recordAction = (id, action, body) => request(`/api/admin/datasets/records/${id}/${action}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined })
 export const recordReviews = (id) => request(`/api/admin/datasets/records/${id}/reviews`)
+export const importJobs = (query = '') => request(`/api/admin/datasets/imports${query}`)
+export const importRows = (id, query = '') => request(`/api/admin/datasets/imports/${id}/rows${query}`)
+export const importEvents = (id) => request(`/api/admin/datasets/imports/${id}/events`)
+export const uploadImport = (form) => request('/api/admin/datasets/imports', { method: 'POST', body: form })
+export const parseImport = (id) => request(`/api/admin/datasets/imports/${id}/parse`, { method: 'POST' })
+export const updateImportMapping = (id, body) => request(`/api/admin/datasets/imports/${id}/mapping`, { method: 'PATCH', body: JSON.stringify(body) })
+export const confirmImport = (id, body) => request(`/api/admin/datasets/imports/${id}/confirm`, { method: 'POST', body: JSON.stringify(body) })
+export const cancelImport = (id) => request(`/api/admin/datasets/imports/${id}/cancel`, { method: 'POST' })
+export async function downloadImportReport(id) {
+  if (!csrfToken) await getCsrf()
+  const response = await fetch(`${API_BASE}/api/admin/datasets/imports/${id}/report`, { credentials: 'include', headers: { [csrfHeaderName]: csrfToken } })
+  if (!response.ok) throw new Error('Could not create the import report.')
+  return response.blob()
+}

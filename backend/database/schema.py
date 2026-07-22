@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -320,4 +320,91 @@ BEGIN SELECT RAISE(ABORT, 'dataset reviews are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS dataset_reviews_immutable_delete
 BEFORE DELETE ON dataset_reviews
 BEGIN SELECT RAISE(ABORT, 'dataset reviews are immutable'); END;
+"""
+
+MIGRATION_004_NAME = "004_phase4_dataset_import"
+
+PHASE4_SCHEMA = """
+CREATE TABLE IF NOT EXISTS dataset_import_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_public_id TEXT,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL UNIQUE,
+    detected_file_type TEXT NOT NULL CHECK (detected_file_type IN ('json','jsonl','csv','txt')),
+    declared_file_type TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes > 0),
+    checksum_sha256 TEXT NOT NULL,
+    encoding TEXT NOT NULL CHECK (encoding IN ('utf-8','utf-8-sig')),
+    status TEXT NOT NULL DEFAULT 'uploaded' CHECK (status IN ('uploaded','parsing','preview_ready','confirmed','importing','completed','completed_with_warnings','failed','cancelled','expired')),
+    import_mode TEXT NOT NULL CHECK (import_mode IN ('create_only','skip_duplicates')),
+    record_type TEXT NOT NULL,
+    default_language TEXT NOT NULL,
+    field_mapping_json TEXT NOT NULL DEFAULT '{}',
+    parser_options_json TEXT NOT NULL DEFAULT '{}',
+    total_rows INTEGER NOT NULL DEFAULT 0 CHECK (total_rows >= 0),
+    valid_rows INTEGER NOT NULL DEFAULT 0 CHECK (valid_rows >= 0),
+    warning_rows INTEGER NOT NULL DEFAULT 0 CHECK (warning_rows >= 0),
+    duplicate_rows INTEGER NOT NULL DEFAULT 0 CHECK (duplicate_rows >= 0),
+    invalid_rows INTEGER NOT NULL DEFAULT 0 CHECK (invalid_rows >= 0),
+    imported_rows INTEGER NOT NULL DEFAULT 0 CHECK (imported_rows >= 0),
+    failed_rows INTEGER NOT NULL DEFAULT 0 CHECK (failed_rows >= 0),
+    error_code TEXT,
+    error_message TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    previewed_at TEXT,
+    confirmed_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS dataset_import_rows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    import_job_id INTEGER NOT NULL,
+    row_number INTEGER NOT NULL CHECK (row_number > 0),
+    raw_data_json TEXT NOT NULL DEFAULT '{}',
+    normalized_data_json TEXT NOT NULL DEFAULT '{}',
+    record_type TEXT NOT NULL,
+    language TEXT NOT NULL,
+    instruction TEXT,
+    input_text TEXT,
+    output_text TEXT,
+    normalized_input TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    content_hash TEXT,
+    row_status TEXT NOT NULL CHECK (row_status IN ('valid','warning','duplicate','invalid','imported','skipped','failed')),
+    validation_errors_json TEXT NOT NULL DEFAULT '[]',
+    validation_warnings_json TEXT NOT NULL DEFAULT '[]',
+    duplicate_record_public_id TEXT,
+    imported_record_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (import_job_id) REFERENCES dataset_import_jobs(id) ON DELETE CASCADE,
+    UNIQUE(import_job_id, row_number)
+);
+CREATE TABLE IF NOT EXISTS dataset_import_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    import_job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT,
+    message TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (import_job_id) REFERENCES dataset_import_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_import_jobs_status ON dataset_import_jobs(status);
+CREATE INDEX IF NOT EXISTS ix_import_jobs_created ON dataset_import_jobs(created_at);
+CREATE INDEX IF NOT EXISTS ix_import_rows_status ON dataset_import_rows(import_job_id,row_status);
+CREATE INDEX IF NOT EXISTS ix_import_rows_number ON dataset_import_rows(import_job_id,row_number);
+CREATE INDEX IF NOT EXISTS ix_import_rows_hash ON dataset_import_rows(content_hash);
+CREATE INDEX IF NOT EXISTS ix_import_rows_duplicate ON dataset_import_rows(duplicate_record_public_id);
+CREATE TRIGGER IF NOT EXISTS dataset_import_events_immutable_update
+BEFORE UPDATE ON dataset_import_events
+BEGIN SELECT RAISE(ABORT, 'dataset import events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS dataset_import_events_immutable_delete
+BEFORE DELETE ON dataset_import_events
+BEGIN SELECT RAISE(ABORT, 'dataset import events are immutable'); END;
 """

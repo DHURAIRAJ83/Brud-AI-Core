@@ -28,9 +28,20 @@ Dataset API → Dataset service → Repositories → SQLite
 
 Routes translate validated inputs and controlled errors. Lifecycle, duplicate, and transaction rules live in the service/repository layers rather than React or route handlers.
 
+Phase 4 extends that boundary with a preview-first pipeline:
+
+```text
+Multipart upload → controlled artifact storage → format parser
+      → conservative normalization → canonical record validation
+      → duplicate analysis → persisted preview
+      → explicit admin confirmation → transactional draft records
+```
+
+Uploaded bytes are never executed or served as static assets. Parsers, normalization, mapping, duplicate analysis, and confirmation live in backend services; the route and React layers only transport validated choices and render safe summaries.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; additive schema v3 adds local admin accounts and revocable sessions without rebuilding existing tables.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events without rebuilding existing tables.
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

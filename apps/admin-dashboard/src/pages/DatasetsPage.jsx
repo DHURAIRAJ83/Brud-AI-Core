@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { createDatasetRecord, createDatasetSource, datasetDuplicates, datasetRecords, datasetSources, datasetStatistics, recordAction, recordReviews, updateDatasetRecord, updateDatasetSource } from '../services/api.js'
+import ImportsPage from './ImportsPage.jsx'
 
-const tabs = ['Overview', 'Sources', 'Records', 'Review Queue', 'Duplicates']
+const tabs = ['Overview', 'Sources', 'Records', 'Review Queue', 'Duplicates', 'Imports']
 const emptyRecord = { source_public_id: '', record_type: 'instruction', language: 'ta', instruction: '', input_text: '', output_text: '', normalized_input: '', metadata: {} }
 
 export default function DatasetsPage() {
@@ -22,7 +23,8 @@ export default function DatasetsPage() {
       else if (active === 'Sources') nextData = sourcePage
       else if (active === 'Records') nextData = await datasetRecords()
       else if (active === 'Review Queue') nextData = await datasetRecords('?status=pending_review')
-      else nextData = await datasetDuplicates()
+      else if (active === 'Duplicates') nextData = await datasetDuplicates()
+      else nextData = {}
       if (sequence === requestSequence.current) { setSources(sourcePage.items); setData(nextData) }
     } catch (reason) { if (sequence === requestSequence.current) setError(reason.message) } finally { if (sequence === requestSequence.current) setLoading(false) }
   }
@@ -35,7 +37,7 @@ export default function DatasetsPage() {
   async function history(record) { const result = await recordReviews(record.public_id); setNotice(`${result.items.length} review event(s) recorded.`) }
   return <><div className="dataset-tabs">{tabs.map((item) => <button className={tab === item ? 'active' : ''} onClick={() => { activeTab.current = item; setData(null); setTab(item) }} key={item}>{item}</button>)}</div>
     {notice && <div className="success-note" role="status">{notice}</div>}{error && <div className="form-error" role="alert">{error}</div>}
-    {loading || !data ? <div className="notice">Loading dataset workspace…</div> : <DatasetContent tab={tab} data={data} sources={sources} sourceForm={sourceForm} setSourceForm={setSourceForm} recordForm={recordForm} setRecordForm={setRecordForm} saveSource={saveSource} saveRecord={saveRecord} act={act} comments={comments} setComments={setComments} history={history} editingSource={editingSource} editingRecord={editingRecord} editSource={editSource} editRecord={editRecord} />}
+    {tab === 'Imports' ? <ImportsPage /> : loading || !data ? <div className="notice">Loading dataset workspace…</div> : <DatasetContent tab={tab} data={data} sources={sources} sourceForm={sourceForm} setSourceForm={setSourceForm} recordForm={recordForm} setRecordForm={setRecordForm} saveSource={saveSource} saveRecord={saveRecord} act={act} comments={comments} setComments={setComments} history={history} editingSource={editingSource} editingRecord={editingRecord} editSource={editSource} editRecord={editRecord} />}
   </>
 }
 

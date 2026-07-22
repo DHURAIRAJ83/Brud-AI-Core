@@ -34,6 +34,17 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_ADMIN_COOKIE_NAME` | `brud_admin_session` | HttpOnly session-cookie name |
 | `BRUD_CSRF_COOKIE_NAME` | `brud_csrf` | CSRF double-submit cookie name |
 | `BRUD_CSRF_HEADER_NAME` | `X-CSRF-Token` | Header required for admin mutations |
+| `BRUD_IMPORT_DIR` | `data/imports` | Controlled pending/processed/quarantine artifact root |
+| `BRUD_IMPORT_REPORT_DIR` | `data/imports/reports` | Bounded generated-report root |
+| `BRUD_IMPORT_MAX_FILE_BYTES` | `10485760` | Maximum streamed upload size |
+| `BRUD_IMPORT_MAX_ROWS` | `25000` | Maximum parsed rows per job |
+| `BRUD_IMPORT_MAX_COLUMNS` | `50` | Maximum structured columns |
+| `BRUD_IMPORT_MAX_CELL_CHARS` | `20000` | Maximum cell or line characters |
+| `BRUD_IMPORT_PREVIEW_TTL_MINUTES` | `60` | Preview confirmation lifetime |
+| `BRUD_IMPORT_ALLOWED_EXTENSIONS` | `.json,.jsonl,.csv,.txt` | Extension allowlist |
+| `BRUD_IMPORT_ALLOWED_MIME_TYPES` | bounded local allowlist | MIME allowlist without wildcards |
+| `BRUD_IMPORT_DEFAULT_ENCODING` | `utf-8` | UTF decoding policy |
+| `BRUD_IMPORT_MAX_ERROR_REPORT_ROWS` | `5000` | Maximum report rows |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
@@ -53,6 +64,8 @@ python -m backend.admin_cli reset-password
 
 Security-sensitive commands prompt interactively. The browser obtains CSRF state after login; command-line clients must preserve both cookies and send the token returned by `GET /api/admin/auth/csrf` in the configured header.
 
+Registered import jobs can be inspected with `python -m backend.import_cli list` and `python -m backend.import_cli inspect <public_id>`. `python -m backend.import_cli expire-old` requires typed confirmation and operates only on registered preview jobs; it accepts no paths.
+
 ## Troubleshooting
 
 - **Missing `venv` or `node_modules`:** run `make setup`.
@@ -61,6 +74,8 @@ Security-sensitive commands prompt interactively. The browser obtains CSRF state
 - **CORS rejection:** ensure the browser origin exactly matches one of the configured local origins.
 - **Admin API returns 401:** create an admin if necessary and sign in again; expired, revoked, disabled, and locked sessions are rejected.
 - **Admin mutation returns 403:** refresh CSRF state and send both session/CSRF cookies plus the configured CSRF header.
+- **Import stays uploaded:** open its mapping, verify the selected preset/options, and explicitly run Parse and preview.
+- **Preview expired:** reparse the registered pending artifact to produce a fresh bounded preview.
 - **SQLite locked:** close long-running SQLite clients. Connections use WAL mode and a 5000 ms busy timeout but cannot recover from indefinitely held transactions.
 
 ## Database reset

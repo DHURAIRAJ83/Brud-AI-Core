@@ -77,6 +77,41 @@ class Settings(BaseSettings):
     )
     csrf_cookie_name: str = Field(default="brud_csrf", validation_alias="BRUD_CSRF_COOKIE_NAME")
     csrf_header_name: str = Field(default="X-CSRF-Token", validation_alias="BRUD_CSRF_HEADER_NAME")
+    import_dir: Path = Field(default=Path("data/imports"), validation_alias="BRUD_IMPORT_DIR")
+    import_report_dir: Path = Field(
+        default=Path("data/imports/reports"), validation_alias="BRUD_IMPORT_REPORT_DIR"
+    )
+    import_max_file_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        ge=1,
+        le=100 * 1024 * 1024,
+        validation_alias="BRUD_IMPORT_MAX_FILE_BYTES",
+    )
+    import_max_rows: int = Field(
+        default=25_000, ge=1, le=100_000, validation_alias="BRUD_IMPORT_MAX_ROWS"
+    )
+    import_max_columns: int = Field(
+        default=50, ge=1, le=500, validation_alias="BRUD_IMPORT_MAX_COLUMNS"
+    )
+    import_max_cell_chars: int = Field(
+        default=20_000, ge=1, le=1_000_000, validation_alias="BRUD_IMPORT_MAX_CELL_CHARS"
+    )
+    import_preview_ttl_minutes: int = Field(
+        default=60, ge=5, le=10_080, validation_alias="BRUD_IMPORT_PREVIEW_TTL_MINUTES"
+    )
+    import_allowed_extensions: str = Field(
+        default=".json,.jsonl,.csv,.txt", validation_alias="BRUD_IMPORT_ALLOWED_EXTENSIONS"
+    )
+    import_allowed_mime_types: str = Field(
+        default="application/json,application/x-ndjson,text/csv,text/plain,application/octet-stream",
+        validation_alias="BRUD_IMPORT_ALLOWED_MIME_TYPES",
+    )
+    import_default_encoding: str = Field(
+        default="utf-8", validation_alias="BRUD_IMPORT_DEFAULT_ENCODING"
+    )
+    import_max_error_report_rows: int = Field(
+        default=5_000, ge=1, le=25_000, validation_alias="BRUD_IMPORT_MAX_ERROR_REPORT_ROWS"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -103,11 +138,41 @@ class Settings(BaseSettings):
             "allowed_data_dir",
             "allowed_model_dir",
             "allowed_export_dir",
+            "import_dir",
+            "import_report_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
                 raise ValueError(f"{field_name} must remain inside the Brud AI project root")
+        if not self.allow_external_storage:
+            data_root = self._resolve_path(self.allowed_data_dir)
+            for field_name in ("import_dir", "import_report_dir"):
+                if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
+                    raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
         return self
+
+    @field_validator("import_default_encoding")
+    @classmethod
+    def validate_import_encoding(cls, value: str) -> str:
+        if value.lower() not in {"utf-8", "utf-8-sig"}:
+            raise ValueError("BRUD_IMPORT_DEFAULT_ENCODING must be utf-8 or utf-8-sig")
+        return value.lower()
+
+    @field_validator("import_allowed_extensions")
+    @classmethod
+    def validate_import_extensions(cls, value: str) -> str:
+        items = {item.strip().lower() for item in value.split(",") if item.strip()}
+        if not items or not items <= {".json", ".jsonl", ".csv", ".txt"}:
+            raise ValueError("import extensions must use the supported allowlist")
+        return ",".join(sorted(items))
+
+    @field_validator("import_allowed_mime_types")
+    @classmethod
+    def validate_import_mimes(cls, value: str) -> str:
+        items = {item.strip().lower() for item in value.split(",") if item.strip()}
+        if not items or any("*" in item for item in items):
+            raise ValueError("wildcard or empty import MIME allowlists are not allowed")
+        return ",".join(sorted(items))
 
     @staticmethod
     def _resolve_path(path: Path) -> Path:
@@ -131,6 +196,22 @@ class Settings(BaseSettings):
     @property
     def resolved_allowed_model_dir(self) -> Path:
         return self._resolve_path(self.allowed_model_dir)
+
+    @property
+    def resolved_import_dir(self) -> Path:
+        return self._resolve_path(self.import_dir)
+
+    @property
+    def resolved_import_report_dir(self) -> Path:
+        return self._resolve_path(self.import_report_dir)
+
+    @property
+    def allowed_import_extensions(self) -> set[str]:
+        return set(self.import_allowed_extensions.split(","))
+
+    @property
+    def allowed_import_mime_types(self) -> set[str]:
+        return set(self.import_allowed_mime_types.split(","))
 
     @property
     def resolved_allowed_export_dir(self) -> Path:

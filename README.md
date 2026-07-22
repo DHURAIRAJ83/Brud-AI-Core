@@ -1,6 +1,6 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 3 adds authenticated local dataset administration; it does not train or run an AI model.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 4 adds secure preview-first dataset imports and conservative multilingual text cleaning; it does not train or run an AI model.
 
 ## Products
 
@@ -81,8 +81,8 @@ Copying `.env.example` is handled by setup. All backend variables use the `BRUD_
 
 ## Current limitations
 
-There is no public registration, file import/upload, dataset-version building, training execution, evaluation workflow, RAG, external model provider, or real inference. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
+There is no public registration, PDF/OCR processing, remote import, dataset-version building, training execution, evaluation workflow, RAG, external model provider, or real inference. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
 
-## Phase 3 status
+## Phase 4 status
 
-Schema v3 adds local admin accounts and hashed server sessions. Cookie authentication, CSRF protection, lockout, manual source/record management, lifecycle review, duplicate detection, statistics, immutable review history, and audit evidence are implemented while retaining earlier behavior. Verification is recorded in [docs/phase_3_report.md](docs/phase_3_report.md).
+Schema v4 adds registered import jobs, preview rows, and immutable lifecycle events. Authenticated administrators can upload bounded JSON, JSONL, CSV, and TXT files, explicitly map fields, preview validation and duplicates, confirm transactional draft creation, cancel jobs, and retrieve formula-safe error reports. Verification is recorded in [docs/phase_4_report.md](docs/phase_4_report.md).

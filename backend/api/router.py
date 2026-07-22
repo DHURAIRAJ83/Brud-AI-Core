@@ -2,7 +2,17 @@
 
 from fastapi import APIRouter
 
-from backend.api.routes import admin, auth, chat, datasets, documents, health, imports, system
+from backend.api.routes import (
+    admin,
+    auth,
+    chat,
+    datasets,
+    documents,
+    health,
+    imports,
+    system,
+    tokenizers,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health.router)
@@ -13,3 +23,4 @@ api_router.include_router(system.router)
 api_router.include_router(imports.router)
 api_router.include_router(documents.router)
 api_router.include_router(datasets.router)
+api_router.include_router(tokenizers.router)

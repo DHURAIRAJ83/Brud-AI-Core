@@ -2,6 +2,8 @@
 
 Schema v6 is additive on top of schema v5. It preserves manual records, file imports, document extraction provenance, authentication, audit logs, and all prior API behavior.
 
+The current project schema is v7. See [database_schema_v7.md](database_schema_v7.md) for tokenizer-training additions.
+
 ## New tables
 
 - `dataset_quality_assessments`: immutable history of deterministic quality assessments per dataset record.

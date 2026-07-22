@@ -16,6 +16,7 @@ dependencies = [
   "PyMuPDF>=1.24,<2.0",
   "pytesseract>=0.3.13,<1.0",
   "Pillow>=10.4,<12.0",
+  "sentencepiece>=0.2,<0.3",
 ]
 
 [project.optional-dependencies]
@@ -39,3 +40,4 @@ select = ["E", "F", "I", "UP", "B"]
 "backend/database/schema.py" = ["E501"]
 "backend/services/import_service.py" = ["E501"]
 "backend/services/document_service.py" = ["E501"]
+"backend/services/tokenizer_registry.py" = ["E501"]

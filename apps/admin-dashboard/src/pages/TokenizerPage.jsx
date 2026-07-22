@@ -1,0 +1,45 @@
+import { useEffect, useState } from 'react'
+import { activateTokenizer, createTokenizerExport, createTokenizerFamily, createTokenizerJob, createTokenizerVersion, datasetVersions, patchTokenizerAssignment, retireTokenizer, tokenizerAssignments, tokenizerCapabilities, tokenizerEncode, tokenizerExports, tokenizerFamilies, tokenizerJobAction, tokenizerJobEvents, tokenizerJobs, tokenizerVersions, verifyTokenizer } from '../services/api.js'
+
+const tabs = ['Overview', 'Families', 'Versions', 'Training', 'Test Lab', 'Assignments']
+
+export default function TokenizerPage() {
+  const [tab, setTab] = useState('Overview')
+  const [data, setData] = useState(null), [error, setError] = useState(''), [notice, setNotice] = useState('')
+  const [familyForm, setFamilyForm] = useState({ name: 'brud-multilingual-tokenizer', display_name: 'Brud Multilingual Tokenizer', description: '' })
+  const [versionForm, setVersionForm] = useState({ family_public_id: '', dataset_version_public_id: '', version: 'v0.1', algorithm: 'bpe', vocabulary_size: 1000, character_coverage: 0.9995 })
+  const [testText, setTestText] = useState('வணக்கம் hello vanakkam'), [testVersion, setTestVersion] = useState(''), [testResult, setTestResult] = useState(null)
+  async function load() {
+    setError('')
+    try {
+      const [capabilities, families, versions, datasets, jobs, assignments] = await Promise.all([tokenizerCapabilities(), tokenizerFamilies(), tokenizerVersions(), datasetVersions(), tokenizerJobs(), tokenizerAssignments()])
+      setData({ capabilities, families, versions, datasets, jobs, assignments })
+      if (!versionForm.family_public_id && families.items[0]) setVersionForm((v) => ({ ...v, family_public_id: families.items[0].public_id }))
+      if (!versionForm.dataset_version_public_id && datasets.items[0]) setVersionForm((v) => ({ ...v, dataset_version_public_id: datasets.items[0].public_id }))
+      if (!testVersion && versions.items[0]) setTestVersion(versions.items[0].public_id)
+    } catch (reason) { setError(reason.message) }
+  }
+  useEffect(() => { load() }, [])
+  async function saveFamily(e) { e.preventDefault(); try { await createTokenizerFamily(familyForm); setNotice('Tokenizer family created.'); load() } catch (reason) { setError(reason.message) } }
+  async function saveVersion(e) { e.preventDefault(); try { await createTokenizerVersion(versionForm); setNotice('Tokenizer draft version created.'); load() } catch (reason) { setError(reason.message) } }
+  async function createJob(version) { try { await createTokenizerJob({ tokenizer_version_public_id: version.public_id, job_type: 'full_pipeline' }); setNotice('Tokenizer job created.'); load() } catch (reason) { setError(reason.message) } }
+  async function runJob(job, action) { try { await tokenizerJobAction(job.public_id, action); setNotice(`${action} completed.`); load() } catch (reason) { setError(reason.message) } }
+  async function encode() { try { setTestResult(await tokenizerEncode(testVersion, testText)) } catch (reason) { setError(reason.message) } }
+  async function activate(version) { try { await activateTokenizer(version.public_id); setNotice('Tokenizer activated.'); load() } catch (reason) { setError(reason.message) } }
+  async function retire(version) { try { await retireTokenizer(version.public_id); setNotice('Tokenizer retired.'); load() } catch (reason) { setError(reason.message) } }
+  async function verify(version) { try { const result = await verifyTokenizer(version.public_id); setNotice(result.verified ? 'Artifacts verified.' : 'Checksum mismatch.'); } catch (reason) { setError(reason.message) } }
+  async function exportVersion(version) { try { await createTokenizerExport(version.public_id); setNotice('Tokenizer export created.'); load() } catch (reason) { setError(reason.message) } }
+  async function assign(key, versionId) { try { await patchTokenizerAssignment(key, { tokenizer_version_public_id: versionId || null, enabled: Boolean(versionId), configuration: {} }); setNotice('Assignment updated.'); load() } catch (reason) { setError(reason.message) } }
+  if (!data) return <div className="notice">Loading tokenizer workspace…</div>
+  return <section className="tokenizer-workspace"><div className="dataset-tabs">{tabs.map((item) => <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>)}</div>{notice && <div className="success-note">{notice}</div>}{error && <div className="form-error">{error}</div>}
+    {tab === 'Overview' && <><h2>Tokenizer overview</h2><section className="metric-grid"><Card label="SentencePiece" value={data.capabilities.sentencepiece_available ? data.capabilities.sentencepiece_version : 'Unavailable'} /><Card label="Families" value={data.families.total} /><Card label="Versions" value={data.versions.total} /><Card label="Jobs" value={data.jobs.total} /><Card label="Ready datasets" value={data.datasets.total} /></section></>}
+    {tab === 'Families' && <><form className="inline-form" onSubmit={saveFamily}><h2>Create family</h2><label>Name<input value={familyForm.name} onChange={(e)=>setFamilyForm({...familyForm,name:e.target.value})}/></label><label>Display name<input value={familyForm.display_name} onChange={(e)=>setFamilyForm({...familyForm,display_name:e.target.value})}/></label><label>Description<input value={familyForm.description} onChange={(e)=>setFamilyForm({...familyForm,description:e.target.value})}/></label><button>Create family</button></form><List items={data.families.items} /></>}
+    {tab === 'Versions' && <><form className="inline-form" onSubmit={saveVersion}><h2>Create tokenizer version</h2><label>Family<select value={versionForm.family_public_id} onChange={(e)=>setVersionForm({...versionForm,family_public_id:e.target.value})}>{data.families.items.map((f)=><option key={f.public_id} value={f.public_id}>{f.display_name}</option>)}</select></label><label>Ready dataset<select value={versionForm.dataset_version_public_id} onChange={(e)=>setVersionForm({...versionForm,dataset_version_public_id:e.target.value})}>{data.datasets.items.filter((d)=>['ready','archived'].includes(d.status)).map((d)=><option key={d.public_id} value={d.public_id}>{d.name} {d.version}</option>)}</select></label><label>Version<input value={versionForm.version} onChange={(e)=>setVersionForm({...versionForm,version:e.target.value})}/></label><label>Algorithm<select value={versionForm.algorithm} onChange={(e)=>setVersionForm({...versionForm,algorithm:e.target.value})}><option value="bpe">BPE</option><option value="unigram">Unigram</option></select></label><label>Vocabulary<input type="number" value={versionForm.vocabulary_size} onChange={(e)=>setVersionForm({...versionForm,vocabulary_size:Number(e.target.value)})}/></label><button>Create draft</button></form><div className="data-list">{data.versions.items.map((v)=><article key={v.public_id}><div><strong>{v.family_name} {v.version}</strong><small>{v.lifecycle_status} · {v.algorithm} · {v.vocabulary_size}</small></div><div><button onClick={()=>createJob(v)}>Job</button><button onClick={()=>verify(v)}>Verify</button><button onClick={()=>activate(v)}>Activate</button><button onClick={()=>retire(v)}>Retire</button><button onClick={()=>exportVersion(v)}>Export</button></div></article>)}</div></>}
+    {tab === 'Training' && <div className="data-list">{data.jobs.items.map((j)=><article key={j.public_id}><div><strong>{j.public_id}</strong><small>{j.status} · {j.current_stage}</small></div><div><button onClick={()=>runJob(j,'build-corpus')}>Corpus</button><button onClick={()=>runJob(j,'dry-run')}>Dry run</button><button onClick={()=>runJob(j,'train')}>Train</button><button onClick={()=>runJob(j,'evaluate')}>Evaluate</button></div></article>)}</div>}
+    {tab === 'Test Lab' && <><div className="inline-form"><label>Version<select value={testVersion} onChange={(e)=>setTestVersion(e.target.value)}>{data.versions.items.map((v)=><option key={v.public_id} value={v.public_id}>{v.family_name} {v.version}</option>)}</select></label><label>Text<textarea value={testText} onChange={(e)=>setTestText(e.target.value)}/></label><button onClick={encode}>Encode</button></div>{testResult && <pre className="notice">{JSON.stringify(testResult, null, 2)}</pre>}</>}
+    {tab === 'Assignments' && <div className="data-list">{['core_model_training','chat_input','dataset_preview','default'].map((key)=><article key={key}><strong>{key}</strong><select onChange={(e)=>assign(key,e.target.value)} defaultValue=""><option value="">Unassigned</option>{data.versions.items.map((v)=><option key={v.public_id} value={v.public_id}>{v.family_name} {v.version}</option>)}</select></article>)}</div>}
+  </section>
+}
+
+function Card({ label, value }) { return <article className="status-card"><span>{label}</span><strong>{value}</strong></article> }
+function List({ items }) { return !items.length ? <div className="notice">No tokenizer records yet.</div> : <div className="data-list">{items.map((item)=><article key={item.public_id}><strong>{item.display_name || item.name}</strong><span>{item.status || item.lifecycle_status}</span></article>)}</div> }

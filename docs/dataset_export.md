@@ -29,4 +29,4 @@ Export verification recalculates SHA-256 over the generated manifest and split f
 
 ## Limitations
 
-Phase 6 does not produce tokenizer-specific binary formats or training-framework-specific datasets.
+Phase 6 does not produce tokenizer-specific binary formats or training-framework-specific datasets. Phase 7 tokenizer corpus generation may use ready dataset versions directly from SQLite instead of requiring a JSONL export first.

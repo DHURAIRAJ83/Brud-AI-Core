@@ -56,6 +56,23 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_DATASET_SPLIT_SEED` | `42` | Reproducible split seed |
 | `BRUD_DATASET_EXPORT_DIR` | `data/dataset_exports` | Controlled dataset export root |
 | `BRUD_DATASET_EXPORT_MAX_RECORDS` | `100000` | Maximum records in one export |
+| `BRUD_TOKENIZER_DIR` | `data/tokenizers` | Controlled tokenizer artifact root |
+| `BRUD_TOKENIZER_CORPUS_DIR` | `data/tokenizers/corpora` | Deterministic tokenizer corpus root |
+| `BRUD_TOKENIZER_EXPORT_DIR` | `data/tokenizers/exports` | Tokenizer export bundle root |
+| `BRUD_TOKENIZER_DEFAULT_ALGORITHM` | `bpe` | Default SentencePiece algorithm |
+| `BRUD_TOKENIZER_DEFAULT_VOCAB_SIZE` | `16000` | Default vocabulary size |
+| `BRUD_TOKENIZER_MIN_VOCAB_SIZE` | `1000` | Minimum accepted vocabulary size |
+| `BRUD_TOKENIZER_MAX_VOCAB_SIZE` | `32000` | Maximum accepted vocabulary size |
+| `BRUD_TOKENIZER_CHARACTER_COVERAGE` | `0.9995` | SentencePiece character coverage |
+| `BRUD_TOKENIZER_MAX_CORPUS_RECORDS` | `250000` | Corpus record limit |
+| `BRUD_TOKENIZER_MAX_CORPUS_CHARS` | `250000000` | Corpus character limit |
+| `BRUD_TOKENIZER_MAX_LINE_CHARS` | `20000` | Maximum corpus line length |
+| `BRUD_TOKENIZER_INPUT_SENTENCE_SIZE` | `500000` | SentencePiece input sentence limit |
+| `BRUD_TOKENIZER_SHUFFLE_INPUT_SENTENCE` | `true` | SentencePiece sentence shuffling flag |
+| `BRUD_TOKENIZER_MAX_SENTENCE_LENGTH` | `4096` | SentencePiece maximum sentence length |
+| `BRUD_TOKENIZER_NUM_THREADS` | `1` | Bounded local training thread count |
+| `BRUD_TOKENIZER_EVAL_MAX_SAMPLES_PER_LANGUAGE` | `1000` | Bounded tokenizer evaluation samples |
+| `BRUD_TOKENIZER_MIN_READY_SCORE` | `0.8` | Minimum round-trip readiness score |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
@@ -78,6 +95,8 @@ Security-sensitive commands prompt interactively. The browser obtains CSRF state
 Registered import jobs can be inspected with `python -m backend.import_cli list` and `python -m backend.import_cli inspect <public_id>`. `python -m backend.import_cli expire-old` requires typed confirmation and operates only on registered preview jobs; it accepts no paths.
 
 Dataset quality and versioning can be inspected with `python -m backend.dataset_cli quality-summary`, `assess-record <public_id>`, `list-versions`, `inspect-version <public_id>`, `verify-version <public_id>`, and `export-version <public_id>`. Mutating commands require typed confirmation.
+
+Tokenizer work can be inspected with `python -m backend.tokenizer_cli capabilities`, `list`, `inspect <public_id>`, `build-corpus <job_public_id>`, `dry-run <job_public_id>`, `train <job_public_id>`, `evaluate <version_public_id>`, `verify <version_public_id>`, and `activate <version_public_id>`. Training and activation require typed confirmation and operate only on registered public IDs.
 
 ## Troubleshooting
 

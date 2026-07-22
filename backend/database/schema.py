@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -658,4 +658,153 @@ CREATE TRIGGER IF NOT EXISTS dataset_build_events_immutable_update BEFORE UPDATE
 CREATE TRIGGER IF NOT EXISTS dataset_build_events_immutable_delete BEFORE DELETE ON dataset_build_events BEGIN SELECT RAISE(ABORT, 'dataset build events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS dataset_quality_issues_immutable_update BEFORE UPDATE ON dataset_quality_issues BEGIN SELECT RAISE(ABORT, 'dataset quality issues are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS dataset_quality_issues_immutable_delete BEFORE DELETE ON dataset_quality_issues BEGIN SELECT RAISE(ABORT, 'dataset quality issues are immutable'); END;
+"""
+
+MIGRATION_007_NAME = "007_phase7_tokenizer_training"
+
+PHASE7_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tokenizer_families (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    tokenizer_type TEXT NOT NULL DEFAULT 'sentencepiece' CHECK (tokenizer_type IN ('sentencepiece')),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','inactive','archived')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS tokenizer_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_family_id INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN ('draft','validating','training','evaluating','staging','active','failed','retired','archived')),
+    algorithm TEXT NOT NULL CHECK (algorithm IN ('bpe','unigram')),
+    vocabulary_size INTEGER NOT NULL CHECK (vocabulary_size > 0),
+    character_coverage REAL NOT NULL CHECK (character_coverage > 0 AND character_coverage <= 1),
+    normalization_rule_name TEXT NOT NULL,
+    model_type TEXT NOT NULL DEFAULT 'sentencepiece',
+    dataset_version_id INTEGER NOT NULL,
+    training_job_id INTEGER,
+    corpus_checksum_sha256 TEXT,
+    model_checksum_sha256 TEXT,
+    vocabulary_checksum_sha256 TEXT,
+    artifact_manifest_json TEXT NOT NULL DEFAULT '{}',
+    special_tokens_json TEXT NOT NULL DEFAULT '[]',
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    metrics_summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    training_completed_at TEXT,
+    activated_at TEXT,
+    retired_at TEXT,
+    FOREIGN KEY (tokenizer_family_id) REFERENCES tokenizer_families(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (training_job_id) REFERENCES tokenizer_training_jobs(id) ON DELETE SET NULL,
+    UNIQUE(tokenizer_family_id, version)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tokenizer_one_active
+ON tokenizer_versions(tokenizer_family_id) WHERE lifecycle_status = 'active';
+CREATE TABLE IF NOT EXISTS tokenizer_training_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_version_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validating','queued','running','completed','completed_with_warnings','failed','cancelled')),
+    job_type TEXT NOT NULL CHECK (job_type IN ('corpus_build','dry_run','train','evaluate','full_pipeline')),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    hardware_profile TEXT NOT NULL DEFAULT 'cpu',
+    corpus_record_count INTEGER NOT NULL DEFAULT 0 CHECK (corpus_record_count >= 0),
+    corpus_line_count INTEGER NOT NULL DEFAULT 0 CHECK (corpus_line_count >= 0),
+    corpus_character_count INTEGER NOT NULL DEFAULT 0 CHECK (corpus_character_count >= 0),
+    progress REAL NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 1),
+    current_stage TEXT NOT NULL DEFAULT 'draft',
+    error_code TEXT,
+    error_message TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS tokenizer_training_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    training_job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT,
+    stage TEXT,
+    message TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (training_job_id) REFERENCES tokenizer_training_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS tokenizer_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_version_id INTEGER NOT NULL,
+    evaluation_name TEXT NOT NULL,
+    evaluation_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','running','completed','completed_with_warnings','failed')),
+    dataset_version_id INTEGER,
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS tokenizer_evaluation_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_evaluation_id INTEGER NOT NULL,
+    language TEXT NOT NULL CHECK (language IN ('ta','en','tgl','mixed','overall')),
+    metric_name TEXT NOT NULL,
+    metric_value REAL NOT NULL,
+    sample_count INTEGER NOT NULL DEFAULT 0 CHECK (sample_count >= 0),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_evaluation_id) REFERENCES tokenizer_evaluations(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS tokenizer_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_key TEXT NOT NULL UNIQUE CHECK (assignment_key IN ('core_model_training','chat_input','dataset_preview','default')),
+    tokenizer_version_id INTEGER,
+    fallback_tokenizer_version_id INTEGER,
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE SET NULL,
+    FOREIGN KEY (fallback_tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS tokenizer_exports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_version_id INTEGER NOT NULL,
+    export_format TEXT NOT NULL CHECK (export_format IN ('sentencepiece_bundle','huggingface_tokenizer_files','manifest_only')),
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','exporting','completed','failed','cancelled')),
+    safe_name TEXT NOT NULL UNIQUE,
+    checksum_sha256 TEXT,
+    artifact_manifest_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_families_name ON tokenizer_families(name);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_versions_status ON tokenizer_versions(lifecycle_status);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_versions_dataset ON tokenizer_versions(dataset_version_id);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_jobs_status_created ON tokenizer_training_jobs(status,created_at);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_eval_version_language ON tokenizer_evaluation_results(tokenizer_evaluation_id,language);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_assignments_key ON tokenizer_assignments(assignment_key);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_versions_model_checksum ON tokenizer_versions(model_checksum_sha256);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_exports_checksum ON tokenizer_exports(checksum_sha256);
+CREATE TRIGGER IF NOT EXISTS tokenizer_training_events_immutable_update BEFORE UPDATE ON tokenizer_training_events BEGIN SELECT RAISE(ABORT, 'tokenizer training events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS tokenizer_training_events_immutable_delete BEFORE DELETE ON tokenizer_training_events BEGIN SELECT RAISE(ABORT, 'tokenizer training events are immutable'); END;
 """

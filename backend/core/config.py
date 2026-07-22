@@ -210,6 +210,64 @@ class Settings(BaseSettings):
     dataset_export_max_records: int = Field(
         default=100_000, ge=1, le=1_000_000, validation_alias="BRUD_DATASET_EXPORT_MAX_RECORDS"
     )
+    tokenizer_dir: Path = Field(
+        default=Path("data/tokenizers"),
+        validation_alias="BRUD_TOKENIZER_DIR",
+    )
+    tokenizer_corpus_dir: Path = Field(
+        default=Path("data/tokenizers/corpora"), validation_alias="BRUD_TOKENIZER_CORPUS_DIR"
+    )
+    tokenizer_export_dir: Path = Field(
+        default=Path("data/tokenizers/exports"), validation_alias="BRUD_TOKENIZER_EXPORT_DIR"
+    )
+    tokenizer_default_algorithm: str = Field(
+        default="bpe", validation_alias="BRUD_TOKENIZER_DEFAULT_ALGORITHM"
+    )
+    tokenizer_default_vocab_size: int = Field(
+        default=16000, ge=1, le=100000, validation_alias="BRUD_TOKENIZER_DEFAULT_VOCAB_SIZE"
+    )
+    tokenizer_min_vocab_size: int = Field(
+        default=1000, ge=1, le=100000, validation_alias="BRUD_TOKENIZER_MIN_VOCAB_SIZE"
+    )
+    tokenizer_max_vocab_size: int = Field(
+        default=32000, ge=1, le=100000, validation_alias="BRUD_TOKENIZER_MAX_VOCAB_SIZE"
+    )
+    tokenizer_character_coverage: float = Field(
+        default=0.9995, gt=0, le=1, validation_alias="BRUD_TOKENIZER_CHARACTER_COVERAGE"
+    )
+    tokenizer_max_corpus_records: int = Field(
+        default=250_000, ge=1, le=1_000_000, validation_alias="BRUD_TOKENIZER_MAX_CORPUS_RECORDS"
+    )
+    tokenizer_max_corpus_chars: int = Field(
+        default=250_000_000,
+        ge=1000,
+        le=1_000_000_000,
+        validation_alias="BRUD_TOKENIZER_MAX_CORPUS_CHARS",
+    )
+    tokenizer_max_line_chars: int = Field(
+        default=20_000, ge=100, le=200_000, validation_alias="BRUD_TOKENIZER_MAX_LINE_CHARS"
+    )
+    tokenizer_input_sentence_size: int = Field(
+        default=500_000, ge=0, le=5_000_000, validation_alias="BRUD_TOKENIZER_INPUT_SENTENCE_SIZE"
+    )
+    tokenizer_shuffle_input_sentence: bool = Field(
+        default=True, validation_alias="BRUD_TOKENIZER_SHUFFLE_INPUT_SENTENCE"
+    )
+    tokenizer_max_sentence_length: int = Field(
+        default=4096, ge=128, le=20000, validation_alias="BRUD_TOKENIZER_MAX_SENTENCE_LENGTH"
+    )
+    tokenizer_num_threads: int = Field(
+        default=1, ge=1, le=4, validation_alias="BRUD_TOKENIZER_NUM_THREADS"
+    )
+    tokenizer_eval_max_samples_per_language: int = Field(
+        default=1000,
+        ge=1,
+        le=10000,
+        validation_alias="BRUD_TOKENIZER_EVAL_MAX_SAMPLES_PER_LANGUAGE",
+    )
+    tokenizer_min_ready_score: float = Field(
+        default=0.8, ge=0, le=1, validation_alias="BRUD_TOKENIZER_MIN_READY_SCORE"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -241,6 +299,9 @@ class Settings(BaseSettings):
             "document_dir",
             "document_report_dir",
             "dataset_export_dir",
+            "tokenizer_dir",
+            "tokenizer_corpus_dir",
+            "tokenizer_export_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -253,6 +314,9 @@ class Settings(BaseSettings):
                 "document_dir",
                 "document_report_dir",
                 "dataset_export_dir",
+                "tokenizer_dir",
+                "tokenizer_corpus_dir",
+                "tokenizer_export_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
@@ -267,6 +331,16 @@ class Settings(BaseSettings):
         )
         if split_total != 100:
             raise ValueError("dataset split percentages must total 100")
+        if self.tokenizer_default_algorithm not in {"bpe", "unigram"}:
+            raise ValueError("tokenizer default algorithm must be bpe or unigram")
+        if self.tokenizer_min_vocab_size > self.tokenizer_max_vocab_size:
+            raise ValueError("tokenizer min vocab size must not exceed max vocab size")
+        if not (
+            self.tokenizer_min_vocab_size
+            <= self.tokenizer_default_vocab_size
+            <= self.tokenizer_max_vocab_size
+        ):
+            raise ValueError("tokenizer default vocab size must be inside configured bounds")
         return self
 
     @field_validator("ocr_languages")
@@ -342,6 +416,18 @@ class Settings(BaseSettings):
     @property
     def resolved_dataset_export_dir(self) -> Path:
         return self._resolve_path(self.dataset_export_dir)
+
+    @property
+    def resolved_tokenizer_dir(self) -> Path:
+        return self._resolve_path(self.tokenizer_dir)
+
+    @property
+    def resolved_tokenizer_corpus_dir(self) -> Path:
+        return self._resolve_path(self.tokenizer_corpus_dir)
+
+    @property
+    def resolved_tokenizer_export_dir(self) -> Path:
+        return self._resolve_path(self.tokenizer_export_dir)
 
     @property
     def allowed_import_extensions(self) -> set[str]:

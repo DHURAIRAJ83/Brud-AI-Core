@@ -17,6 +17,7 @@ data/database/backups/
 data/imports/
 data/documents/
 data/dataset_exports/
+data/tokenizers/
 models/checkpoints/*
 models/active/*
 models/exports/*

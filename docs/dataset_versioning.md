@@ -14,7 +14,7 @@ failed -> draft
 ready -> archived
 ```
 
-Only draft versions can be edited. Ready versions are immutable and remain readable/exportable after archive.
+Only draft versions can be edited. Ready versions are immutable and remain readable/exportable after archive. Phase 7 tokenizer training consumes only ready or archived versions and never edits version contents.
 
 ## Build workflow
 

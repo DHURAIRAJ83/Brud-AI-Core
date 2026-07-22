@@ -26,6 +26,9 @@ def api_app(tmp_path: Path) -> FastAPI:
         import_report_dir=tmp_path / "imports" / "reports",
         document_dir=tmp_path / "documents",
         document_report_dir=tmp_path / "documents" / "reports",
+        tokenizer_dir=tmp_path / "tokenizers",
+        tokenizer_corpus_dir=tmp_path / "tokenizers" / "corpora",
+        tokenizer_export_dir=tmp_path / "tokenizers" / "exports",
         allow_external_storage=True,
         log_level="CRITICAL",
     )

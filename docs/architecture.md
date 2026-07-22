@@ -49,9 +49,19 @@ Approved records → deterministic quality evidence → build validation
 
 Quality scoring, leakage checks, split generation, manifest serialization, and export writing are backend service concerns. React renders summaries and triggers explicit admin actions.
 
+Phase 7 adds the tokenizer control plane:
+
+```text
+Ready dataset version → deterministic UTF-8 corpus → dry-run validation
+      → bounded SentencePiece training → registered artifacts
+      → deterministic evaluation → staging → explicit activation
+```
+
+Tokenizer corpus building, training, evaluation, artifact verification, activation, assignment, and export live in backend services. The Admin Dashboard exposes these operations under the Tokenizer area. The chatbot is not connected to tokenizers in Phase 7.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports without rebuilding existing tables.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables without rebuilding existing tables.
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

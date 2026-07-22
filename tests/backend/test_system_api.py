@@ -21,8 +21,8 @@ async def get(app: FastAPI, path: str):
         "/api/admin/audit/recent",
     ],
 )
-async def test_system_endpoints_are_safe(api_app: FastAPI, path: str) -> None:
-    response = await get(api_app, path)
+async def test_system_endpoints_are_safe(protected_api_app: FastAPI, path: str) -> None:
+    response = await get(protected_api_app, path)
     assert response.status_code == 200
     serialized = json.dumps(response.json())
     assert "/home/" not in serialized
@@ -31,17 +31,17 @@ async def test_system_endpoints_are_safe(api_app: FastAPI, path: str) -> None:
     assert "do-not-expose" not in serialized
 
 
-async def test_database_endpoint(api_app: FastAPI) -> None:
-    payload = (await get(api_app, "/api/admin/system/database")).json()
+async def test_database_endpoint(protected_api_app: FastAPI) -> None:
+    payload = (await get(protected_api_app, "/api/admin/system/database")).json()
     assert payload["status"] == "healthy"
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["journal_mode"] == "wal"
     assert payload["foreign_keys"] is True
     assert payload["busy_timeout_ms"] == 5000
 
 
-async def test_safe_configuration_endpoint(api_app: FastAPI) -> None:
-    payload = (await get(api_app, "/api/admin/system/configuration")).json()
+async def test_safe_configuration_endpoint(protected_api_app: FastAPI) -> None:
+    payload = (await get(protected_api_app, "/api/admin/system/configuration")).json()
     assert set(payload) == {
         "environment",
         "debug",
@@ -52,15 +52,16 @@ async def test_safe_configuration_endpoint(api_app: FastAPI) -> None:
     }
 
 
-async def test_schema_and_audit_endpoints(api_app: FastAPI) -> None:
-    schema = (await get(api_app, "/api/admin/system/schema")).json()
-    assert schema["current_version"] == 2
+async def test_schema_and_audit_endpoints(protected_api_app: FastAPI) -> None:
+    schema = (await get(protected_api_app, "/api/admin/system/schema")).json()
+    assert schema["current_version"] == 3
     assert schema["migration_status"] == "current"
     assert {item["name"] for item in schema["applied_migrations"]} == {
         "001_phase1_foundation",
         "002_phase2_foundation",
+        "003_phase3_admin_dataset",
     }
-    audit = (await get(api_app, "/api/admin/audit/recent?limit=2")).json()
+    audit = (await get(protected_api_app, "/api/admin/audit/recent?limit=2")).json()
     assert audit["limit"] == 2
     assert audit["offset"] == 0
     assert audit["items"]

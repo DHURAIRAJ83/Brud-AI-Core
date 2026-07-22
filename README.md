@@ -1,12 +1,12 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 2 adds a verified data and control-plane foundation; it does not train or run an AI model.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 3 adds authenticated local dataset administration; it does not train or run an AI model.
 
 ## Products
 
 - **Brud Chatbot** — a responsive React chat client with language selection and backend status.
 - **Brud Core Model** — Python contracts for future tokenizer, training, inference, evaluation, and export work.
-- **Brud Admin Dashboard** — a separate React operations interface for future data and model workflows.
+- **Brud Admin Dashboard** — an authenticated React interface for manual dataset sources, records, reviews, duplicates, and system status.
 
 The FastAPI backend and SQLite database provide shared APIs and persistence foundations while keeping each product modular.
 
@@ -50,6 +50,16 @@ make dev       # all three, with child-process cleanup
 
 Interactive API docs are available at `http://127.0.0.1:8000/docs`.
 
+Create the first local administrator interactively, then sign in at `http://localhost:5174/#Login`:
+
+```bash
+. venv/bin/activate
+python -m backend.admin_cli create-admin
+python -m backend.admin_cli list-admins
+```
+
+Account recovery commands are `disable-admin`, `enable-admin`, and `reset-password`. Password entry is always interactive and never accepted as a command-line argument.
+
 ## Test and quality commands
 
 ```bash
@@ -71,8 +81,8 @@ Copying `.env.example` is handled by setup. All backend variables use the `BRUD_
 
 ## Current limitations
 
-There is no authentication, dataset-management UI, training execution, evaluation workflow, RAG, external model provider, or real inference. Phase 2 repositories and schemas persist future workflow state but do not execute those workflows. The chat response remains deliberately labeled as a placeholder.
+There is no public registration, file import/upload, dataset-version building, training execution, evaluation workflow, RAG, external model provider, or real inference. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
 
-## Phase 2 status
+## Phase 3 status
 
-Schema v2, verified migration backups, typed validation, repositories, append-only audit records, safe system APIs, and the Admin System page are implemented while retaining Phase 1 behavior. Verification is recorded in [docs/phase_2_report.md](docs/phase_2_report.md).
+Schema v3 adds local admin accounts and hashed server sessions. Cookie authentication, CSRF protection, lockout, manual source/record management, lifecycle review, duplicate detection, statistics, immutable review history, and audit evidence are implemented while retaining earlier behavior. Verification is recorded in [docs/phase_3_report.md](docs/phase_3_report.md).

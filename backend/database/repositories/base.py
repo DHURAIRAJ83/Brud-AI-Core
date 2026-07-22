@@ -41,9 +41,7 @@ class BaseRepository:
                 raise ConflictError(str(exc)) from exc
             except ValidationError:
                 connection.rollback()
-                columns = {
-                    row[1] for row in connection.execute("PRAGMA table_info(audit_logs)")
-                }
+                columns = {row[1] for row in connection.execute("PRAGMA table_info(audit_logs)")}
                 if "public_id" in columns:
                     connection.execute(
                         """INSERT INTO audit_logs(action,actor,details,public_id,event_type,

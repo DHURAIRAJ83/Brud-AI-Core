@@ -1,5 +1,16 @@
 # Database schema v2
 
+This document remains the reference for the Phase 2 data/control-plane tables. Phase 3 preserves every v2 table and constraint, then applies additive migration `003_phase3_admin_dataset` with schema version 3.
+
+## Phase 3 extension
+
+- `admin_accounts` stores normalized unique usernames, Argon2 password hashes, account state, failure counters, lockout, and login timestamps. Public UUIDs are exposed; numeric IDs and hashes are private.
+- `admin_sessions` stores only SHA-256 hashes of secure random session and CSRF values, plus expiry, last-use, and revocation timestamps.
+- Dataset lookup indexes support bounded Phase 3 filters without changing dataset content.
+- Database triggers make `dataset_reviews` update/delete immutable.
+
+No Phase 2 table is dropped or rebuilt by migration 003.
+
 Migration `002_phase2_foundation` extends the Phase 1 database without dropping or recreating its tables. Every externally referenced entity uses a UUID public ID; integer IDs remain internal foreign-key implementation details.
 
 ## Tables and relationships

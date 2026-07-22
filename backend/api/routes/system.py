@@ -3,15 +3,16 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
+from backend.api.auth import require_admin
 from backend.api.dependencies import SettingsDependency
 from backend.database.connection import database_connection
 from backend.database.migrations import migration_status
 from backend.database.repositories import AuditLogRepository
 from backend.models.domain import AuditEventCreate
 
-router = APIRouter(prefix="/admin", tags=["admin-system"])
+router = APIRouter(prefix="/admin", tags=["admin-system"], dependencies=[Depends(require_admin)])
 
 
 def _record_read(settings, action: str) -> None:
@@ -34,7 +35,7 @@ def _record_read(settings, action: str) -> None:
 
 def _latest_backup(backup_dir: Path) -> dict[str, str] | None:
     candidates = sorted(
-        backup_dir.glob("brud_ai_before_v2_*.db"), key=lambda item: item.stat().st_mtime
+        backup_dir.glob("brud_ai_before_v*_*.db"), key=lambda item: item.stat().st_mtime
     )
     if not candidates:
         return None

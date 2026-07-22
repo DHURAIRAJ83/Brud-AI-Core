@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -281,3 +281,43 @@ PHASE2_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("metadata_json", "TEXT NOT NULL DEFAULT '{}'"),
     ],
 }
+
+MIGRATION_003_NAME = "003_phase3_admin_dataset"
+
+PHASE3_SCHEMA = """
+CREATE TABLE IF NOT EXISTS admin_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    username TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled','locked')),
+    failed_login_count INTEGER NOT NULL DEFAULT 0 CHECK (failed_login_count >= 0),
+    locked_until TEXT,
+    last_login_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    admin_account_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    csrf_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    last_used_at TEXT NOT NULL,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_account_id) REFERENCES admin_accounts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_admin_sessions_account ON admin_sessions(admin_account_id);
+CREATE INDEX IF NOT EXISTS ix_dataset_records_status ON dataset_records(status);
+CREATE INDEX IF NOT EXISTS ix_dataset_records_content_hash ON dataset_records(content_hash);
+CREATE INDEX IF NOT EXISTS ix_dataset_sources_status ON dataset_sources(status);
+CREATE TRIGGER IF NOT EXISTS dataset_reviews_immutable_update
+BEFORE UPDATE ON dataset_reviews
+BEGIN SELECT RAISE(ABORT, 'dataset reviews are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS dataset_reviews_immutable_delete
+BEFORE DELETE ON dataset_reviews
+BEGIN SELECT RAISE(ABORT, 'dataset reviews are immutable'); END;
+"""

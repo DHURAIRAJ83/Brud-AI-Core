@@ -7,7 +7,7 @@ export default function Sidebar({ active, open, onSelect, onClose }) {
       <nav aria-label="Admin modules">{menuItems.map((item) => (
         <button className={active === item ? 'active' : ''} key={item} onClick={() => { onSelect(item); onClose() }}>{item}</button>
       ))}</nav>
-      <div className="phase-tag">Phase 2 · Data foundation</div>
+      <div className="phase-tag">Phase 3 · Dataset administration</div>
     </aside>
   )
 }

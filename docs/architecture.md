@@ -16,15 +16,25 @@ FastAPI is assembled by `create_app`. Its lifespan initializes SQLite after star
 
 ## Admin Dashboard
 
-The separate Vite/React admin application uses a responsive dashboard shell. Overview consumes `GET /api/admin/overview`; the remaining navigation entries are explicit future-phase placeholders. Components and API access are separated so a later authentication layer can be added centrally.
+The separate Vite/React admin application has an unauthenticated login boundary and a responsive protected dashboard. Session state is held by an HttpOnly cookie; a separately issued CSRF value is kept only in page memory and sent on mutations. Dataset tabs provide overview metrics, manual sources, editable draft/pending records, a review queue, duplicate conflicts, and review history. Other product areas remain explicit placeholders.
+
+```text
+Admin Dashboard
+      ↓ cookie session + CSRF
+Authentication dependency
+      ↓ authenticated admin context
+Dataset API → Dataset service → Repositories → SQLite
+```
+
+Routes translate validated inputs and controlled errors. Lifecycle, duplicate, and transaction rules live in the service/repository layers rather than React or route handlers.
 
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes review, immutable dataset-version, training-event, model-version/assignment, feedback, approval, and append-only audit boundaries.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; additive schema v3 adds local admin accounts and revocable sessions without rebuilding existing tables.
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 
-The temporary read-only admin control plane exposes safe database, configuration, schema, and audit metadata. It deliberately omits filesystem paths, secret settings, raw request bodies, and chat content.
+All admin control-plane and dataset routes now require a valid active local-admin session. Mutations additionally require CSRF validation. Responses deliberately omit numeric IDs, password/session hashes, filesystem paths, secret settings, raw request bodies, and chat content.
 
 ## Future data and training workflow
 

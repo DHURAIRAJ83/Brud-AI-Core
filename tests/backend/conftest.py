@@ -1,11 +1,14 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
 
+from backend.api.auth import AdminContext, require_admin
 from backend.core.config import Settings
 from backend.database.migrations import initialize_database
 from backend.main import create_app
+from backend.models.auth import AdminPublic, SessionPublic
 
 
 @pytest.fixture
@@ -23,3 +26,22 @@ def api_app(tmp_path: Path) -> FastAPI:
     )
     initialize_database(settings.resolved_database_path)
     return create_app(settings)
+
+
+@pytest.fixture
+def protected_api_app(api_app: FastAPI) -> FastAPI:
+    async def authenticated_admin() -> AdminContext:
+        now = datetime.now(UTC)
+        return AdminContext(
+            admin=AdminPublic(
+                public_id="00000000-0000-0000-0000-000000000001",
+                username="test-admin",
+                display_name="Test Admin",
+            ),
+            session=SessionPublic(expires_at=now + timedelta(hours=1), last_used_at=now),
+            session_id=1,
+            token="test-token",
+        )
+
+    api_app.dependency_overrides[require_admin] = authenticated_admin
+    return api_app

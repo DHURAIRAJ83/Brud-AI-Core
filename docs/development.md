@@ -27,12 +27,31 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_ALLOWED_MODEL_DIR` | `models` | Permitted model storage root |
 | `BRUD_ALLOWED_EXPORT_DIR` | `models/exports` | Permitted export storage root |
 | `BRUD_ALLOW_EXTERNAL_STORAGE` | `false` | Explicit local override for external storage roots |
+| `BRUD_ADMIN_SESSION_TTL_MINUTES` | `480` | Server-side admin-session lifetime |
+| `BRUD_ADMIN_MAX_FAILED_LOGINS` | `5` | Failures before temporary lockout |
+| `BRUD_ADMIN_LOCKOUT_MINUTES` | `15` | Temporary lockout duration |
+| `BRUD_ADMIN_COOKIE_SECURE` | `false` | Require HTTPS for the session cookie; enable in production |
+| `BRUD_ADMIN_COOKIE_NAME` | `brud_admin_session` | HttpOnly session-cookie name |
+| `BRUD_CSRF_COOKIE_NAME` | `brud_csrf` | CSRF double-submit cookie name |
+| `BRUD_CSRF_HEADER_NAME` | `X-CSRF-Token` | Header required for admin mutations |
 
-Do not store secrets in `.env`; it is ignored by Git. The Phase 1 system requires no API keys.
+Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
 ## Common commands
 
 `make backend`, `make chatbot`, and `make admin` run individual services. `make dev` runs all services and terminates the remaining children if any service exits. `make test`, `make lint`, and `make format` operate on Python code. Use `make db-status`, `make db-verify`, `make db-backup`, and `make db-upgrade` for database operations.
+
+Create and maintain local administrators with:
+
+```bash
+python -m backend.admin_cli create-admin
+python -m backend.admin_cli list-admins
+python -m backend.admin_cli disable-admin
+python -m backend.admin_cli enable-admin
+python -m backend.admin_cli reset-password
+```
+
+Security-sensitive commands prompt interactively. The browser obtains CSRF state after login; command-line clients must preserve both cookies and send the token returned by `GET /api/admin/auth/csrf` in the configured header.
 
 ## Troubleshooting
 
@@ -40,6 +59,8 @@ Do not store secrets in `.env`; it is ignored by Git. The Phase 1 system require
 - **Port already in use:** stop the process using 8000, 5173, or 5174. The Vite configurations use strict ports so a wrong URL is never selected silently.
 - **Frontend reports backend offline:** start `make backend` and confirm `curl http://127.0.0.1:8000/api/health`.
 - **CORS rejection:** ensure the browser origin exactly matches one of the configured local origins.
+- **Admin API returns 401:** create an admin if necessary and sign in again; expired, revoked, disabled, and locked sessions are rejected.
+- **Admin mutation returns 403:** refresh CSRF state and send both session/CSRF cookies plus the configured CSRF header.
 - **SQLite locked:** close long-running SQLite clients. Connections use WAL mode and a 5000 ms busy timeout but cannot recover from indefinitely held transactions.
 
 ## Database reset

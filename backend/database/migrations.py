@@ -17,8 +17,10 @@ from backend.database.connection import database_connection
 from backend.database.schema import (
     INITIAL_SCHEMA,
     MIGRATION_002_NAME,
+    MIGRATION_003_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
+    PHASE3_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -98,7 +100,7 @@ def create_verified_backup(database_path: Path, backup_dir: Path) -> BackupResul
     verify_database(database_path)
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S_%f")
-    backup_path = backup_dir / f"brud_ai_before_v2_{timestamp}.db"
+    backup_path = backup_dir / f"brud_ai_before_v{SCHEMA_VERSION}_{timestamp}.db"
     if backup_path.exists():
         raise MigrationError(f"refusing to overwrite backup: {backup_path.name}")
     with database_connection(database_path) as source:
@@ -226,6 +228,16 @@ def _apply_v2(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 2")
 
 
+def _apply_v3(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (3,)).fetchone():
+        return
+    connection.executescript(PHASE3_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (3, MIGRATION_003_NAME)
+    )
+    connection.execute("PRAGMA user_version = 3")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -278,7 +290,7 @@ def initialize_database(
     version = current_schema_version(database_path)
     if version > SCHEMA_VERSION:
         raise MigrationError(f"database schema {version} is newer than supported {SCHEMA_VERSION}")
-    if version == 1 and existed and auto_backup:
+    if version in {1, 2} and existed and auto_backup:
         create_verified_backup(database_path, backup_dir or database_path.parent / "backups")
     with database_connection(
         database_path, busy_timeout_ms=busy_timeout_ms, wal_enabled=wal_enabled
@@ -288,6 +300,7 @@ def initialize_database(
             if version == 0:
                 _apply_v1(connection)
             _apply_v2(connection)
+            _apply_v3(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -307,7 +320,7 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
     if version == SCHEMA_VERSION:
         verification = verify_database(path)
         return version, None, verification.integrity_check
-    if version == 1:
+    if version in {1, 2}:
         try:
             verify_database(path)
         except Exception as exc:
@@ -315,14 +328,16 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
                 path,
                 "database_integrity_check_failure",
                 "failure",
-                {"error": type(exc).__name__},
+                {"error": type(exc).__name__, "target_version": SCHEMA_VERSION},
             )
             raise
         if not settings.database_auto_backup:
             raise MigrationError("automatic backup is required for an existing database upgrade")
         backup = create_verified_backup(path, settings.resolved_backup_dir)
         _audit_migration(path, "database_backup_created", "success", {"filename": backup.filename})
-    _audit_migration(path, "database_migration_start", "success", {"target_version": 2})
+    _audit_migration(
+        path, "database_migration_start", "success", {"target_version": SCHEMA_VERSION}
+    )
     try:
         initialize_database(
             path,
@@ -337,7 +352,9 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
             path, "database_migration_failure", "failure", {"error": type(exc).__name__}
         )
         raise
-    _audit_migration(path, "database_migration_success", "success", {"schema_version": 2})
+    _audit_migration(
+        path, "database_migration_success", "success", {"schema_version": SCHEMA_VERSION}
+    )
     return SCHEMA_VERSION, backup, verification.integrity_check
 
 

@@ -5,6 +5,8 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from backend.database.repositories.base import ConflictError, NotFoundError, RepositoryError
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +33,24 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content={"error": {"code": exc.code, "message": exc.message}},
+        )
+
+    @app.exception_handler(RepositoryError)
+    async def handle_repository_error(request: Request, exc: RepositoryError) -> JSONResponse:
+        status_code = (
+            404
+            if isinstance(exc, NotFoundError)
+            else 409
+            if isinstance(exc, ConflictError)
+            else 422
+        )
+        logger.warning(
+            "repository_request_rejected",
+            extra={"path": request.url.path, "error_type": type(exc).__name__},
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content={"error": {"code": "request_rejected", "message": str(exc)}},
         )
 
     @app.exception_handler(Exception)

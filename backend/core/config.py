@@ -62,6 +62,21 @@ class Settings(BaseSettings):
     allow_external_storage: bool = Field(
         default=False, validation_alias="BRUD_ALLOW_EXTERNAL_STORAGE", exclude=True
     )
+    admin_session_ttl_minutes: int = Field(
+        default=480, ge=5, le=10_080, validation_alias="BRUD_ADMIN_SESSION_TTL_MINUTES"
+    )
+    admin_max_failed_logins: int = Field(
+        default=5, ge=1, le=100, validation_alias="BRUD_ADMIN_MAX_FAILED_LOGINS"
+    )
+    admin_lockout_minutes: int = Field(
+        default=15, ge=1, le=1440, validation_alias="BRUD_ADMIN_LOCKOUT_MINUTES"
+    )
+    admin_cookie_secure: bool = Field(default=False, validation_alias="BRUD_ADMIN_COOKIE_SECURE")
+    admin_cookie_name: str = Field(
+        default="brud_admin_session", validation_alias="BRUD_ADMIN_COOKIE_NAME"
+    )
+    csrf_cookie_name: str = Field(default="brud_csrf", validation_alias="BRUD_CSRF_COOKIE_NAME")
+    csrf_header_name: str = Field(default="X-CSRF-Token", validation_alias="BRUD_CSRF_HEADER_NAME")
 
     @field_validator("log_level")
     @classmethod

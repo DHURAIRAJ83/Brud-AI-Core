@@ -48,8 +48,8 @@ async def test_chat_validates_empty_messages(api_app: FastAPI) -> None:
     assert response.status_code == 422
 
 
-async def test_admin_overview_endpoint(api_app: FastAPI) -> None:
-    response = await api_request(api_app, "GET", "/api/admin/overview")
+async def test_admin_overview_endpoint(protected_api_app: FastAPI) -> None:
+    response = await api_request(protected_api_app, "GET", "/api/admin/overview")
     assert response.status_code == 200
     assert response.json() == {
         "project": "Brud AI",

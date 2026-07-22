@@ -76,14 +76,14 @@ def test_upgrade_v1_to_v2_preserves_existing_data(tmp_path: Path) -> None:
 
 def test_fresh_database_reaches_v2_with_all_tables(tmp_path: Path) -> None:
     path = tmp_path / "fresh.db"
-    assert initialize_database(path) == 2
+    assert initialize_database(path) == SCHEMA_VERSION
     with database_connection(path) as connection:
         tables = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         assert REQUIRED_V2_TABLES <= tables
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
 
 
 def test_verified_backup_checksum_and_open(tmp_path: Path) -> None:

@@ -13,6 +13,8 @@ from backend.core.config import Settings, get_settings
 from backend.core.exceptions import register_exception_handlers
 from backend.core.logging import configure_logging
 from backend.database.migrations import initialize_database
+from backend.database.repositories import AuditLogRepository
+from backend.models.domain import AuditEventCreate
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         logger.info("application_startup", extra={"environment": active_settings.env})
-        initialize_database(active_settings.resolved_database_path)
+        initialize_database(
+            active_settings.resolved_database_path,
+            backup_dir=active_settings.resolved_backup_dir,
+            auto_backup=active_settings.database_auto_backup,
+            busy_timeout_ms=active_settings.database_busy_timeout_ms,
+            wal_enabled=active_settings.database_wal,
+        )
+        if active_settings.audit_enabled:
+            try:
+                AuditLogRepository(active_settings.resolved_database_path).append(
+                    AuditEventCreate(
+                        event_type="application_startup",
+                        actor_type="system",
+                        action="application_startup",
+                        resource_type="application",
+                        metadata={},
+                    )
+                )
+            except Exception:
+                logger.exception("startup_audit_write_failed")
         yield
         logger.info("application_shutdown")
 

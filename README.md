@@ -1,6 +1,6 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 1 establishes product boundaries and reliable development infrastructure; it does not train or run an AI model.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 2 adds a verified data and control-plane foundation; it does not train or run an AI model.
 
 ## Products
 
@@ -57,6 +57,10 @@ make test
 make lint
 make format
 make db-init
+make db-status
+make db-verify
+make db-backup
+make db-upgrade
 ```
 
 Frontend production builds can be checked with `npm run build --prefix apps/chatbot` and `npm run build --prefix apps/admin-dashboard`.
@@ -67,8 +71,8 @@ Copying `.env.example` is handled by setup. All backend variables use the `BRUD_
 
 ## Current limitations
 
-There is no authentication, message persistence UI, dataset management, training, evaluation, registry workflow, RAG, external model provider, or real inference. The chat response is deliberately labeled as a placeholder. SQLite is intended only for this foundation and local development.
+There is no authentication, dataset-management UI, training execution, evaluation workflow, RAG, external model provider, or real inference. Phase 2 repositories and schemas persist future workflow state but do not execute those workflows. The chat response remains deliberately labeled as a placeholder.
 
-## Phase 1 status
+## Phase 2 status
 
-The backend, both frontend foundations, database schema, core-model contracts, scripts, tests, and documentation are implemented. Verified command results are recorded in [docs/phase_1_report.md](docs/phase_1_report.md).
+Schema v2, verified migration backups, typed validation, repositories, append-only audit records, safe system APIs, and the Admin System page are implemented while retaining Phase 1 behavior. Verification is recorded in [docs/phase_2_report.md](docs/phase_2_report.md).

@@ -6,20 +6,25 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
-def connect(database_path: Path) -> sqlite3.Connection:
+def connect(
+    database_path: Path, *, busy_timeout_ms: int = 5000, wal_enabled: bool = True
+) -> sqlite3.Connection:
     """Open a configured SQLite connection with defensive runtime pragmas."""
 
-    connection = sqlite3.connect(database_path, timeout=5.0)
+    connection = sqlite3.connect(database_path, timeout=busy_timeout_ms / 1000)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.execute("PRAGMA journal_mode = WAL")
-    connection.execute("PRAGMA busy_timeout = 5000")
+    if wal_enabled:
+        connection.execute("PRAGMA journal_mode = WAL")
+    connection.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
     return connection
 
 
 @contextmanager
-def database_connection(database_path: Path) -> Iterator[sqlite3.Connection]:
-    connection = connect(database_path)
+def database_connection(
+    database_path: Path, *, busy_timeout_ms: int = 5000, wal_enabled: bool = True
+) -> Iterator[sqlite3.Connection]:
+    connection = connect(database_path, busy_timeout_ms=busy_timeout_ms, wal_enabled=wal_enabled)
     try:
         yield connection
     finally:

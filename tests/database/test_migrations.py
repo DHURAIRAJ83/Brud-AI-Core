@@ -35,4 +35,4 @@ def test_migration_is_idempotent(tmp_path: Path) -> None:
     initialize_database(database_path)
     with database_connection(database_path) as connection:
         migrations = connection.execute("SELECT version FROM schema_migrations").fetchall()
-        assert [row[0] for row in migrations] == [SCHEMA_VERSION]
+        assert [row[0] for row in migrations] == [1, SCHEMA_VERSION]

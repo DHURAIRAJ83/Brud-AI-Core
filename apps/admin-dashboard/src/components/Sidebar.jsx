@@ -1,4 +1,4 @@
-export const menuItems = ['Overview', 'Datasets', 'Core Model', 'Training', 'Evaluation', 'Model Registry', 'Chat Testing', 'Feedback', 'Admin Assistant', 'Audit Logs', 'Settings']
+export const menuItems = ['Overview', 'System', 'Datasets', 'Core Model', 'Training', 'Evaluation', 'Model Registry', 'Chat Testing', 'Feedback', 'Admin Assistant', 'Audit Logs', 'Settings']
 
 export default function Sidebar({ active, open, onSelect, onClose }) {
   return (
@@ -7,7 +7,7 @@ export default function Sidebar({ active, open, onSelect, onClose }) {
       <nav aria-label="Admin modules">{menuItems.map((item) => (
         <button className={active === item ? 'active' : ''} key={item} onClick={() => { onSelect(item); onClose() }}>{item}</button>
       ))}</nav>
-      <div className="phase-tag">Phase 1 · Foundation</div>
+      <div className="phase-tag">Phase 2 · Data foundation</div>
     </aside>
   )
 }

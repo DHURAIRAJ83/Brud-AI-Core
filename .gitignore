@@ -13,6 +13,7 @@ dist/
 data/database/*.db
 data/database/*.db-shm
 data/database/*.db-wal
+data/database/backups/
 models/checkpoints/*
 models/active/*
 models/exports/*

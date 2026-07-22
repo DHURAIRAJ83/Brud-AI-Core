@@ -20,7 +20,11 @@ The separate Vite/React admin application uses a responsive dashboard shell. Ove
 
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a five-second busy timeout. The idempotent migration runner records schema version 1 in `schema_migrations`. The initial tables establish settings, conversations, datasets, training jobs, model registry, and audit boundaries without implementing those workflows.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes review, immutable dataset-version, training-event, model-version/assignment, feedback, approval, and append-only audit boundaries.
+
+Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
+
+The temporary read-only admin control plane exposes safe database, configuration, schema, and audit metadata. It deliberately omits filesystem paths, secret settings, raw request bodies, and chat content.
 
 ## Future data and training workflow
 

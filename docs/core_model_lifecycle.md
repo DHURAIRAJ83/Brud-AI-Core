@@ -20,4 +20,8 @@ Phase 8 assignments are architecture-only:
 - `smoke_training_default`
 - `future_pretraining_base`
 
-There is no `public_chat` assignment in Phase 8.
+There is no `public_chat` assignment in Phase 8 or Phase 9.
+
+## Phase 9 promotion
+
+A verified completed pretraining checkpoint may be promoted into a new staging model version labeled `base_pretrained`, `not_instruction_tuned`, and `not_chat_ready`. Promotion preserves the source architecture version, tokenizer reference, dataset reference through the pretraining job, and checkpoint checksum evidence. It does not make the model a chatbot model.

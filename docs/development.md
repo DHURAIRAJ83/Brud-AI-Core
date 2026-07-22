@@ -88,6 +88,23 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_CORE_SMOKE_MAX_STEPS` | `100` | Smoke-test step limit |
 | `BRUD_CORE_SMOKE_MAX_BATCH_SIZE` | `2` | Smoke-test batch limit |
 | `BRUD_CORE_SMOKE_MAX_SEQUENCE_LENGTH` | `256` | Smoke-test sequence limit |
+| `BRUD_PRETRAINING_DIR` | `data/core_models/pretraining` | Registered bounded pretraining checkpoint root |
+| `BRUD_PRETRAINING_MAX_STEPS` | `5000` | Hard cap for one bounded job |
+| `BRUD_PRETRAINING_MAX_TOKENS` | `5000000` | Maximum processed token target |
+| `BRUD_PRETRAINING_MAX_BATCH_SIZE` | `2` | CPU-safe batch-size cap |
+| `BRUD_PRETRAINING_MAX_GRADIENT_ACCUMULATION` | `16` | Gradient accumulation cap |
+| `BRUD_PRETRAINING_MAX_SEQUENCE_LENGTH` | `512` | Sequence length cap |
+| `BRUD_PRETRAINING_MAX_CHECKPOINTS` | `20` | Retention-policy input |
+| `BRUD_PRETRAINING_MIN_CHECKPOINT_INTERVAL` | `5` | Minimum checkpoint interval |
+| `BRUD_PRETRAINING_MAX_ESTIMATED_MEMORY_BYTES` | `3000000000` | Preflight memory cap |
+| `BRUD_PRETRAINING_MIN_FREE_DISK_BYTES` | `500000000` | Preflight disk-space floor |
+| `BRUD_PRETRAINING_MIN_AVAILABLE_MEMORY_BYTES` | `500000000` | Preflight memory floor |
+| `BRUD_PRETRAINING_WORKER_POLL_SECONDS` | `5` | Local worker idle poll interval |
+| `BRUD_PRETRAINING_WORKER_LEASE_SECONDS` | `300` | Worker lease duration |
+| `BRUD_PRETRAINING_METRIC_INTERVAL_STEPS` | `1` | Default metric persistence interval |
+| `BRUD_PRETRAINING_VALIDATION_MAX_BATCHES` | `10` | Validation-loss batch bound |
+| `BRUD_PRETRAINING_NAN_FAILURE` | `true` | Treat non-finite values as failure |
+| `BRUD_PRETRAINING_DEFAULT_PORT` | `8001` | Alternate local verification port |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
@@ -115,10 +132,12 @@ Tokenizer work can be inspected with `python -m backend.tokenizer_cli capabiliti
 
 Core model architecture work can be inspected with `python -m backend.core_model_cli capabilities`, `list-configs`, `inspect-config <public_id>`, `list-versions`, `inspect-version <public_id>`, `initialize <public_id>`, `verify <public_id>`, `smoke-test <public_id>`, and `verify-checkpoint <public_id>`. Initialization and smoke tests require typed confirmation and operate only on registered public IDs.
 
+Bounded pretraining can be inspected with `python -m backend.pretraining_cli capabilities`, `list`, `inspect <job_public_id>`, `preflight <job_public_id>`, `queue <job_public_id>`, `pause <job_public_id>`, `resume <job_public_id>`, `cancel <job_public_id>`, `metrics <job_public_id>`, `list-checkpoints <job_public_id>`, `verify-checkpoint <checkpoint_public_id>`, and `promote <checkpoint_public_id>`. Mutating commands require typed confirmation. Run the local worker separately with `python -m backend.training_worker`; add `--once` for a single claim-and-exit verification run.
+
 ## Troubleshooting
 
 - **Missing `venv` or `node_modules`:** run `make setup`.
-- **Port already in use:** stop the process using 8000, 5173, or 5174. The Vite configurations use strict ports so a wrong URL is never selected silently.
+- **Port already in use:** inspect ownership non-destructively, for example `ss -ltnp | grep ':8000'` when permissions allow. Do not kill unknown processes automatically. Use an alternate backend port such as `8001` for verification if needed. The Vite configurations use strict ports so a wrong frontend URL is never selected silently.
 - **Frontend reports backend offline:** start `make backend` and confirm `curl http://127.0.0.1:8000/api/health`.
 - **CORS rejection:** ensure the browser origin exactly matches one of the configured local origins.
 - **Admin API returns 401:** create an admin if necessary and sign in again; expired, revoked, disabled, and locked sessions are rejected.

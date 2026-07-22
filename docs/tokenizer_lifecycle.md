@@ -28,6 +28,8 @@ Assignments are separate from lifecycle. Initial assignment keys are `core_model
 
 Phase 8 consumes registered staging, active, retired, or archived tokenizer versions for core model configuration compatibility checks. Tokenizer assignment changes remain independent from core model activation.
 
+Phase 9 consumes registered tokenizer versions for bounded pretraining compatibility checks. Jobs may not accept arbitrary tokenizer paths, and public APIs return only public IDs and checksum summaries.
+
 ## Exports
 
 Exports create checksum-verified bundles using safe generated names. APIs expose export metadata and downloadable manifests without revealing absolute filesystem paths.

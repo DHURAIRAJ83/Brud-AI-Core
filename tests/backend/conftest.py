@@ -31,6 +31,7 @@ def api_app(tmp_path: Path) -> FastAPI:
         tokenizer_export_dir=tmp_path / "tokenizers" / "exports",
         core_model_dir=tmp_path / "core_models",
         core_checkpoint_dir=tmp_path / "core_models" / "checkpoints",
+        pretraining_dir=tmp_path / "core_models" / "pretraining",
         allow_external_storage=True,
         log_level="CRITICAL",
     )

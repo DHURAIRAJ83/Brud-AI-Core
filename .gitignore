@@ -19,6 +19,7 @@ data/documents/
 data/dataset_exports/
 data/tokenizers/
 data/core_models/
+data/core_models/pretraining/
 models/checkpoints/*
 models/active/*
 models/exports/*

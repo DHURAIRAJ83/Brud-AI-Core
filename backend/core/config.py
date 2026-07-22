@@ -316,6 +316,60 @@ class Settings(BaseSettings):
     core_smoke_max_sequence_length: int = Field(
         default=256, ge=2, le=2048, validation_alias="BRUD_CORE_SMOKE_MAX_SEQUENCE_LENGTH"
     )
+    pretraining_dir: Path = Field(
+        default=Path("data/core_models/pretraining"), validation_alias="BRUD_PRETRAINING_DIR"
+    )
+    pretraining_max_steps: int = Field(
+        default=5000, ge=1, le=100_000, validation_alias="BRUD_PRETRAINING_MAX_STEPS"
+    )
+    pretraining_max_tokens: int = Field(
+        default=2_000_000, ge=1, le=100_000_000, validation_alias="BRUD_PRETRAINING_MAX_TOKENS"
+    )
+    pretraining_max_batch_size: int = Field(
+        default=2, ge=1, le=16, validation_alias="BRUD_PRETRAINING_MAX_BATCH_SIZE"
+    )
+    pretraining_max_gradient_accumulation: int = Field(
+        default=16, ge=1, le=128, validation_alias="BRUD_PRETRAINING_MAX_GRADIENT_ACCUMULATION"
+    )
+    pretraining_max_sequence_length: int = Field(
+        default=512, ge=8, le=4096, validation_alias="BRUD_PRETRAINING_MAX_SEQUENCE_LENGTH"
+    )
+    pretraining_max_checkpoints: int = Field(
+        default=10, ge=1, le=100, validation_alias="BRUD_PRETRAINING_MAX_CHECKPOINTS"
+    )
+    pretraining_min_checkpoint_interval: int = Field(
+        default=1, ge=1, le=10_000, validation_alias="BRUD_PRETRAINING_MIN_CHECKPOINT_INTERVAL"
+    )
+    pretraining_max_estimated_memory_bytes: int = Field(
+        default=3_500_000_000,
+        ge=100_000,
+        le=64_000_000_000,
+        validation_alias="BRUD_PRETRAINING_MAX_ESTIMATED_MEMORY_BYTES",
+    )
+    pretraining_min_free_disk_bytes: int = Field(
+        default=100_000_000, ge=0, validation_alias="BRUD_PRETRAINING_MIN_FREE_DISK_BYTES"
+    )
+    pretraining_min_available_memory_bytes: int = Field(
+        default=250_000_000, ge=0, validation_alias="BRUD_PRETRAINING_MIN_AVAILABLE_MEMORY_BYTES"
+    )
+    pretraining_worker_poll_seconds: int = Field(
+        default=2, ge=1, le=300, validation_alias="BRUD_PRETRAINING_WORKER_POLL_SECONDS"
+    )
+    pretraining_worker_lease_seconds: int = Field(
+        default=120, ge=10, le=3600, validation_alias="BRUD_PRETRAINING_WORKER_LEASE_SECONDS"
+    )
+    pretraining_metric_interval_steps: int = Field(
+        default=1, ge=1, le=1000, validation_alias="BRUD_PRETRAINING_METRIC_INTERVAL_STEPS"
+    )
+    pretraining_validation_max_batches: int = Field(
+        default=10, ge=1, le=1000, validation_alias="BRUD_PRETRAINING_VALIDATION_MAX_BATCHES"
+    )
+    pretraining_nan_failure: bool = Field(
+        default=True, validation_alias="BRUD_PRETRAINING_NAN_FAILURE"
+    )
+    pretraining_default_port: int = Field(
+        default=8019, ge=1, le=65535, validation_alias="BRUD_PRETRAINING_DEFAULT_PORT"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -352,6 +406,7 @@ class Settings(BaseSettings):
             "tokenizer_export_dir",
             "core_model_dir",
             "core_checkpoint_dir",
+            "pretraining_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -369,6 +424,7 @@ class Settings(BaseSettings):
                 "tokenizer_export_dir",
                 "core_model_dir",
                 "core_checkpoint_dir",
+                "pretraining_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
@@ -397,6 +453,8 @@ class Settings(BaseSettings):
             raise ValueError("Phase 8 supports only float32 core model dtype")
         if self.core_default_device != "cpu":
             raise ValueError("Phase 8 supports only cpu as the default core model device")
+        if self.pretraining_min_checkpoint_interval > self.pretraining_max_steps:
+            raise ValueError("pretraining checkpoint interval must not exceed max steps")
         return self
 
     @field_validator("ocr_languages")
@@ -492,6 +550,10 @@ class Settings(BaseSettings):
     @property
     def resolved_core_checkpoint_dir(self) -> Path:
         return self._resolve_path(self.core_checkpoint_dir)
+
+    @property
+    def resolved_pretraining_dir(self) -> Path:
+        return self._resolve_path(self.pretraining_dir)
 
     @property
     def allowed_import_extensions(self) -> set[str]:

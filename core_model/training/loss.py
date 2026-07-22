@@ -4,7 +4,9 @@ import torch
 from torch.nn import functional as F
 
 
-def causal_lm_loss(logits: torch.Tensor, labels: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
+def causal_lm_loss(
+    logits: torch.Tensor, labels: torch.Tensor, ignore_index: int = -100
+) -> torch.Tensor:
     if logits.ndim != 3 or labels.ndim != 2:
         raise ValueError("logits must be [B,S,V] and labels must be [B,S]")
     if logits.shape[:2] != labels.shape:

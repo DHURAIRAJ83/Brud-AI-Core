@@ -69,9 +69,20 @@ Registered tokenizer → validated Micro/Tiny config → PyTorch model allocatio
 
 The model is a decoder-only Transformer with token embeddings, RMSNorm, RoPE, causal self-attention, SwiGLU blocks, final RMSNorm, and a language-model head. Random or smoke-tested weights are explicitly not presented as chat-capable models.
 
+Phase 9 adds bounded base-pretraining:
+
+```text
+Ready dataset version → deterministic token blocks → queued pretraining job
+      → separate local worker → AdamW + scheduler training loop
+      → metrics + validation → optimizer-aware checkpoints
+      → explicit base-pretrained staging promotion
+```
+
+The worker is launched with `python -m backend.training_worker`. It claims at most one queued job, persists metrics and events, checks pause/cancel flags at safe boundaries, writes registered checkpoints, and can resume from the latest job checkpoint. CPU remains the default device, and public chat stays disconnected.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables without rebuilding existing tables.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables.
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

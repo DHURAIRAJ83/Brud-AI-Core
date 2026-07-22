@@ -8,6 +8,7 @@ import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
 import SystemPage from './pages/SystemPage.jsx'
 import TokenizerPage from './pages/TokenizerPage.jsx'
+import TrainingPage from './pages/TrainingPage.jsx'
 import { getMe, login, logout } from './services/api.js'
 
 export default function App() {
@@ -27,5 +28,6 @@ export default function App() {
   if (active === 'Documents') page = <DocumentsPage />
   if (active === 'Tokenizer') page = <TokenizerPage />
   if (active === 'Core Model') page = <CoreModelPage />
+  if (active === 'Training') page = <TrainingPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

@@ -1,11 +1,11 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 8 adds the first CPU-safe Brud Core decoder-only Transformer architecture foundation; it does not perform full pretraining or chatbot inference.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 9 adds bounded CPU base-pretraining infrastructure for Brud Core; it does not add instruction tuning or chatbot inference.
 
 ## Products
 
 - **Brud Chatbot** — a responsive React chat client with language selection and backend status.
-- **Brud Core Model** — PyTorch decoder-only Transformer architecture, validation, checkpoints, and smoke-test foundation.
+- **Brud Core Model** — PyTorch decoder-only Transformer architecture, validation, checkpoints, smoke tests, and bounded base-pretraining jobs.
 - **Brud Admin Dashboard** — an authenticated React interface for dataset sources, records, imports, documents, quality review, versions, tokenizer workflows, core model workflows, exports, and system status.
 
 The FastAPI backend and SQLite database provide shared APIs and persistence foundations while keeping each product modular.
@@ -81,8 +81,8 @@ Copying `.env.example` is handled by setup. All backend variables use the `BRUD_
 
 ## Current limitations
 
-There is no public registration, remote import, full core-model pretraining, chat inference, RAG, external model provider, or billing. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
+There is no public registration, remote import, instruction tuning, chat inference, RAG, external model provider, distributed training, quantization, GGUF export, or billing. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
 
-## Phase 8 status
+## Phase 9 status
 
-Schema v8 adds core model families, configs, versions, architecture checks, checkpoints, events, and assignments. The architecture supports CPU forward/backward checks, causal masking, checkpoints, and tiny overfit smoke testing. Verification is recorded in [docs/phase_8_report.md](docs/phase_8_report.md).
+Schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, job events, and worker leases. The local worker is explicit (`python -m backend.training_worker`) and trains only from registered immutable dataset versions, verified tokenizer metadata, and architecture-verified Brud Core versions. Verification is recorded in [docs/phase_9_report.md](docs/phase_9_report.md).

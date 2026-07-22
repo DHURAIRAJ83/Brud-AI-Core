@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -948,3 +948,239 @@ CREATE TRIGGER IF NOT EXISTS core_model_events_immutable_delete BEFORE DELETE ON
 CREATE TRIGGER IF NOT EXISTS core_model_checks_immutable_update BEFORE UPDATE ON core_model_architecture_checks BEGIN SELECT RAISE(ABORT, 'core model checks are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS core_model_checks_immutable_delete BEFORE DELETE ON core_model_architecture_checks BEGIN SELECT RAISE(ABORT, 'core model checks are immutable'); END;
 """
+
+MIGRATION_009_NAME = "009_phase9_core_pretraining"
+
+PHASE9_SCHEMA = """
+CREATE TABLE IF NOT EXISTS pretraining_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validating','queued','running','pause_requested','paused','resume_requested','completed','completed_with_warnings','failed','cancel_requested','cancelled')),
+    dataset_version_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    core_model_version_id INTEGER NOT NULL,
+    source_checkpoint_id INTEGER,
+    job_mode TEXT NOT NULL CHECK (job_mode IN ('smoke_pretraining','bounded_pretraining','resume_pretraining')),
+    configuration_json TEXT NOT NULL,
+    config_checksum_sha256 TEXT NOT NULL,
+    initialization_seed INTEGER NOT NULL,
+    sampling_seed INTEGER NOT NULL,
+    device TEXT NOT NULL DEFAULT 'cpu',
+    dtype TEXT NOT NULL DEFAULT 'float32',
+    optimizer_name TEXT NOT NULL DEFAULT 'adamw',
+    scheduler_name TEXT NOT NULL DEFAULT 'constant',
+    total_steps INTEGER NOT NULL CHECK (total_steps > 0),
+    completed_steps INTEGER NOT NULL DEFAULT 0 CHECK (completed_steps >= 0),
+    total_tokens_target INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens_target >= 0),
+    processed_tokens INTEGER NOT NULL DEFAULT 0 CHECK (processed_tokens >= 0),
+    gradient_accumulation_steps INTEGER NOT NULL DEFAULT 1 CHECK (gradient_accumulation_steps > 0),
+    current_epoch_fraction REAL NOT NULL DEFAULT 0 CHECK (current_epoch_fraction BETWEEN 0 AND 1),
+    latest_training_loss REAL,
+    latest_validation_loss REAL,
+    best_validation_loss REAL,
+    learning_rate REAL,
+    tokens_per_second REAL,
+    estimated_remaining_steps INTEGER,
+    progress REAL NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 1),
+    worker_id TEXT,
+    lease_expires_at TEXT,
+    pause_requested INTEGER NOT NULL DEFAULT 0 CHECK (pause_requested IN (0,1)),
+    cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+    error_code TEXT,
+    error_message TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    queued_at TEXT,
+    started_at TEXT,
+    paused_at TEXT,
+    resumed_at TEXT,
+    completed_at TEXT,
+    failed_at TEXT,
+    cancelled_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_checkpoint_id) REFERENCES core_model_checkpoints(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS pretraining_job_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pretraining_job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT,
+    message TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS pretraining_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    step INTEGER NOT NULL,
+    processed_tokens INTEGER NOT NULL,
+    epoch_fraction REAL NOT NULL DEFAULT 0,
+    training_loss REAL,
+    validation_loss REAL,
+    learning_rate REAL NOT NULL,
+    gradient_norm REAL,
+    tokens_per_second REAL,
+    step_duration_ms INTEGER NOT NULL DEFAULT 0,
+    cpu_percent REAL,
+    process_memory_bytes INTEGER,
+    system_available_memory_bytes INTEGER,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE,
+    UNIQUE(pretraining_job_id, step)
+);
+CREATE TABLE IF NOT EXISTS pretraining_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    core_model_version_id INTEGER NOT NULL,
+    checkpoint_kind TEXT NOT NULL CHECK (checkpoint_kind IN ('periodic','best_validation','pause','final','recovery')),
+    status TEXT NOT NULL DEFAULT 'creating' CHECK (status IN ('creating','completed','verified','failed','corrupt','archived')),
+    step INTEGER NOT NULL,
+    processed_tokens INTEGER NOT NULL,
+    safe_name TEXT NOT NULL UNIQUE,
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    manifest_json TEXT NOT NULL DEFAULT '{}',
+    model_checksum_sha256 TEXT NOT NULL,
+    optimizer_checksum_sha256 TEXT,
+    scheduler_checksum_sha256 TEXT,
+    trainer_state_checksum_sha256 TEXT NOT NULL,
+    combined_checksum_sha256 TEXT NOT NULL,
+    training_loss REAL,
+    validation_loss REAL,
+    is_best INTEGER NOT NULL DEFAULT 0 CHECK (is_best IN (0,1)),
+    is_latest INTEGER NOT NULL DEFAULT 0 CHECK (is_latest IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_at TEXT,
+    archived_at TEXT,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS pretraining_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    evaluation_type TEXT NOT NULL CHECK (evaluation_type IN ('validation_loss','checkpoint_comparison','resume_consistency')),
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('draft','running','completed','failed')),
+    checkpoint_public_id TEXT,
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS pretraining_evaluation_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_evaluation_id INTEGER NOT NULL,
+    metric_name TEXT NOT NULL,
+    metric_value REAL NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_evaluation_id) REFERENCES pretraining_evaluations(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_worker_leases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    worker_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'idle',
+    lease_expires_at TEXT,
+    heartbeat_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_pretraining_jobs_status ON pretraining_jobs(status,created_at);
+CREATE INDEX IF NOT EXISTS ix_pretraining_jobs_refs ON pretraining_jobs(dataset_version_id,tokenizer_version_id,core_model_version_id);
+CREATE INDEX IF NOT EXISTS ix_pretraining_metrics_job_step ON pretraining_metrics(pretraining_job_id,step);
+CREATE INDEX IF NOT EXISTS ix_pretraining_checkpoints_job ON pretraining_checkpoints(pretraining_job_id,step);
+CREATE INDEX IF NOT EXISTS ix_pretraining_checkpoints_checksum ON pretraining_checkpoints(combined_checksum_sha256);
+CREATE INDEX IF NOT EXISTS ix_pretraining_evaluations_job ON pretraining_evaluations(pretraining_job_id);
+CREATE INDEX IF NOT EXISTS ix_training_worker_leases_job ON training_worker_leases(pretraining_job_id);
+CREATE TRIGGER IF NOT EXISTS pretraining_events_immutable_update BEFORE UPDATE ON pretraining_job_events BEGIN SELECT RAISE(ABORT, 'pretraining events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS pretraining_events_immutable_delete BEFORE DELETE ON pretraining_job_events BEGIN SELECT RAISE(ABORT, 'pretraining events are immutable'); END;
+"""
+
+MIGRATION_010_NAME = "010_phase10_pretraining_reliability"
+
+PHASE10_TABLES: dict[str, list[tuple[str, str]]] = {
+    "training_dataset_coverage": [
+        ("public_id", "TEXT NOT NULL UNIQUE"),
+        ("pretraining_job_id", "INTEGER NOT NULL"),
+        ("split", "TEXT NOT NULL CHECK (split IN ('train','valid'))"),
+        ("total_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("eligible_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("encoded_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("excluded_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("zero_token_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("split_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("truncated_records", "INTEGER NOT NULL DEFAULT 0"),
+        ("total_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("usable_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("padding_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("language_distribution_json", "TEXT DEFAULT '{}'"),
+        ("record_type_distribution_json", "TEXT DEFAULT '{}'"),
+        ("source_type_distribution_json", "TEXT DEFAULT '{}'"),
+        ("stream_checksum_sha256", "TEXT NOT NULL"),
+        ("exclusion_reasons_json", "TEXT DEFAULT '{}'"),
+        ("created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+    ],
+    "training_recovery_attempts": [
+        ("public_id", "TEXT NOT NULL UNIQUE"),
+        ("pretraining_job_id", "INTEGER NOT NULL"),
+        ("source_worker_id", "TEXT"),
+        ("recovering_worker_id", "TEXT NOT NULL"),
+        ("recovery_type", "TEXT NOT NULL CHECK (recovery_type IN ('stale_lease','worker_crash','manual_resume','pause_resume','checkpoint_recovery'))"),
+        ("status", "TEXT NOT NULL CHECK (status IN ('validating','recovering','completed','completed_with_warnings','failed','cancelled'))"),
+        ("source_checkpoint_public_id", "TEXT"),
+        ("recovered_step", "INTEGER"),
+        ("recovered_tokens", "INTEGER"),
+        ("previous_lease_generation", "INTEGER NOT NULL"),
+        ("new_lease_generation", "INTEGER NOT NULL"),
+        ("validation_summary_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("error_code", "TEXT"),
+        ("error_message", "TEXT"),
+        ("started_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("completed_at", "TEXT"),
+    ],
+    "worker_heartbeats": [
+        ("public_id", "TEXT NOT NULL UNIQUE"),
+        ("worker_id", "TEXT NOT NULL UNIQUE"),
+        ("pretraining_job_id", "INTEGER"),
+        ("status", "TEXT NOT NULL DEFAULT 'starting' CHECK (status IN ('starting','idle','claiming','running','pausing','recovering','stopping','stopped','failed'))"),
+        ("current_job_public_id", "TEXT"),
+        ("hostname_hash", "TEXT NOT NULL"),
+        ("process_started_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("last_heartbeat_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("lease_expires_at", "TEXT"),
+        ("lease_generation", "INTEGER NOT NULL DEFAULT 1"),
+        ("shutdown_requested", "INTEGER NOT NULL DEFAULT 0 CHECK (shutdown_requested IN (0,1))"),
+        ("metadata_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+        ("FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE"),
+    ],
+}
+
+PHASE10_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS ix_training_dataset_coverage_job ON training_dataset_coverage(pretraining_job_id)",
+    "CREATE INDEX IF NOT EXISTS ix_training_dataset_coverage_checksum ON training_dataset_coverage(stream_checksum_sha256)",
+    "CREATE INDEX IF NOT EXISTS ix_training_recovery_attempts_job ON training_recovery_attempts(pretraining_job_id)",
+    "CREATE INDEX IF NOT EXISTS ix_training_recovery_attempts_status ON training_recovery_attempts(status,completed_at)",
+    "CREATE INDEX IF NOT EXISTS ix_training_recovery_attempts_recovery_type ON training_recovery_attempts(recovery_type)",
+    "CREATE INDEX IF NOT EXISTS ix_worker_heartbeats_job ON worker_heartbeats(pretraining_job_id)",
+    "CREATE INDEX IF NOT EXISTS ix_worker_heartbeats_status ON worker_heartbeats(status,updated_at)",
+    "CREATE INDEX IF NOT EXISTS ix_worker_heartbeats_lease ON worker_heartbeats(worker_id,lease_generation,lease_expires_at)",
+]
+
+PHASE10_TRIGGERS = [
+    "CREATE TRIGGER IF NOT EXISTS training_dataset_coverage_updated_at BEFORE UPDATE ON training_dataset_coverage BEGIN SELECT RAISE(ABORT, 'coverage records are immutable'); END",
+    "CREATE TRIGGER IF NOT EXISTS worker_heartbeats_updated_at BEFORE UPDATE ON worker_heartbeats BEGIN SELECT RAISE(ABORT, 'worker heartbeats are immutable'); END",
+]
+

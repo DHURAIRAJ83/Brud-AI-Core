@@ -11,6 +11,7 @@ from backend.api.routes import (
     documents,
     health,
     imports,
+    pretraining,
     system,
     tokenizers,
 )
@@ -26,3 +27,4 @@ api_router.include_router(documents.router)
 api_router.include_router(datasets.router)
 api_router.include_router(tokenizers.router)
 api_router.include_router(core_models.router)
+api_router.include_router(pretraining.router)

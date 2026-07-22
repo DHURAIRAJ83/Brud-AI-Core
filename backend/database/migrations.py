@@ -23,6 +23,7 @@ from backend.database.schema import (
     MIGRATION_006_NAME,
     MIGRATION_007_NAME,
     MIGRATION_008_NAME,
+    MIGRATION_009_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -31,6 +32,8 @@ from backend.database.schema import (
     PHASE6_SCHEMA,
     PHASE7_SCHEMA,
     PHASE8_SCHEMA,
+    PHASE9_SCHEMA,
+    PHASE10_TABLES,
     SCHEMA_VERSION,
 )
 
@@ -298,6 +301,28 @@ def _apply_v8(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 8")
 
 
+def _apply_v9(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (9,)).fetchone():
+        return
+    connection.executescript(PHASE9_SCHEMA)
+    for table_name, columns in PHASE10_TABLES.items():
+        _column = _has_column(connection, table_name, "public_id")
+        if not _column:
+            connection.execute(
+                f'CREATE TABLE IF NOT EXISTS "{table_name}" (id INTEGER PRIMARY KEY AUTOINCREMENT, public_id TEXT NOT NULL UNIQUE)'
+            )
+            for col_name, col_def in columns:
+                if col_name == "public_id":
+                    continue
+                connection.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{col_name}" {col_def}')
+    connection.executescript("\n".join(PHASE10_INDEXES))
+    connection.executescript("\n".join(PHASE10_TRIGGERS))
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (10, "010_phase10_pretraining_reliability")
+    )
+    connection.execute("PRAGMA user_version = 10")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -350,7 +375,7 @@ def initialize_database(
     version = current_schema_version(database_path)
     if version > SCHEMA_VERSION:
         raise MigrationError(f"database schema {version} is newer than supported {SCHEMA_VERSION}")
-    if version in {1, 2, 3, 4, 5, 6, 7} and existed and auto_backup:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8} and existed and auto_backup:
         create_verified_backup(database_path, backup_dir or database_path.parent / "backups")
     with database_connection(
         database_path, busy_timeout_ms=busy_timeout_ms, wal_enabled=wal_enabled
@@ -366,6 +391,7 @@ def initialize_database(
             _apply_v6(connection)
             _apply_v7(connection)
             _apply_v8(connection)
+            _apply_v9(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -385,7 +411,7 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
     if version == SCHEMA_VERSION:
         verification = verify_database(path)
         return version, None, verification.integrity_check
-    if version in {1, 2, 3, 4, 5, 6, 7}:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8}:
         try:
             verify_database(path)
         except Exception as exc:

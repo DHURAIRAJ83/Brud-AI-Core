@@ -1,6 +1,6 @@
 # Brud AI Database Schema v8
 
-Schema v8 is additive on top of schema v7. It adds the Core Model architecture foundation without altering immutable dataset or tokenizer contents.
+Schema v8 is additive on top of schema v7. It adds the Core Model architecture foundation without altering immutable dataset or tokenizer contents. It is historical after Phase 9; see [database_schema_v9.md](database_schema_v9.md) for the current schema.
 
 ## New tables
 

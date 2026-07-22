@@ -1,12 +1,12 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 7 adds local multilingual tokenizer corpus generation, SentencePiece tokenizer training, evaluation, registry, activation, assignment, and export; it does not train or run a language model.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 8 adds the first CPU-safe Brud Core decoder-only Transformer architecture foundation; it does not perform full pretraining or chatbot inference.
 
 ## Products
 
 - **Brud Chatbot** — a responsive React chat client with language selection and backend status.
-- **Brud Core Model** — Python contracts for future model training, inference, evaluation, and export work.
-- **Brud Admin Dashboard** — an authenticated React interface for dataset sources, records, imports, documents, quality review, versions, tokenizer workflows, exports, and system status.
+- **Brud Core Model** — PyTorch decoder-only Transformer architecture, validation, checkpoints, and smoke-test foundation.
+- **Brud Admin Dashboard** — an authenticated React interface for dataset sources, records, imports, documents, quality review, versions, tokenizer workflows, core model workflows, exports, and system status.
 
 The FastAPI backend and SQLite database provide shared APIs and persistence foundations while keeping each product modular.
 
@@ -81,8 +81,8 @@ Copying `.env.example` is handled by setup. All backend variables use the `BRUD_
 
 ## Current limitations
 
-There is no public registration, remote import, core-model training, chat inference, RAG, external model provider, or billing. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
+There is no public registration, remote import, full core-model pretraining, chat inference, RAG, external model provider, or billing. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
 
-## Phase 7 status
+## Phase 8 status
 
-Schema v7 adds tokenizer families, versions, training jobs/events, evaluations/results, assignments, and exports. Ready or archived dataset versions can generate deterministic UTF-8 corpora for bounded local SentencePiece training. Verification is recorded in [docs/phase_7_report.md](docs/phase_7_report.md).
+Schema v8 adds core model families, configs, versions, architecture checks, checkpoints, events, and assignments. The architecture supports CPU forward/backward checks, causal masking, checkpoints, and tiny overfit smoke testing. Verification is recorded in [docs/phase_8_report.md](docs/phase_8_report.md).

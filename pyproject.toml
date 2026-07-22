@@ -17,6 +17,7 @@ dependencies = [
   "pytesseract>=0.3.13,<1.0",
   "Pillow>=10.4,<12.0",
   "sentencepiece>=0.2,<0.3",
+  "torch>=2.13,<3.0",
 ]
 
 [project.optional-dependencies]
@@ -41,3 +42,6 @@ select = ["E", "F", "I", "UP", "B"]
 "backend/services/import_service.py" = ["E501"]
 "backend/services/document_service.py" = ["E501"]
 "backend/services/tokenizer_registry.py" = ["E501"]
+"backend/services/core_model_service.py" = ["E501"]
+"core_model/architecture/*.py" = ["E501"]
+"core_model/training/loss.py" = ["E501"]

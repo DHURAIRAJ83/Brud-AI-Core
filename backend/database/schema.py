@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -807,4 +807,144 @@ CREATE INDEX IF NOT EXISTS ix_tokenizer_versions_model_checksum ON tokenizer_ver
 CREATE INDEX IF NOT EXISTS ix_tokenizer_exports_checksum ON tokenizer_exports(checksum_sha256);
 CREATE TRIGGER IF NOT EXISTS tokenizer_training_events_immutable_update BEFORE UPDATE ON tokenizer_training_events BEGIN SELECT RAISE(ABORT, 'tokenizer training events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS tokenizer_training_events_immutable_delete BEFORE DELETE ON tokenizer_training_events BEGIN SELECT RAISE(ABORT, 'tokenizer training events are immutable'); END;
+"""
+
+MIGRATION_008_NAME = "008_phase8_core_model_architecture"
+
+PHASE8_SCHEMA = """
+CREATE TABLE IF NOT EXISTS core_model_families (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    architecture_type TEXT NOT NULL DEFAULT 'brud_decoder_transformer' CHECK (architecture_type IN ('brud_decoder_transformer')),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','inactive','archived')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS core_model_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    config_version TEXT NOT NULL,
+    vocabulary_size INTEGER NOT NULL CHECK (vocabulary_size > 0),
+    context_length INTEGER NOT NULL CHECK (context_length > 0),
+    hidden_size INTEGER NOT NULL CHECK (hidden_size > 0),
+    intermediate_size INTEGER NOT NULL CHECK (intermediate_size > 0),
+    num_hidden_layers INTEGER NOT NULL CHECK (num_hidden_layers > 0),
+    num_attention_heads INTEGER NOT NULL CHECK (num_attention_heads > 0),
+    num_key_value_heads INTEGER NOT NULL CHECK (num_key_value_heads > 0),
+    head_dimension INTEGER NOT NULL CHECK (head_dimension > 0),
+    rope_theta REAL NOT NULL,
+    rms_norm_epsilon REAL NOT NULL,
+    attention_dropout REAL NOT NULL CHECK (attention_dropout BETWEEN 0 AND 1),
+    residual_dropout REAL NOT NULL CHECK (residual_dropout BETWEEN 0 AND 1),
+    embedding_dropout REAL NOT NULL CHECK (embedding_dropout BETWEEN 0 AND 1),
+    initializer_range REAL NOT NULL,
+    tie_word_embeddings INTEGER NOT NULL CHECK (tie_word_embeddings IN (0,1)),
+    use_bias INTEGER NOT NULL CHECK (use_bias IN (0,1)),
+    pad_token_id INTEGER NOT NULL,
+    bos_token_id INTEGER NOT NULL,
+    eos_token_id INTEGER NOT NULL,
+    unk_token_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    parameter_count_estimate INTEGER NOT NULL CHECK (parameter_count_estimate > 0),
+    memory_estimate_bytes INTEGER NOT NULL CHECK (memory_estimate_bytes > 0),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    config_checksum_sha256 TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','invalid','archived')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    UNIQUE(name, config_version)
+);
+CREATE TABLE IF NOT EXISTS core_model_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    core_model_family_id INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN ('draft','validating','initialized','architecture_verified','smoke_tested','staging','active','failed','retired','archived')),
+    config_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    architecture_name TEXT NOT NULL,
+    estimated_parameter_count INTEGER NOT NULL,
+    actual_parameter_count INTEGER,
+    estimated_inference_memory_bytes INTEGER NOT NULL,
+    estimated_training_memory_bytes INTEGER NOT NULL,
+    initialization_seed INTEGER NOT NULL,
+    weights_checksum_sha256 TEXT,
+    config_checksum_sha256 TEXT NOT NULL,
+    architecture_summary_json TEXT NOT NULL DEFAULT '{}',
+    metrics_summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    initialized_at TEXT,
+    validated_at TEXT,
+    activated_at TEXT,
+    retired_at TEXT,
+    FOREIGN KEY (core_model_family_id) REFERENCES core_model_families(id) ON DELETE RESTRICT,
+    FOREIGN KEY (config_id) REFERENCES core_model_configs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    UNIQUE(core_model_family_id, version)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_core_model_one_active
+ON core_model_versions(core_model_family_id) WHERE lifecycle_status = 'active';
+CREATE TABLE IF NOT EXISTS core_model_architecture_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    core_model_version_id INTEGER NOT NULL,
+    check_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pass','warning','fail')),
+    metric_value REAL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS core_model_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    core_model_version_id INTEGER NOT NULL,
+    checkpoint_type TEXT NOT NULL CHECK (checkpoint_type IN ('initialization','smoke_test','training','manual')),
+    status TEXT NOT NULL DEFAULT 'creating' CHECK (status IN ('creating','completed','verified','failed','corrupt','archived')),
+    step INTEGER NOT NULL DEFAULT 0 CHECK (step >= 0),
+    safe_name TEXT NOT NULL UNIQUE,
+    file_size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (file_size_bytes >= 0),
+    checksum_sha256 TEXT,
+    manifest_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_at TEXT,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS core_model_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    core_model_version_id INTEGER,
+    event_type TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT,
+    message TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS core_model_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    assignment_key TEXT NOT NULL UNIQUE CHECK (assignment_key IN ('architecture_default','smoke_training_default','future_pretraining_base')),
+    core_model_version_id INTEGER,
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_core_model_families_name ON core_model_families(name);
+CREATE INDEX IF NOT EXISTS ix_core_model_versions_status ON core_model_versions(lifecycle_status);
+CREATE INDEX IF NOT EXISTS ix_core_model_versions_tokenizer ON core_model_versions(tokenizer_version_id);
+CREATE INDEX IF NOT EXISTS ix_core_model_configs_checksum ON core_model_configs(config_checksum_sha256);
+CREATE INDEX IF NOT EXISTS ix_core_model_checkpoints_checksum ON core_model_checkpoints(checksum_sha256);
+CREATE INDEX IF NOT EXISTS ix_core_model_assignments_key ON core_model_assignments(assignment_key);
+CREATE INDEX IF NOT EXISTS ix_core_model_versions_created ON core_model_versions(created_at);
+CREATE TRIGGER IF NOT EXISTS core_model_events_immutable_update BEFORE UPDATE ON core_model_events BEGIN SELECT RAISE(ABORT, 'core model events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS core_model_events_immutable_delete BEFORE DELETE ON core_model_events BEGIN SELECT RAISE(ABORT, 'core model events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS core_model_checks_immutable_update BEFORE UPDATE ON core_model_architecture_checks BEGIN SELECT RAISE(ABORT, 'core model checks are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS core_model_checks_immutable_delete BEFORE DELETE ON core_model_architecture_checks BEGIN SELECT RAISE(ABORT, 'core model checks are immutable'); END;
 """

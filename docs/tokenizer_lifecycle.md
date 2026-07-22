@@ -26,6 +26,8 @@ Activation is explicit. Only a staging or eligible retired version may activate.
 
 Assignments are separate from lifecycle. Initial assignment keys are `core_model_training`, `chat_input`, `dataset_preview`, and `default`. Null assignments are valid until future phases wire tokenizers into model training.
 
+Phase 8 consumes registered staging, active, retired, or archived tokenizer versions for core model configuration compatibility checks. Tokenizer assignment changes remain independent from core model activation.
+
 ## Exports
 
 Exports create checksum-verified bundles using safe generated names. APIs expose export metadata and downloadable manifests without revealing absolute filesystem paths.

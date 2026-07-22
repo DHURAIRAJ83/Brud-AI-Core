@@ -268,6 +268,54 @@ class Settings(BaseSettings):
     tokenizer_min_ready_score: float = Field(
         default=0.8, ge=0, le=1, validation_alias="BRUD_TOKENIZER_MIN_READY_SCORE"
     )
+    core_model_dir: Path = Field(
+        default=Path("data/core_models"), validation_alias="BRUD_CORE_MODEL_DIR"
+    )
+    core_checkpoint_dir: Path = Field(
+        default=Path("data/core_models/checkpoints"),
+        validation_alias="BRUD_CORE_CHECKPOINT_DIR",
+    )
+    core_max_parameters: int = Field(
+        default=30_000_000, ge=1, le=500_000_000, validation_alias="BRUD_CORE_MAX_PARAMETERS"
+    )
+    core_max_context_length: int = Field(
+        default=1024, ge=8, le=8192, validation_alias="BRUD_CORE_MAX_CONTEXT_LENGTH"
+    )
+    core_max_hidden_size: int = Field(
+        default=512, ge=8, le=4096, validation_alias="BRUD_CORE_MAX_HIDDEN_SIZE"
+    )
+    core_max_layers: int = Field(
+        default=12, ge=1, le=96, validation_alias="BRUD_CORE_MAX_LAYERS"
+    )
+    core_max_attention_heads: int = Field(
+        default=16, ge=1, le=64, validation_alias="BRUD_CORE_MAX_ATTENTION_HEADS"
+    )
+    core_max_intermediate_size: int = Field(
+        default=2048, ge=16, le=16384, validation_alias="BRUD_CORE_MAX_INTERMEDIATE_SIZE"
+    )
+    core_max_estimated_memory_bytes: int = Field(
+        default=3_000_000_000,
+        ge=100_000,
+        le=64_000_000_000,
+        validation_alias="BRUD_CORE_MAX_ESTIMATED_MEMORY_BYTES",
+    )
+    core_default_dtype: str = Field(default="float32", validation_alias="BRUD_CORE_DEFAULT_DTYPE")
+    core_default_device: str = Field(default="cpu", validation_alias="BRUD_CORE_DEFAULT_DEVICE")
+    core_checkpoint_max_bytes: int = Field(
+        default=500_000_000,
+        ge=1024,
+        le=5_000_000_000,
+        validation_alias="BRUD_CORE_CHECKPOINT_MAX_BYTES",
+    )
+    core_smoke_max_steps: int = Field(
+        default=100, ge=1, le=1000, validation_alias="BRUD_CORE_SMOKE_MAX_STEPS"
+    )
+    core_smoke_max_batch_size: int = Field(
+        default=2, ge=1, le=16, validation_alias="BRUD_CORE_SMOKE_MAX_BATCH_SIZE"
+    )
+    core_smoke_max_sequence_length: int = Field(
+        default=256, ge=2, le=2048, validation_alias="BRUD_CORE_SMOKE_MAX_SEQUENCE_LENGTH"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -302,6 +350,8 @@ class Settings(BaseSettings):
             "tokenizer_dir",
             "tokenizer_corpus_dir",
             "tokenizer_export_dir",
+            "core_model_dir",
+            "core_checkpoint_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -317,6 +367,8 @@ class Settings(BaseSettings):
                 "tokenizer_dir",
                 "tokenizer_corpus_dir",
                 "tokenizer_export_dir",
+                "core_model_dir",
+                "core_checkpoint_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
@@ -341,6 +393,10 @@ class Settings(BaseSettings):
             <= self.tokenizer_max_vocab_size
         ):
             raise ValueError("tokenizer default vocab size must be inside configured bounds")
+        if self.core_default_dtype != "float32":
+            raise ValueError("Phase 8 supports only float32 core model dtype")
+        if self.core_default_device != "cpu":
+            raise ValueError("Phase 8 supports only cpu as the default core model device")
         return self
 
     @field_validator("ocr_languages")
@@ -428,6 +484,14 @@ class Settings(BaseSettings):
     @property
     def resolved_tokenizer_export_dir(self) -> Path:
         return self._resolve_path(self.tokenizer_export_dir)
+
+    @property
+    def resolved_core_model_dir(self) -> Path:
+        return self._resolve_path(self.core_model_dir)
+
+    @property
+    def resolved_core_checkpoint_dir(self) -> Path:
+        return self._resolve_path(self.core_checkpoint_dir)
 
     @property
     def allowed_import_extensions(self) -> set[str]:

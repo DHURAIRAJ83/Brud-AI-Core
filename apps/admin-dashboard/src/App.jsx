@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import DashboardLayout from './components/DashboardLayout.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
+import CoreModelPage from './pages/CoreModelPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
@@ -25,5 +26,6 @@ export default function App() {
   if (active === 'Datasets') page = <DatasetsPage />
   if (active === 'Documents') page = <DocumentsPage />
   if (active === 'Tokenizer') page = <TokenizerPage />
+  if (active === 'Core Model') page = <CoreModelPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

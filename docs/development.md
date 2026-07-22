@@ -73,6 +73,21 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_TOKENIZER_NUM_THREADS` | `1` | Bounded local training thread count |
 | `BRUD_TOKENIZER_EVAL_MAX_SAMPLES_PER_LANGUAGE` | `1000` | Bounded tokenizer evaluation samples |
 | `BRUD_TOKENIZER_MIN_READY_SCORE` | `0.8` | Minimum round-trip readiness score |
+| `BRUD_CORE_MODEL_DIR` | `data/core_models` | Controlled core model artifact root |
+| `BRUD_CORE_CHECKPOINT_DIR` | `data/core_models/checkpoints` | Registered checkpoint root |
+| `BRUD_CORE_MAX_PARAMETERS` | `30000000` | Pre-allocation parameter limit |
+| `BRUD_CORE_MAX_CONTEXT_LENGTH` | `1024` | Context length limit |
+| `BRUD_CORE_MAX_HIDDEN_SIZE` | `512` | Hidden size limit |
+| `BRUD_CORE_MAX_LAYERS` | `12` | Layer count limit |
+| `BRUD_CORE_MAX_ATTENTION_HEADS` | `16` | Attention head limit |
+| `BRUD_CORE_MAX_INTERMEDIATE_SIZE` | `2048` | Feed-forward size limit |
+| `BRUD_CORE_MAX_ESTIMATED_MEMORY_BYTES` | `3000000000` | Conservative training-memory estimate limit |
+| `BRUD_CORE_DEFAULT_DTYPE` | `float32` | Phase 8 dtype |
+| `BRUD_CORE_DEFAULT_DEVICE` | `cpu` | Phase 8 device |
+| `BRUD_CORE_CHECKPOINT_MAX_BYTES` | `500000000` | Checkpoint file size bound |
+| `BRUD_CORE_SMOKE_MAX_STEPS` | `100` | Smoke-test step limit |
+| `BRUD_CORE_SMOKE_MAX_BATCH_SIZE` | `2` | Smoke-test batch limit |
+| `BRUD_CORE_SMOKE_MAX_SEQUENCE_LENGTH` | `256` | Smoke-test sequence limit |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
@@ -97,6 +112,8 @@ Registered import jobs can be inspected with `python -m backend.import_cli list`
 Dataset quality and versioning can be inspected with `python -m backend.dataset_cli quality-summary`, `assess-record <public_id>`, `list-versions`, `inspect-version <public_id>`, `verify-version <public_id>`, and `export-version <public_id>`. Mutating commands require typed confirmation.
 
 Tokenizer work can be inspected with `python -m backend.tokenizer_cli capabilities`, `list`, `inspect <public_id>`, `build-corpus <job_public_id>`, `dry-run <job_public_id>`, `train <job_public_id>`, `evaluate <version_public_id>`, `verify <version_public_id>`, and `activate <version_public_id>`. Training and activation require typed confirmation and operate only on registered public IDs.
+
+Core model architecture work can be inspected with `python -m backend.core_model_cli capabilities`, `list-configs`, `inspect-config <public_id>`, `list-versions`, `inspect-version <public_id>`, `initialize <public_id>`, `verify <public_id>`, `smoke-test <public_id>`, and `verify-checkpoint <public_id>`. Initialization and smoke tests require typed confirmation and operate only on registered public IDs.
 
 ## Troubleshooting
 

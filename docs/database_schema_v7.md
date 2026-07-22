@@ -2,6 +2,8 @@
 
 Schema v7 is additive on top of schema v6. It preserves all dataset quality, versioning, import, document, authentication, and audit behavior while adding tokenizer control-plane tables.
 
+The current project schema is v8. See [database_schema_v8.md](database_schema_v8.md) for core-model architecture additions.
+
 ## New tables
 
 - `tokenizer_families`: logical tokenizer lines such as `brud-multilingual-tokenizer`.

@@ -23,7 +23,7 @@ Admin Dashboard
       ↓ cookie session + CSRF
 Authentication dependency
       ↓ authenticated admin context
-Dataset API → Dataset service → Repositories → SQLite
+Dataset API → Dataset services → Repositories → SQLite
 ```
 
 Routes translate validated inputs and controlled errors. Lifecycle, duplicate, and transaction rules live in the service/repository layers rather than React or route handlers.
@@ -39,9 +39,19 @@ Multipart upload → controlled artifact storage → format parser
 
 Uploaded bytes are never executed or served as static assets. Parsers, normalization, mapping, duplicate analysis, and confirmation live in backend services; the route and React layers only transport validated choices and render safe summaries.
 
+Phase 6 adds the quality and versioning control plane:
+
+```text
+Approved records → deterministic quality evidence → build validation
+      → grouped deterministic split → immutable version items
+      → manifest + checksum → UTF-8 JSONL export
+```
+
+Quality scoring, leakage checks, split generation, manifest serialization, and export writing are backend service concerns. React renders summaries and triggers explicit admin actions.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events without rebuilding existing tables.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports without rebuilding existing tables.
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

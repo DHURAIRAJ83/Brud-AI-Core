@@ -4,6 +4,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from backend.database.schema import SCHEMA_VERSION
+
 pytestmark = pytest.mark.anyio
 
 
@@ -34,7 +36,7 @@ async def test_system_endpoints_are_safe(protected_api_app: FastAPI, path: str) 
 async def test_database_endpoint(protected_api_app: FastAPI) -> None:
     payload = (await get(protected_api_app, "/api/admin/system/database")).json()
     assert payload["status"] == "healthy"
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == SCHEMA_VERSION
     assert payload["journal_mode"] == "wal"
     assert payload["foreign_keys"] is True
     assert payload["busy_timeout_ms"] == 5000
@@ -54,15 +56,16 @@ async def test_safe_configuration_endpoint(protected_api_app: FastAPI) -> None:
 
 async def test_schema_and_audit_endpoints(protected_api_app: FastAPI) -> None:
     schema = (await get(protected_api_app, "/api/admin/system/schema")).json()
-    assert schema["current_version"] == 5
+    assert schema["current_version"] == SCHEMA_VERSION
     assert schema["migration_status"] == "current"
     assert {item["name"] for item in schema["applied_migrations"]} == {
         "001_phase1_foundation",
         "002_phase2_foundation",
         "003_phase3_admin_dataset",
-            "004_phase4_dataset_import",
-            "005_phase5_document_processing",
-        }
+        "004_phase4_dataset_import",
+        "005_phase5_document_processing",
+        "006_phase6_dataset_versioning",
+    }
     audit = (await get(protected_api_app, "/api/admin/audit/recent?limit=2")).json()
     assert audit["limit"] == 2
     assert audit["offset"] == 0

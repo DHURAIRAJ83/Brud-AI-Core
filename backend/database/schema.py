@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -546,4 +546,116 @@ CREATE TRIGGER IF NOT EXISTS document_events_immutable_update BEFORE UPDATE ON d
 CREATE TRIGGER IF NOT EXISTS document_events_immutable_delete BEFORE DELETE ON document_processing_events BEGIN SELECT RAISE(ABORT, 'document processing events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS document_revisions_immutable_update BEFORE UPDATE ON document_page_revisions BEGIN SELECT RAISE(ABORT, 'document page revisions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS document_revisions_immutable_delete BEFORE DELETE ON document_page_revisions BEGIN SELECT RAISE(ABORT, 'document page revisions are immutable'); END;
+"""
+
+MIGRATION_006_NAME = "006_phase6_dataset_versioning"
+
+PHASE6_SCHEMA = """
+ALTER TABLE dataset_versions ADD COLUMN quality_summary_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE dataset_versions ADD COLUMN source_distribution_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE dataset_versions ADD COLUMN record_type_distribution_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE dataset_versions ADD COLUMN build_configuration_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE dataset_versions ADD COLUMN parent_dataset_version_id INTEGER REFERENCES dataset_versions(id) ON DELETE SET NULL;
+ALTER TABLE dataset_versions ADD COLUMN export_status TEXT NOT NULL DEFAULT 'not_exported';
+
+CREATE TABLE IF NOT EXISTS dataset_quality_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_record_id INTEGER NOT NULL,
+    assessment_version TEXT NOT NULL,
+    overall_score REAL NOT NULL CHECK (overall_score BETWEEN 0 AND 1),
+    completeness_score REAL NOT NULL CHECK (completeness_score BETWEEN 0 AND 1),
+    structure_score REAL NOT NULL CHECK (structure_score BETWEEN 0 AND 1),
+    language_score REAL NOT NULL CHECK (language_score BETWEEN 0 AND 1),
+    text_quality_score REAL NOT NULL CHECK (text_quality_score BETWEEN 0 AND 1),
+    duplication_score REAL NOT NULL CHECK (duplication_score BETWEEN 0 AND 1),
+    safety_score REAL NOT NULL CHECK (safety_score BETWEEN 0 AND 1),
+    provenance_score REAL NOT NULL CHECK (provenance_score BETWEEN 0 AND 1),
+    readiness_status TEXT NOT NULL CHECK (readiness_status IN ('ready','warning','blocked','not_assessed')),
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    assessed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dataset_record_id) REFERENCES dataset_records(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS dataset_quality_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    quality_assessment_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL,
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','error','blocking')),
+    field_name TEXT,
+    message TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (quality_assessment_id) REFERENCES dataset_quality_assessments(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS dataset_build_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_version_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validating','building','completed','completed_with_warnings','failed','cancelled')),
+    selection_filters_json TEXT NOT NULL DEFAULT '{}',
+    split_configuration_json TEXT NOT NULL DEFAULT '{}',
+    deduplication_configuration_json TEXT NOT NULL DEFAULT '{}',
+    total_candidate_records INTEGER NOT NULL DEFAULT 0 CHECK (total_candidate_records >= 0),
+    selected_records INTEGER NOT NULL DEFAULT 0 CHECK (selected_records >= 0),
+    excluded_records INTEGER NOT NULL DEFAULT 0 CHECK (excluded_records >= 0),
+    train_records INTEGER NOT NULL DEFAULT 0 CHECK (train_records >= 0),
+    validation_records INTEGER NOT NULL DEFAULT 0 CHECK (validation_records >= 0),
+    test_records INTEGER NOT NULL DEFAULT 0 CHECK (test_records >= 0),
+    warning_records INTEGER NOT NULL DEFAULT 0 CHECK (warning_records >= 0),
+    error_records INTEGER NOT NULL DEFAULT 0 CHECK (error_records >= 0),
+    progress REAL NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 1),
+    error_code TEXT,
+    error_message TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS dataset_build_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    build_job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    previous_status TEXT,
+    new_status TEXT,
+    message TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_job_id) REFERENCES dataset_build_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS dataset_exports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_version_id INTEGER NOT NULL,
+    export_format TEXT NOT NULL CHECK (export_format IN ('jsonl','manifest_json','split_jsonl_bundle')),
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','exporting','completed','failed','cancelled')),
+    safe_name TEXT NOT NULL UNIQUE,
+    record_count INTEGER NOT NULL DEFAULT 0 CHECK (record_count >= 0),
+    checksum_sha256 TEXT,
+    file_manifest_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    error_message TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_quality_assessments_record ON dataset_quality_assessments(dataset_record_id,created_at);
+CREATE INDEX IF NOT EXISTS ix_quality_assessments_readiness ON dataset_quality_assessments(readiness_status);
+CREATE INDEX IF NOT EXISTS ix_quality_issues_code ON dataset_quality_issues(issue_code);
+CREATE INDEX IF NOT EXISTS ix_quality_issues_severity ON dataset_quality_issues(severity);
+CREATE INDEX IF NOT EXISTS ix_build_jobs_status ON dataset_build_jobs(status);
+CREATE INDEX IF NOT EXISTS ix_build_jobs_dataset_version ON dataset_build_jobs(dataset_version_id);
+CREATE INDEX IF NOT EXISTS ix_build_events_job ON dataset_build_events(build_job_id,created_at);
+CREATE INDEX IF NOT EXISTS ix_dataset_exports_version ON dataset_exports(dataset_version_id);
+CREATE INDEX IF NOT EXISTS ix_dataset_exports_status ON dataset_exports(status);
+CREATE TRIGGER IF NOT EXISTS dataset_build_events_immutable_update BEFORE UPDATE ON dataset_build_events BEGIN SELECT RAISE(ABORT, 'dataset build events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS dataset_build_events_immutable_delete BEFORE DELETE ON dataset_build_events BEGIN SELECT RAISE(ABORT, 'dataset build events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS dataset_quality_issues_immutable_update BEFORE UPDATE ON dataset_quality_issues BEGIN SELECT RAISE(ABORT, 'dataset quality issues are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS dataset_quality_issues_immutable_delete BEFORE DELETE ON dataset_quality_issues BEGIN SELECT RAISE(ABORT, 'dataset quality issues are immutable'); END;
 """

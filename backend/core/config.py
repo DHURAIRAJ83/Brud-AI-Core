@@ -164,6 +164,52 @@ class Settings(BaseSettings):
     document_segment_overlap_chars: int = Field(
         default=150, ge=0, le=5000, validation_alias="BRUD_DOCUMENT_SEGMENT_OVERLAP_CHARS"
     )
+    quality_ruleset_version: str = Field(
+        default="phase6-v1", validation_alias="BRUD_QUALITY_RULESET_VERSION"
+    )
+    quality_ready_threshold: float = Field(
+        default=0.80, ge=0, le=1, validation_alias="BRUD_QUALITY_READY_THRESHOLD"
+    )
+    quality_warning_threshold: float = Field(
+        default=0.60, ge=0, le=1, validation_alias="BRUD_QUALITY_WARNING_THRESHOLD"
+    )
+    quality_min_pretrain_chars: int = Field(
+        default=24, ge=1, le=10000, validation_alias="BRUD_QUALITY_MIN_PRETRAIN_CHARS"
+    )
+    quality_max_record_chars: int = Field(
+        default=100_000, ge=100, le=2_000_000, validation_alias="BRUD_QUALITY_MAX_RECORD_CHARS"
+    )
+    quality_max_repetition_ratio: float = Field(
+        default=0.40, ge=0, le=1, validation_alias="BRUD_QUALITY_MAX_REPETITION_RATIO"
+    )
+    quality_max_punctuation_ratio: float = Field(
+        default=0.45, ge=0, le=1, validation_alias="BRUD_QUALITY_MAX_PUNCTUATION_RATIO"
+    )
+    quality_min_letter_ratio: float = Field(
+        default=0.25, ge=0, le=1, validation_alias="BRUD_QUALITY_MIN_LETTER_RATIO"
+    )
+    quality_block_unknown_licence: bool = Field(
+        default=False, validation_alias="BRUD_QUALITY_BLOCK_UNKNOWN_LICENCE"
+    )
+    quality_require_provenance: bool = Field(
+        default=True, validation_alias="BRUD_QUALITY_REQUIRE_PROVENANCE"
+    )
+    dataset_default_train_percent: int = Field(
+        default=90, ge=0, le=100, validation_alias="BRUD_DATASET_DEFAULT_TRAIN_PERCENT"
+    )
+    dataset_default_validation_percent: int = Field(
+        default=5, ge=0, le=100, validation_alias="BRUD_DATASET_DEFAULT_VALIDATION_PERCENT"
+    )
+    dataset_default_test_percent: int = Field(
+        default=5, ge=0, le=100, validation_alias="BRUD_DATASET_DEFAULT_TEST_PERCENT"
+    )
+    dataset_split_seed: int = Field(default=42, ge=0, validation_alias="BRUD_DATASET_SPLIT_SEED")
+    dataset_export_dir: Path = Field(
+        default=Path("data/dataset_exports"), validation_alias="BRUD_DATASET_EXPORT_DIR"
+    )
+    dataset_export_max_records: int = Field(
+        default=100_000, ge=1, le=1_000_000, validation_alias="BRUD_DATASET_EXPORT_MAX_RECORDS"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -194,6 +240,7 @@ class Settings(BaseSettings):
             "import_report_dir",
             "document_dir",
             "document_report_dir",
+            "dataset_export_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -205,11 +252,21 @@ class Settings(BaseSettings):
                 "import_report_dir",
                 "document_dir",
                 "document_report_dir",
+                "dataset_export_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
         if self.document_segment_overlap_chars >= self.document_segment_max_chars:
             raise ValueError("document segment overlap must be smaller than segment size")
+        if self.quality_ready_threshold < self.quality_warning_threshold:
+            raise ValueError("ready quality threshold must be greater than warning threshold")
+        split_total = (
+            self.dataset_default_train_percent
+            + self.dataset_default_validation_percent
+            + self.dataset_default_test_percent
+        )
+        if split_total != 100:
+            raise ValueError("dataset split percentages must total 100")
         return self
 
     @field_validator("ocr_languages")
@@ -281,6 +338,10 @@ class Settings(BaseSettings):
     @property
     def resolved_document_report_dir(self) -> Path:
         return self._resolve_path(self.document_report_dir)
+
+    @property
+    def resolved_dataset_export_dir(self) -> Path:
+        return self._resolve_path(self.dataset_export_dir)
 
     @property
     def allowed_import_extensions(self) -> set[str]:

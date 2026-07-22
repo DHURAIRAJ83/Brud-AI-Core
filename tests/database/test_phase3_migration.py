@@ -8,6 +8,7 @@ from backend.database.migrations import (
     current_schema_version,
     upgrade_database,
 )
+from backend.database.schema import SCHEMA_VERSION
 
 
 def test_upgrade_v2_to_current_preserves_dataset_data_and_creates_auth_tables(
@@ -29,7 +30,7 @@ def test_upgrade_v2_to_current_preserves_dataset_data_and_creates_auth_tables(
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
-    assert version == 5 and backup is not None and integrity == "ok"
+    assert version == SCHEMA_VERSION and backup is not None and integrity == "ok"
     with database_connection(database) as connection:
         assert connection.execute("SELECT name FROM dataset_sources").fetchone()[0] == "Preserved"
         tables = {

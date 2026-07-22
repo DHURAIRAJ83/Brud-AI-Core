@@ -20,4 +20,4 @@ Canonical normalized hashes are compared inside the file and against existing re
 
 The CSV error report is bounded, exposes row/status/issues and safe public references only, and prefixes spreadsheet-formula characters. Cancellation is terminal and quarantines the artifact. Expired previews cannot confirm but can be identified through events/CLI. Reports and audit metadata omit storage paths and full row contents.
 
-PDF, OCR, web scraping, remote URLs, broad encoding guessing, automatic merges, dataset-version building, and training are intentionally unavailable.
+PDF/OCR processing is handled by the Phase 5 document workflow. Phase 6 can assess and version imported draft records after admin review. Web scraping, remote URLs, broad encoding guessing, automatic merges, tokenizer training, model training, and inference are intentionally unavailable.

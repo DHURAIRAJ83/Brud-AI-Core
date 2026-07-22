@@ -11,6 +11,7 @@ from backend.database.migrations import (
     sha256_file,
     upgrade_database,
 )
+from backend.database.schema import SCHEMA_VERSION
 
 
 def test_upgrade_v3_to_v4_is_additive_and_backed_up(tmp_path: Path) -> None:
@@ -33,7 +34,7 @@ def test_upgrade_v3_to_v4_is_additive_and_backed_up(tmp_path: Path) -> None:
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
-    assert version == 5 and backup is not None and integrity == "ok"
+    assert version == SCHEMA_VERSION and backup is not None and integrity == "ok"
     assert backup.path.is_file() and sha256_file(backup.path) == backup.backup_checksum
     with database_connection(database) as connection:
         tables = {
@@ -58,7 +59,7 @@ def test_fresh_v4_and_idempotency(tmp_path: Path) -> None:
     database = tmp_path / "fresh.db"
     initialize_database(database)
     initialize_database(database)
-    assert current_schema_version(database) == 5
+    assert current_schema_version(database) == SCHEMA_VERSION
     with database_connection(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

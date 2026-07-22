@@ -1,6 +1,6 @@
 # Dataset management
 
-Phase 3 implements manual data curation. Phase 4 adds preview-first JSON, JSONL, CSV, and TXT imports. PDF extraction, OCR, remote URL imports, dataset-version building, and training remain unavailable.
+Phase 3 implements manual data curation. Phase 4 adds preview-first JSON, JSONL, CSV, and TXT imports. Phase 5 adds PDF document extraction. Phase 6 adds deterministic quality assessment, immutable dataset version building, and JSONL export. Remote URL imports, tokenizer training, model training, and inference remain unavailable.
 
 ## Sources
 
@@ -31,3 +31,7 @@ A deterministic SHA-256 hash covers record type, language, instruction, input, o
 Source and record creation/update, submit, review decisions, archive/restore, duplicates, and meaningful validation failures create bounded audit summaries. Audits identify public IDs and actions but omit full payloads, text bodies, passwords, tokens, hashes, and paths.
 
 Imported records pass the same `validate_record` and deterministic `content_hash` logic as manual records and always begin as drafts. Invalid rows remain preview/report evidence; duplicates remain visible and are either confirmation blockers (`create_only`) or explicit skips (`skip_duplicates`). See [dataset_imports.md](dataset_imports.md).
+
+## Quality and versions
+
+Phase 6 quality assessments create separate immutable evidence and issue rows; they do not edit records. Blocked-quality records cannot be approved through the normal review action. Dataset builds select approved records, generate deterministic grouped splits, create immutable ready versions, and export UTF-8 JSONL files. See [dataset_quality.md](dataset_quality.md), [dataset_versioning.md](dataset_versioning.md), [dataset_splitting.md](dataset_splitting.md), and [dataset_export.md](dataset_export.md).

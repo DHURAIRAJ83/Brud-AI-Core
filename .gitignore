@@ -16,6 +16,7 @@ data/database/*.db-wal
 data/database/backups/
 data/imports/
 data/documents/
+data/dataset_exports/
 models/checkpoints/*
 models/active/*
 models/exports/*

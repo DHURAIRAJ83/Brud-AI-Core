@@ -258,6 +258,13 @@ class DatasetService:
             if decision in {"reject", "request_changes"} and not normalize_text(comments):
                 raise ValidationError("comments are required for this review decision")
             if target == "approved":
+                assessment = connection.execute(
+                    """SELECT readiness_status FROM dataset_quality_assessments
+                    WHERE dataset_record_id=? ORDER BY created_at DESC,id DESC LIMIT 1""",
+                    (row["id"],),
+                ).fetchone()
+                if assessment and assessment["readiness_status"] == "blocked":
+                    raise ValidationError("blocked-quality records require an explicit override")
                 values = {
                     key: row[key]
                     for key in (

@@ -45,6 +45,17 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_IMPORT_ALLOWED_MIME_TYPES` | bounded local allowlist | MIME allowlist without wildcards |
 | `BRUD_IMPORT_DEFAULT_ENCODING` | `utf-8` | UTF decoding policy |
 | `BRUD_IMPORT_MAX_ERROR_REPORT_ROWS` | `5000` | Maximum report rows |
+| `BRUD_QUALITY_RULESET_VERSION` | `phase6-v1` | Deterministic quality ruleset label |
+| `BRUD_QUALITY_READY_THRESHOLD` | `0.8` | Minimum score for ready quality |
+| `BRUD_QUALITY_WARNING_THRESHOLD` | `0.6` | Minimum score for warning quality |
+| `BRUD_QUALITY_MIN_PRETRAIN_CHARS` | `24` | Minimum pretrain text length before warning |
+| `BRUD_QUALITY_MAX_RECORD_CHARS` | `100000` | Maximum record text before quality error |
+| `BRUD_DATASET_DEFAULT_TRAIN_PERCENT` | `90` | Default train split |
+| `BRUD_DATASET_DEFAULT_VALIDATION_PERCENT` | `5` | Default validation split |
+| `BRUD_DATASET_DEFAULT_TEST_PERCENT` | `5` | Default test split |
+| `BRUD_DATASET_SPLIT_SEED` | `42` | Reproducible split seed |
+| `BRUD_DATASET_EXPORT_DIR` | `data/dataset_exports` | Controlled dataset export root |
+| `BRUD_DATASET_EXPORT_MAX_RECORDS` | `100000` | Maximum records in one export |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
@@ -66,6 +77,8 @@ Security-sensitive commands prompt interactively. The browser obtains CSRF state
 
 Registered import jobs can be inspected with `python -m backend.import_cli list` and `python -m backend.import_cli inspect <public_id>`. `python -m backend.import_cli expire-old` requires typed confirmation and operates only on registered preview jobs; it accepts no paths.
 
+Dataset quality and versioning can be inspected with `python -m backend.dataset_cli quality-summary`, `assess-record <public_id>`, `list-versions`, `inspect-version <public_id>`, `verify-version <public_id>`, and `export-version <public_id>`. Mutating commands require typed confirmation.
+
 ## Troubleshooting
 
 - **Missing `venv` or `node_modules`:** run `make setup`.
@@ -76,6 +89,8 @@ Registered import jobs can be inspected with `python -m backend.import_cli list`
 - **Admin mutation returns 403:** refresh CSRF state and send both session/CSRF cookies plus the configured CSRF header.
 - **Import stays uploaded:** open its mapping, verify the selected preset/options, and explicitly run Parse and preview.
 - **Preview expired:** reparse the registered pending artifact to produce a fresh bounded preview.
+- **Dataset build selects no records:** confirm records are approved, quality filters are not too strict, and source licences are not rejected.
+- **Export rejected:** only ready or archived dataset versions can be exported.
 - **SQLite locked:** close long-running SQLite clients. Connections use WAL mode and a 5000 ms busy timeout but cannot recover from indefinitely held transactions.
 
 ## Database reset

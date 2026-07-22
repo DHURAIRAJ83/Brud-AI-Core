@@ -15,6 +15,7 @@ data/database/*.db-shm
 data/database/*.db-wal
 data/database/backups/
 data/imports/
+data/documents/
 models/checkpoints/*
 models/active/*
 models/exports/*

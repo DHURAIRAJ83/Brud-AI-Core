@@ -81,8 +81,8 @@ Copying `.env.example` is handled by setup. All backend variables use the `BRUD_
 
 ## Current limitations
 
-There is no public registration, PDF/OCR processing, remote import, dataset-version building, training execution, evaluation workflow, RAG, external model provider, or real inference. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
+There is no public registration, remote import, dataset-version building, training execution, evaluation workflow, RAG, external model provider, or real inference. Authentication is local-only and has no role hierarchy or production identity provider. The chat response remains deliberately labeled as a placeholder.
 
-## Phase 4 status
+## Phase 5 status
 
-Schema v4 adds registered import jobs, preview rows, and immutable lifecycle events. Authenticated administrators can upload bounded JSON, JSONL, CSV, and TXT files, explicitly map fields, preview validation and duplicates, confirm transactional draft creation, cancel jobs, and retrieve formula-safe error reports. Verification is recorded in [docs/phase_4_report.md](docs/phase_4_report.md).
+Schema v5 adds secure PDF document sources, page-level embedded/OCR extraction, cleaned-text review, deterministic segmentation, candidate duplicate analysis, and draft-only candidate import. Verification is recorded in [docs/phase_5_report.md](docs/phase_5_report.md).

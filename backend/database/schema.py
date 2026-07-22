@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -407,4 +407,143 @@ BEGIN SELECT RAISE(ABORT, 'dataset import events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS dataset_import_events_immutable_delete
 BEFORE DELETE ON dataset_import_events
 BEGIN SELECT RAISE(ABORT, 'dataset import events are immutable'); END;
+"""
+
+MIGRATION_005_NAME = "005_phase5_document_processing"
+
+PHASE5_SCHEMA = """
+CREATE TABLE IF NOT EXISTS document_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_source_public_id TEXT,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL UNIQUE,
+    document_type TEXT NOT NULL CHECK (document_type IN ('pdf','text')),
+    mime_type TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes > 0),
+    checksum_sha256 TEXT NOT NULL,
+    page_count INTEGER NOT NULL DEFAULT 0 CHECK (page_count >= 0),
+    detected_language TEXT NOT NULL DEFAULT 'unknown',
+    extraction_strategy TEXT NOT NULL CHECK (extraction_strategy IN ('auto','embedded_text','ocr','hybrid')),
+    status TEXT NOT NULL DEFAULT 'uploaded' CHECK (status IN ('uploaded','validating','ready','processing','review_ready','completed','completed_with_warnings','failed','cancelled','archived')),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    archived_at TEXT
+);
+CREATE TABLE IF NOT EXISTS document_pages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    page_number INTEGER NOT NULL CHECK (page_number > 0),
+    width_points REAL,
+    height_points REAL,
+    rotation INTEGER NOT NULL DEFAULT 0,
+    embedded_text_available INTEGER NOT NULL DEFAULT 0 CHECK (embedded_text_available IN (0,1)),
+    image_count INTEGER NOT NULL DEFAULT 0 CHECK (image_count >= 0),
+    extraction_method TEXT NOT NULL DEFAULT 'none' CHECK (extraction_method IN ('none','embedded','ocr','hybrid','manual')),
+    extraction_status TEXT NOT NULL DEFAULT 'pending' CHECK (extraction_status IN ('pending','extracting','success','warning','failed','skipped')),
+    raw_text TEXT,
+    cleaned_text TEXT,
+    text_length INTEGER NOT NULL DEFAULT 0 CHECK (text_length >= 0),
+    confidence_score REAL CHECK (confidence_score IS NULL OR confidence_score BETWEEN 0 AND 1),
+    language TEXT NOT NULL DEFAULT 'unknown',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    error_code TEXT,
+    error_message TEXT,
+    processing_duration_ms INTEGER CHECK (processing_duration_ms IS NULL OR processing_duration_ms >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE,
+    UNIQUE(document_source_id,page_number)
+);
+CREATE TABLE IF NOT EXISTS document_page_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_page_id INTEGER NOT NULL,
+    revision_number INTEGER NOT NULL CHECK (revision_number > 0),
+    cleaned_text TEXT NOT NULL,
+    edited_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_page_id) REFERENCES document_pages(id) ON DELETE CASCADE,
+    UNIQUE(document_page_id,revision_number)
+);
+CREATE TABLE IF NOT EXISTS document_processing_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    job_type TEXT NOT NULL CHECK (job_type IN ('analyze','extract','ocr','reprocess_pages','segment','candidate_import')),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validating','queued','running','paused','completed','completed_with_warnings','failed','cancelled')),
+    requested_strategy TEXT NOT NULL,
+    selected_pages_json TEXT NOT NULL DEFAULT '[]',
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    total_pages INTEGER NOT NULL DEFAULT 0 CHECK (total_pages >= 0),
+    processed_pages INTEGER NOT NULL DEFAULT 0 CHECK (processed_pages >= 0),
+    successful_pages INTEGER NOT NULL DEFAULT 0 CHECK (successful_pages >= 0),
+    warning_pages INTEGER NOT NULL DEFAULT 0 CHECK (warning_pages >= 0),
+    failed_pages INTEGER NOT NULL DEFAULT 0 CHECK (failed_pages >= 0),
+    progress REAL NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 1),
+    error_code TEXT,
+    error_message TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS document_processing_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    processing_job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    page_number INTEGER,
+    previous_status TEXT,
+    new_status TEXT,
+    message TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (processing_job_id) REFERENCES document_processing_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS document_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    source_page_start INTEGER NOT NULL CHECK (source_page_start > 0),
+    source_page_end INTEGER NOT NULL CHECK (source_page_end >= source_page_start),
+    sequence_number INTEGER NOT NULL CHECK (sequence_number > 0),
+    candidate_type TEXT NOT NULL CHECK (candidate_type IN ('pretrain','instruction','chat','translation','tanglish_pair','safety','preference')),
+    language TEXT NOT NULL,
+    instruction TEXT,
+    input_text TEXT,
+    output_text TEXT,
+    normalized_input TEXT,
+    candidate_text TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','valid','warning','duplicate','invalid','selected','rejected','imported')),
+    validation_errors_json TEXT NOT NULL DEFAULT '[]',
+    validation_warnings_json TEXT NOT NULL DEFAULT '[]',
+    duplicate_record_public_id TEXT,
+    imported_record_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    imported_at TEXT,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE,
+    UNIQUE(document_source_id,sequence_number)
+);
+CREATE INDEX IF NOT EXISTS ix_documents_checksum ON document_sources(checksum_sha256);
+CREATE INDEX IF NOT EXISTS ix_documents_status ON document_sources(status);
+CREATE INDEX IF NOT EXISTS ix_documents_created ON document_sources(created_at);
+CREATE INDEX IF NOT EXISTS ix_document_pages_number ON document_pages(document_source_id,page_number);
+CREATE INDEX IF NOT EXISTS ix_document_pages_status ON document_pages(document_source_id,extraction_status);
+CREATE INDEX IF NOT EXISTS ix_document_jobs_status ON document_processing_jobs(status);
+CREATE INDEX IF NOT EXISTS ix_document_candidates_status ON document_candidates(document_source_id,status);
+CREATE INDEX IF NOT EXISTS ix_document_candidates_hash ON document_candidates(content_hash);
+CREATE INDEX IF NOT EXISTS ix_document_candidates_duplicate ON document_candidates(duplicate_record_public_id);
+CREATE TRIGGER IF NOT EXISTS document_events_immutable_update BEFORE UPDATE ON document_processing_events BEGIN SELECT RAISE(ABORT, 'document processing events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS document_events_immutable_delete BEFORE DELETE ON document_processing_events BEGIN SELECT RAISE(ABORT, 'document processing events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS document_revisions_immutable_update BEFORE UPDATE ON document_page_revisions BEGIN SELECT RAISE(ABORT, 'document page revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS document_revisions_immutable_delete BEFORE DELETE ON document_page_revisions BEGIN SELECT RAISE(ABORT, 'document page revisions are immutable'); END;
 """

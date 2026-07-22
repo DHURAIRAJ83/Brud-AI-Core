@@ -13,6 +13,9 @@ dependencies = [
   "pydantic-settings>=2.7,<3.0",
   "pwdlib[argon2]>=0.2,<1.0",
   "python-multipart>=0.0.20,<1.0",
+  "PyMuPDF>=1.24,<2.0",
+  "pytesseract>=0.3.13,<1.0",
+  "Pillow>=10.4,<12.0",
 ]
 
 [project.optional-dependencies]
@@ -35,3 +38,4 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 "backend/database/schema.py" = ["E501"]
 "backend/services/import_service.py" = ["E501"]
+"backend/services/document_service.py" = ["E501"]

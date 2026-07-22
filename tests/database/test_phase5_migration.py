@@ -6,6 +6,7 @@ from backend.database.migrations import (
     _apply_v1,
     _apply_v2,
     _apply_v3,
+    _apply_v4,
     current_schema_version,
     initialize_database,
     sha256_file,
@@ -13,23 +14,25 @@ from backend.database.migrations import (
 )
 
 
-def test_upgrade_v3_to_v4_is_additive_and_backed_up(tmp_path: Path) -> None:
-    database = tmp_path / "v3.db"
+def test_upgrade_v4_to_v5_is_additive_verified_and_backed_up(tmp_path: Path) -> None:
+    database = tmp_path / "v4.db"
     with database_connection(database) as connection:
         _apply_v1(connection)
         _apply_v2(connection)
         _apply_v3(connection)
+        _apply_v4(connection)
         connection.execute(
             "INSERT INTO dataset_sources(name,source_type,status,public_id) VALUES (?,?,?,?)",
-            ("Preserved", "manual", "draft", "00000000-0000-0000-0000-000000000044"),
+            ("Preserved", "manual", "draft", "00000000-0000-0000-0000-000000000055"),
         )
         connection.commit()
-    assert current_schema_version(database) == 3
+    assert current_schema_version(database) == 4
     settings = Settings(
         database_path=database,
         database_backup_dir=tmp_path / "backups",
-        import_dir=tmp_path / "imports",
-        import_report_dir=tmp_path / "imports" / "reports",
+        allowed_data_dir=tmp_path,
+        document_dir=tmp_path / "documents",
+        document_report_dir=tmp_path / "documents" / "reports",
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
@@ -44,17 +47,32 @@ def test_upgrade_v3_to_v4_is_additive_and_backed_up(tmp_path: Path) -> None:
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='index'")
         }
-        assert {"dataset_import_jobs", "dataset_import_rows", "dataset_import_events"} <= tables
+        triggers = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
+        }
         assert {
-            "ix_import_jobs_status",
-            "ix_import_rows_hash",
-            "ix_import_rows_duplicate",
+            "document_sources",
+            "document_pages",
+            "document_page_revisions",
+            "document_processing_jobs",
+            "document_processing_events",
+            "document_candidates",
+        } <= tables
+        assert {
+            "ix_documents_checksum",
+            "ix_document_pages_status",
+            "ix_document_candidates_hash",
         } <= indexes
+        assert {
+            "document_events_immutable_update",
+            "document_revisions_immutable_delete",
+        } <= triggers
         assert connection.execute("SELECT name FROM dataset_sources").fetchone()[0] == "Preserved"
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
-def test_fresh_v4_and_idempotency(tmp_path: Path) -> None:
+def test_fresh_v5_is_idempotent(tmp_path: Path) -> None:
     database = tmp_path / "fresh.db"
     initialize_database(database)
     initialize_database(database)

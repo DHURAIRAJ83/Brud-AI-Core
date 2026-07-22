@@ -112,6 +112,58 @@ class Settings(BaseSettings):
     import_max_error_report_rows: int = Field(
         default=5_000, ge=1, le=25_000, validation_alias="BRUD_IMPORT_MAX_ERROR_REPORT_ROWS"
     )
+    document_dir: Path = Field(default=Path("data/documents"), validation_alias="BRUD_DOCUMENT_DIR")
+    document_report_dir: Path = Field(
+        default=Path("data/documents/reports"), validation_alias="BRUD_DOCUMENT_REPORT_DIR"
+    )
+    document_max_file_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        ge=1,
+        le=250 * 1024 * 1024,
+        validation_alias="BRUD_DOCUMENT_MAX_FILE_BYTES",
+    )
+    document_max_pages: int = Field(
+        default=300, ge=1, le=2000, validation_alias="BRUD_DOCUMENT_MAX_PAGES"
+    )
+    document_max_page_text_chars: int = Field(
+        default=100_000, ge=100, le=2_000_000, validation_alias="BRUD_DOCUMENT_MAX_PAGE_TEXT_CHARS"
+    )
+    document_max_total_text_chars: int = Field(
+        default=5_000_000,
+        ge=1000,
+        le=50_000_000,
+        validation_alias="BRUD_DOCUMENT_MAX_TOTAL_TEXT_CHARS",
+    )
+    pdf_max_images_per_page: int = Field(
+        default=100, ge=0, le=1000, validation_alias="BRUD_PDF_MAX_IMAGES_PER_PAGE"
+    )
+    pdf_render_dpi: int = Field(default=150, ge=72, le=300, validation_alias="BRUD_PDF_RENDER_DPI")
+    pdf_max_render_pixels: int = Field(
+        default=25_000_000,
+        ge=1_000_000,
+        le=100_000_000,
+        validation_alias="BRUD_PDF_MAX_RENDER_PIXELS",
+    )
+    ocr_enabled: bool = Field(default=True, validation_alias="BRUD_OCR_ENABLED")
+    ocr_languages: str = Field(default="tam+eng", validation_alias="BRUD_OCR_LANGUAGES")
+    ocr_page_timeout_seconds: int = Field(
+        default=60, ge=1, le=600, validation_alias="BRUD_OCR_PAGE_TIMEOUT_SECONDS"
+    )
+    ocr_max_pages_per_job: int = Field(
+        default=50, ge=1, le=300, validation_alias="BRUD_OCR_MAX_PAGES_PER_JOB"
+    )
+    ocr_min_text_length: int = Field(
+        default=24, ge=0, le=10_000, validation_alias="BRUD_OCR_MIN_TEXT_LENGTH"
+    )
+    ocr_confidence_warning_threshold: float = Field(
+        default=0.55, ge=0, le=1, validation_alias="BRUD_OCR_CONFIDENCE_WARNING_THRESHOLD"
+    )
+    document_segment_max_chars: int = Field(
+        default=2000, ge=100, le=20_000, validation_alias="BRUD_DOCUMENT_SEGMENT_MAX_CHARS"
+    )
+    document_segment_overlap_chars: int = Field(
+        default=150, ge=0, le=5000, validation_alias="BRUD_DOCUMENT_SEGMENT_OVERLAP_CHARS"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -140,16 +192,33 @@ class Settings(BaseSettings):
             "allowed_export_dir",
             "import_dir",
             "import_report_dir",
+            "document_dir",
+            "document_report_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
                 raise ValueError(f"{field_name} must remain inside the Brud AI project root")
         if not self.allow_external_storage:
             data_root = self._resolve_path(self.allowed_data_dir)
-            for field_name in ("import_dir", "import_report_dir"):
+            for field_name in (
+                "import_dir",
+                "import_report_dir",
+                "document_dir",
+                "document_report_dir",
+            ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
+        if self.document_segment_overlap_chars >= self.document_segment_max_chars:
+            raise ValueError("document segment overlap must be smaller than segment size")
         return self
+
+    @field_validator("ocr_languages")
+    @classmethod
+    def validate_ocr_languages(cls, value: str) -> str:
+        languages = [item.strip() for item in value.split("+") if item.strip()]
+        if not languages or not set(languages) <= {"tam", "eng"}:
+            raise ValueError("BRUD_OCR_LANGUAGES supports only tam and eng")
+        return "+".join(dict.fromkeys(languages))
 
     @field_validator("import_default_encoding")
     @classmethod
@@ -204,6 +273,14 @@ class Settings(BaseSettings):
     @property
     def resolved_import_report_dir(self) -> Path:
         return self._resolve_path(self.import_report_dir)
+
+    @property
+    def resolved_document_dir(self) -> Path:
+        return self._resolve_path(self.document_dir)
+
+    @property
+    def resolved_document_report_dir(self) -> Path:
+        return self._resolve_path(self.document_report_dir)
 
     @property
     def allowed_import_extensions(self) -> set[str]:

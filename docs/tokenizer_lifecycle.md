@@ -30,6 +30,8 @@ Phase 8 consumes registered staging, active, retired, or archived tokenizer vers
 
 Phase 9 consumes registered tokenizer versions for bounded pretraining compatibility checks. Jobs may not accept arbitrary tokenizer paths, and public APIs return only public IDs and checksum summaries.
 
+Phase 11 adds `TokenizerService.evaluate_suitability()`, which reuses the same processor/dataset-row/evaluation helpers to score a registered tokenizer against an *arbitrary* dataset version (not necessarily the tokenizer's own training dataset), without writing to `tokenizer_evaluations` (that table stays scoped to a tokenizer's own dataset). This backs the base-training tokenizer decision (`reuse_existing_tokenizer` / `train_new_tokenizer_version` / `blocked_tokenizer_unsuitable`) — see [base_training_experiments.md](base_training_experiments.md).
+
 ## Exports
 
 Exports create checksum-verified bundles using safe generated names. APIs expose export metadata and downloadable manifests without revealing absolute filesystem paths.

@@ -25,6 +25,7 @@ from backend.database.schema import (
     MIGRATION_008_NAME,
     MIGRATION_009_NAME,
     MIGRATION_010_NAME,
+    MIGRATION_011_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -36,6 +37,7 @@ from backend.database.schema import (
     PHASE9_SCHEMA,
     PHASE10_COLUMNS,
     PHASE10_SCHEMA,
+    PHASE11_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -327,6 +329,16 @@ def _apply_v10(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 10")
 
 
+def _apply_v11(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (11,)).fetchone():
+        return
+    connection.executescript(PHASE11_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (11, MIGRATION_011_NAME)
+    )
+    connection.execute("PRAGMA user_version = 11")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -379,7 +391,7 @@ def initialize_database(
     version = current_schema_version(database_path)
     if version > SCHEMA_VERSION:
         raise MigrationError(f"database schema {version} is newer than supported {SCHEMA_VERSION}")
-    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9} and existed and auto_backup:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10} and existed and auto_backup:
         create_verified_backup(database_path, backup_dir or database_path.parent / "backups")
     with database_connection(
         database_path, busy_timeout_ms=busy_timeout_ms, wal_enabled=wal_enabled
@@ -397,6 +409,7 @@ def initialize_database(
             _apply_v8(connection)
             _apply_v9(connection)
             _apply_v10(connection)
+            _apply_v11(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -416,7 +429,7 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
     if version == SCHEMA_VERSION:
         verification = verify_database(path)
         return version, None, verification.integrity_check
-    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9}:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}:
         try:
             verify_database(path)
         except Exception as exc:

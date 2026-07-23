@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import DashboardLayout from './components/DashboardLayout.jsx'
+import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
@@ -29,5 +30,6 @@ export default function App() {
   if (active === 'Tokenizer') page = <TokenizerPage />
   if (active === 'Core Model') page = <CoreModelPage />
   if (active === 'Training') page = <TrainingPage />
+  if (active === 'Base Training') page = <BaseTrainingPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

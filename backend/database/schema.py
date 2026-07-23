@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -1339,5 +1339,167 @@ CREATE TRIGGER IF NOT EXISTS training_run_comparisons_immutable_update BEFORE UP
 CREATE TRIGGER IF NOT EXISTS training_run_comparisons_immutable_delete BEFORE DELETE ON training_run_comparisons BEGIN SELECT RAISE(ABORT, 'run comparisons are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS checkpoint_retention_actions_immutable_update BEFORE UPDATE ON checkpoint_retention_actions BEGIN SELECT RAISE(ABORT, 'retention actions are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS checkpoint_retention_actions_immutable_delete BEFORE DELETE ON checkpoint_retention_actions BEGIN SELECT RAISE(ABORT, 'retention actions are append-only'); END;
+"""
+
+MIGRATION_011_NAME = "011_phase11_base_pretraining_evaluation"
+
+PHASE11_SCHEMA = """
+CREATE TABLE IF NOT EXISTS base_training_experiments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    objective TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','profiled','tokenizer_evaluated','ready','running','completed','archived')),
+    dataset_version_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER,
+    core_model_version_id INTEGER,
+    initialization_seed INTEGER NOT NULL DEFAULT 42,
+    sampling_seed INTEGER NOT NULL DEFAULT 42,
+    tokenizer_decision TEXT NOT NULL DEFAULT 'not_evaluated' CHECK (tokenizer_decision IN ('not_evaluated','reuse_existing_tokenizer','train_new_tokenizer_version','blocked_tokenizer_unsuitable')),
+    tokenizer_evaluation_json TEXT NOT NULL DEFAULT '{}',
+    training_configuration_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_configuration_json TEXT NOT NULL DEFAULT '{}',
+    resource_limits_json TEXT NOT NULL DEFAULT '{}',
+    latest_profile_public_id TEXT,
+    latest_candidate_selection_public_id TEXT,
+    latest_manifest_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS base_training_experiment_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    base_training_experiment_id INTEGER NOT NULL,
+    pretraining_job_id INTEGER,
+    run_label TEXT NOT NULL,
+    run_index INTEGER NOT NULL CHECK (run_index > 0),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','queued','running','completed','completed_with_warnings','failed','cancelled')),
+    config_diff_json TEXT NOT NULL DEFAULT '{}',
+    test_evaluated INTEGER NOT NULL DEFAULT 0 CHECK (test_evaluated IN (0,1)),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_training_experiment_id) REFERENCES base_training_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE SET NULL,
+    UNIQUE(base_training_experiment_id, run_index)
+);
+CREATE TABLE IF NOT EXISTS base_training_dataset_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    base_training_experiment_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    total_records INTEGER NOT NULL DEFAULT 0,
+    approved_records INTEGER NOT NULL DEFAULT 0,
+    train_count INTEGER NOT NULL DEFAULT 0,
+    validation_count INTEGER NOT NULL DEFAULT 0,
+    test_count INTEGER NOT NULL DEFAULT 0,
+    total_characters INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    unique_token_count INTEGER NOT NULL DEFAULT 0,
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    record_type_distribution_json TEXT NOT NULL DEFAULT '{}',
+    source_distribution_json TEXT NOT NULL DEFAULT '{}',
+    licence_distribution_json TEXT NOT NULL DEFAULT '{}',
+    average_record_length REAL NOT NULL DEFAULT 0,
+    median_record_length REAL NOT NULL DEFAULT 0,
+    maximum_record_length INTEGER NOT NULL DEFAULT 0,
+    duplicate_rate REAL NOT NULL DEFAULT 0,
+    near_duplicate_rate REAL NOT NULL DEFAULT 0,
+    zero_token_rate REAL NOT NULL DEFAULT 0,
+    oversized_record_rate REAL NOT NULL DEFAULT 0,
+    validation_representativeness_json TEXT NOT NULL DEFAULT '{}',
+    test_representativeness_json TEXT NOT NULL DEFAULT '{}',
+    tamil_script_coverage REAL NOT NULL DEFAULT 0,
+    english_latin_coverage REAL NOT NULL DEFAULT 0,
+    tanglish_coverage REAL NOT NULL DEFAULT 0,
+    mixed_script_coverage REAL NOT NULL DEFAULT 0,
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    data_sufficiency_status TEXT NOT NULL DEFAULT 'insufficient' CHECK (data_sufficiency_status IN ('sufficient','limited_experiment','insufficient')),
+    profile_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_training_experiment_id) REFERENCES base_training_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS base_training_language_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_run_id INTEGER NOT NULL,
+    checkpoint_public_id TEXT,
+    split TEXT NOT NULL CHECK (split IN ('train','valid','test')),
+    language TEXT NOT NULL CHECK (language IN ('ta','en','tgl','mixed','overall')),
+    evaluated_records INTEGER NOT NULL DEFAULT 0,
+    evaluated_tokens INTEGER NOT NULL DEFAULT 0,
+    loss REAL,
+    perplexity REAL,
+    unknown_token_rate REAL NOT NULL DEFAULT 0,
+    average_tokens_per_record REAL NOT NULL DEFAULT 0,
+    maximum_tokens_per_record INTEGER NOT NULL DEFAULT 0,
+    long_sequence_rate REAL NOT NULL DEFAULT 0,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_run_id) REFERENCES base_training_experiment_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS base_training_learning_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_run_id INTEGER NOT NULL,
+    check_code TEXT NOT NULL CHECK (check_code IN (
+        'training_loss_improves','validation_loss_finite','test_loss_finite',
+        'no_non_finite_gradients','checkpoint_integrity','dataset_stream_integrity',
+        'language_metrics_complete','generalization_gap_bounded','memorization_risk_bounded',
+        'tokenizer_coverage_adequate','resource_limits_respected'
+    )),
+    status TEXT NOT NULL CHECK (status IN ('pass','warning','fail')),
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_run_id) REFERENCES base_training_experiment_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS base_training_candidate_selections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    base_training_experiment_id INTEGER NOT NULL,
+    selected_run_id INTEGER,
+    selected_checkpoint_public_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('selected_base_candidate','selected_with_warnings','rejected')),
+    generalization_result TEXT NOT NULL CHECK (generalization_result IN ('optimization_success_only','limited_generalization_evidence','not_assessed')),
+    memorization_warning_count INTEGER NOT NULL DEFAULT 0,
+    rationale_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_training_experiment_id) REFERENCES base_training_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (selected_run_id) REFERENCES base_training_experiment_runs(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS base_training_reproducibility_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    base_training_experiment_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (base_training_experiment_id) REFERENCES base_training_experiments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_base_training_experiments_status ON base_training_experiments(status,created_at);
+CREATE INDEX IF NOT EXISTS ix_base_training_experiment_runs_experiment ON base_training_experiment_runs(base_training_experiment_id,run_index);
+CREATE INDEX IF NOT EXISTS ix_base_training_experiment_runs_job ON base_training_experiment_runs(pretraining_job_id);
+CREATE INDEX IF NOT EXISTS ix_base_training_dataset_profiles_experiment ON base_training_dataset_profiles(base_training_experiment_id);
+CREATE INDEX IF NOT EXISTS ix_base_training_language_metrics_run ON base_training_language_metrics(experiment_run_id,split,language);
+CREATE INDEX IF NOT EXISTS ix_base_training_learning_checks_run ON base_training_learning_checks(experiment_run_id,status);
+CREATE INDEX IF NOT EXISTS ix_base_training_candidate_selections_experiment ON base_training_candidate_selections(base_training_experiment_id);
+CREATE INDEX IF NOT EXISTS ix_base_training_reproducibility_manifests_experiment ON base_training_reproducibility_manifests(base_training_experiment_id);
+CREATE TRIGGER IF NOT EXISTS base_training_dataset_profiles_immutable_update BEFORE UPDATE ON base_training_dataset_profiles BEGIN SELECT RAISE(ABORT, 'dataset profiles are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_dataset_profiles_immutable_delete BEFORE DELETE ON base_training_dataset_profiles BEGIN SELECT RAISE(ABORT, 'dataset profiles are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_language_metrics_immutable_update BEFORE UPDATE ON base_training_language_metrics BEGIN SELECT RAISE(ABORT, 'language metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_language_metrics_immutable_delete BEFORE DELETE ON base_training_language_metrics BEGIN SELECT RAISE(ABORT, 'language metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_learning_checks_immutable_update BEFORE UPDATE ON base_training_learning_checks BEGIN SELECT RAISE(ABORT, 'learning checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_learning_checks_immutable_delete BEFORE DELETE ON base_training_learning_checks BEGIN SELECT RAISE(ABORT, 'learning checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_candidate_selections_immutable_update BEFORE UPDATE ON base_training_candidate_selections BEGIN SELECT RAISE(ABORT, 'candidate selections are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_candidate_selections_immutable_delete BEFORE DELETE ON base_training_candidate_selections BEGIN SELECT RAISE(ABORT, 'candidate selections are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_reproducibility_manifests_immutable_update BEFORE UPDATE ON base_training_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'reproducibility manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_training_reproducibility_manifests_immutable_delete BEFORE DELETE ON base_training_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'reproducibility manifests are append-only'); END;
 """
 

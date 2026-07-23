@@ -116,9 +116,44 @@ assessments/issues, and comparisons are all append-only evidence tables. See
 instruction tuning, RAG, quantization, GGUF export, or distributed training
 was added in this phase; the public chatbot remains an unchanged placeholder.
 
+Phase 11 asks a different question than Phase 9/10: not "did training run
+reliably", but "did the model learn anything resembling language patterns
+from representative data":
+
+```text
+Representative dataset version → deterministic dataset profile + warnings
+      → tokenizer suitability decision (reuse / retrain / blocked)
+      → base training experiment → one or more comparable runs
+        (each run = one existing Phase 9 pretraining_jobs row, reused)
+      → per-language (Tamil/English/Tanglish/Mixed/Overall) evaluation
+        against fixed, never-trained-on held-out fixtures
+      → learning checks (11 fixed pass/warning/fail checks)
+      → generalization classification (never stronger than the evidence)
+      → candidate selection (still not_instruction_tuned, not_chat_ready)
+      → reproducibility manifest with a SHA-256 checksum
+```
+
+`BaseTrainingService` (`backend/services/base_training_service.py`) does not
+train anything itself — it builds `PretrainingJobCreate` payloads for the
+existing `PretrainingService` and calls Phase 10's
+`TrainingEvaluationService` for run comparison and training-process quality
+gating. The only new pure-function modules are under
+`core_model/training/`: `dataset_profile.py`, `language_evaluation.py`,
+`learning_checks.py`, and `fixed_eval_fixtures.py`. See
+[base_training_dataset_profile.md](base_training_dataset_profile.md),
+[base_training_experiments.md](base_training_experiments.md),
+[base_training_language_evaluation.md](base_training_language_evaluation.md),
+[base_training_generalization.md](base_training_generalization.md),
+[base_training_candidate_selection.md](base_training_candidate_selection.md),
+and [base_training_reproducibility.md](base_training_reproducibility.md).
+No instruction tuning, chatbot inference, RAG, quantization, GGUF export, or
+distributed training was added in this phase; a base-pretrained candidate
+is never assigned to the public chatbot, which remains the unchanged
+placeholder.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md).
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md); schema v11 (migration `011_phase11_base_pretraining_evaluation`, independent of migration 010) adds base-training experiments, experiment runs, dataset profiles, language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining/checkpoint tables rather than duplicating them — see [database_schema_v11.md](database_schema_v11.md).
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

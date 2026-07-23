@@ -121,6 +121,19 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_TRAINING_MAX_NON_FINITE_EVENTS` | `0` | Maximum tolerated non-finite loss/gradient events |
 | `BRUD_TRAINING_REQUIRE_ALL_CHECKPOINTS_VERIFIED` | `true` | Require every checkpoint verified before ready-for-staging |
 | `BRUD_TRAINING_MIN_COVERAGE_RATIO` | `0.5` | Minimum dataset coverage ratio before a coverage warning |
+| `BRUD_BASE_TRAINING_MIN_RECORDS` | `500` | Recommended minimum approved records for a representative-scale experiment |
+| `BRUD_BASE_TRAINING_MIN_TAMIL_RATIO` | `0.30` | Minimum Tamil share before a dataset-profile warning |
+| `BRUD_BASE_TRAINING_MIN_ENGLISH_RATIO` | `0.05` | Minimum English share before a dataset-profile warning |
+| `BRUD_BASE_TRAINING_MIN_TANGLISH_RATIO` | `0.05` | Minimum Tanglish share before a dataset-profile warning |
+| `BRUD_BASE_TRAINING_MAX_DUPLICATE_RATIO` | `0.15` | Maximum duplicate/near-duplicate rate before a warning |
+| `BRUD_BASE_TRAINING_MIN_VALIDATION_RECORDS` | `20` | Minimum validation-split records before a tiny-split warning |
+| `BRUD_BASE_TRAINING_MIN_TEST_RECORDS` | `20` | Minimum test-split records before test evaluation is marked unreliable |
+| `BRUD_BASE_TRAINING_MIN_TOKEN_BUDGET` | `50000` | Minimum processed-token budget for a base-training run |
+| `BRUD_BASE_TRAINING_MAX_TOKEN_BUDGET` | `500000` | Maximum processed-token budget for a base-training run |
+| `BRUD_BASE_TRAINING_GENERALIZATION_MAX_GAP` | `3.0` | Maximum validation-minus-training loss gap before a generalization warning |
+| `BRUD_BASE_TRAINING_MEMORIZATION_MAX_GAP` | `4.0` | Gap threshold (with near-zero training loss) that triggers a memorization warning |
+| `BRUD_BASE_TRAINING_TOKENIZER_MAX_UNKNOWN_RATE` | `0.05` | Maximum unknown-token rate before tokenizer suitability is downgraded |
+| `BRUD_BASE_TRAINING_TOKENIZER_MIN_ROUND_TRIP` | `0.95` | Minimum round-trip success rate before a tokenizer is blocked as unsuitable |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 

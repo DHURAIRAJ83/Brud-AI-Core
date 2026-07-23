@@ -460,6 +460,53 @@ class TokenizerService:
                 connection.execute("SELECT * FROM tokenizer_evaluations WHERE id=?", (eval_row["id"],)).fetchone()
             )
 
+    def evaluate_suitability(
+        self, tokenizer_public_id: str, dataset_version_public_id: str
+    ) -> dict[str, Any]:
+        """Evaluate a registered tokenizer against an arbitrary dataset version.
+
+        Used by Phase 11 base-training experiments to decide whether to reuse
+        the current tokenizer, train a new version, or block on unsuitability.
+        Reuses the same per-language metric computation as ``evaluate()``
+        rather than duplicating it, but does not persist a
+        ``tokenizer_evaluations`` row (that table is scoped to the tokenizer's
+        own training dataset).
+        """
+
+        with self.repository.transaction() as connection:
+            version = self.repository.version(connection, tokenizer_public_id)
+            processor = self._processor(version)
+            dataset = connection.execute(
+                "SELECT id FROM dataset_versions WHERE public_id=?", (dataset_version_public_id,)
+            ).fetchone()
+            if not dataset:
+                raise ValidationError("dataset version not found")
+            rows = self._dataset_rows(connection, dataset["id"])
+            metrics, summary = self._evaluate_rows(processor, rows)
+            token_frequency: dict[int, int] = {}
+            for row in rows:
+                for text in self._record_fields(row):
+                    if not text:
+                        continue
+                    for token_id in processor.encode(text, out_type=int):
+                        token_frequency[token_id] = token_frequency.get(token_id, 0) + 1
+            vocabulary_size = processor.vocab_size()
+            vocabulary_utilization = len(token_frequency) / vocabulary_size if vocabulary_size else 0.0
+            top_token_share = 0.0
+            if token_frequency:
+                total_occurrences = sum(token_frequency.values())
+                top_token_share = max(token_frequency.values()) / total_occurrences
+        return {
+            "tokenizer_version_public_id": version["public_id"],
+            "dataset_version_public_id": dataset_version_public_id,
+            "vocabulary_size": vocabulary_size,
+            "vocabulary_utilization": vocabulary_utilization,
+            "token_frequency_concentration": top_token_share,
+            "record_count": len(rows),
+            "metrics": metrics,
+            "summary": summary,
+        }
+
     def encode(self, public_id: str, text: str) -> dict[str, Any]:
         with self.repository.transaction() as connection:
             version = self.repository.version(connection, public_id)

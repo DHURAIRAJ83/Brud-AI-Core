@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from backend.api.routes import (
     admin,
     auth,
+    base_training,
     chat,
     core_models,
     datasets,
@@ -30,3 +31,4 @@ api_router.include_router(tokenizers.router)
 api_router.include_router(core_models.router)
 api_router.include_router(pretraining.router)
 api_router.include_router(training_reliability.router)
+api_router.include_router(base_training.router)

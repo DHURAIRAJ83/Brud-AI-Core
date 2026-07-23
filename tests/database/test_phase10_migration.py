@@ -36,14 +36,14 @@ PHASE10_TABLES = {
 def test_fresh_database_reaches_schema_10(tmp_path: Path) -> None:
     database = tmp_path / "fresh.db"
     initialize_database(database)
-    assert current_schema_version(database) == SCHEMA_VERSION == 10
+    assert current_schema_version(database) == SCHEMA_VERSION
     with database_connection(database) as connection:
         tables = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         assert PHASE10_TABLES <= tables
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 10
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
@@ -107,7 +107,7 @@ def test_schema_9_upgrades_to_10(tmp_path: Path) -> None:
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
-    assert version == SCHEMA_VERSION == 10
+    assert version == SCHEMA_VERSION
     assert backup is not None and backup.path.is_file()
     assert sha256_file(backup.path) == backup.backup_checksum
     assert integrity == "ok"
@@ -161,7 +161,7 @@ def test_schema_9_upgrades_to_10(tmp_path: Path) -> None:
 
 
 def test_schema_10_upgrade_is_a_no_op(tmp_path: Path) -> None:
-    database = tmp_path / "already_10.db"
+    database = tmp_path / "already_current.db"
     initialize_database(database)
     settings = Settings(
         database_path=database,
@@ -171,7 +171,7 @@ def test_schema_10_upgrade_is_a_no_op(tmp_path: Path) -> None:
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
-    assert version == 10
+    assert version == SCHEMA_VERSION
     assert backup is None
     assert integrity == "ok"
     assert not (tmp_path / "backups").exists() or not list((tmp_path / "backups").iterdir())

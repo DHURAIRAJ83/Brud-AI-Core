@@ -34,3 +34,14 @@ retention. New services: `backend/services/pretraining_reliability_service.py`
 `backend/services/training_evaluation_service.py` (coverage, streams,
 summary, quality, comparisons, retention) — routed from
 `backend/api/routes/training_reliability.py`.
+
+Phase 11 (`backend/services/base_training_service.py`) sits one layer above
+without adding a second trainer: `create_run`/`queue_run` build a
+`PretrainingJobCreate` and call the same `PretrainingService.create_job()` /
+`validate_job()` / `queue_job()`, and candidate selection calls the same
+`PretrainingService.promote()`. What Phase 11 adds is evaluation, not
+execution — per-language loss/perplexity against fixed held-out fixtures,
+11 learning-evidence checks, and an honest generalization classification.
+See [base_training_experiments.md](base_training_experiments.md),
+[base_training_language_evaluation.md](base_training_language_evaluation.md),
+and [base_training_generalization.md](base_training_generalization.md).

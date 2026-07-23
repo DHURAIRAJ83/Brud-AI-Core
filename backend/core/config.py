@@ -418,6 +418,45 @@ class Settings(BaseSettings):
     training_min_coverage_ratio: float = Field(
         default=0.5, ge=0, le=1, validation_alias="BRUD_TRAINING_MIN_COVERAGE_RATIO"
     )
+    base_training_min_records: int = Field(
+        default=500, ge=1, validation_alias="BRUD_BASE_TRAINING_MIN_RECORDS"
+    )
+    base_training_min_tamil_ratio: float = Field(
+        default=0.30, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_MIN_TAMIL_RATIO"
+    )
+    base_training_min_english_ratio: float = Field(
+        default=0.05, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_MIN_ENGLISH_RATIO"
+    )
+    base_training_min_tanglish_ratio: float = Field(
+        default=0.05, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_MIN_TANGLISH_RATIO"
+    )
+    base_training_max_duplicate_ratio: float = Field(
+        default=0.15, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_MAX_DUPLICATE_RATIO"
+    )
+    base_training_min_validation_records: int = Field(
+        default=20, ge=1, validation_alias="BRUD_BASE_TRAINING_MIN_VALIDATION_RECORDS"
+    )
+    base_training_min_test_records: int = Field(
+        default=20, ge=1, validation_alias="BRUD_BASE_TRAINING_MIN_TEST_RECORDS"
+    )
+    base_training_min_token_budget: int = Field(
+        default=50_000, ge=1, validation_alias="BRUD_BASE_TRAINING_MIN_TOKEN_BUDGET"
+    )
+    base_training_max_token_budget: int = Field(
+        default=500_000, ge=1, validation_alias="BRUD_BASE_TRAINING_MAX_TOKEN_BUDGET"
+    )
+    base_training_generalization_max_gap: float = Field(
+        default=3.0, ge=0, validation_alias="BRUD_BASE_TRAINING_GENERALIZATION_MAX_GAP"
+    )
+    base_training_memorization_max_gap: float = Field(
+        default=4.0, ge=0, validation_alias="BRUD_BASE_TRAINING_MEMORIZATION_MAX_GAP"
+    )
+    base_training_tokenizer_max_unknown_rate: float = Field(
+        default=0.05, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_TOKENIZER_MAX_UNKNOWN_RATE"
+    )
+    base_training_tokenizer_min_round_trip: float = Field(
+        default=0.95, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_TOKENIZER_MIN_ROUND_TRIP"
+    )
 
     @field_validator("log_level")
     @classmethod

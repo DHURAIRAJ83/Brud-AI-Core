@@ -1,6 +1,6 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 9 added bounded CPU base-pretraining infrastructure for Brud Core; Phase 10 adds training reliability, crash recovery, dataset coverage, and quality gating on top of it. Neither phase adds instruction tuning or chatbot inference.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 9 added bounded CPU base-pretraining infrastructure for Brud Core; Phase 10 adds training reliability, crash recovery, dataset coverage, and quality gating on top of it; Phase 11 adds representative multilingual base-pretraining experiments and honest learning evaluation (dataset profiling, tokenizer suitability, per-language metrics, generalization/memorization checks, candidate selection, reproducibility manifests) on top of the same worker and services. No phase adds instruction tuning or chatbot inference.
 
 ## Products
 
@@ -90,3 +90,7 @@ Schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, job 
 ## Phase 10 status
 
 Schema v10 adds worker heartbeats, lease-generation fencing, verified recovery, dataset coverage, stream manifests, run summaries, training-process quality gates, and checkpoint/run comparisons — all on top of the existing Phase 9 worker and service, with no second training loop. A resumed job is never restarted from an unverified checkpoint. Promotion is blocked by any integrity issue and requires a comment to override a warning-level one. See [docs/phase_10_report.md](docs/phase_10_report.md) and [docs/architecture.md](docs/architecture.md).
+
+## Phase 11 status
+
+Schema v11 adds base-training experiments, experiment runs, dataset profiles, per-language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining tables — no second trainer, no second quality gate. Phase 11 asks whether a run shows genuine evidence of learning, not just decreasing training loss: it profiles the representative dataset, decides tokenizer suitability, evaluates completed runs per language (Tamil/English/Tanglish/Mixed/Overall) against fixed held-out fixtures that are never trained on, classifies generalization honestly (`not_assessed` / `optimization_success_only` / `limited_generalization_evidence`), and only then selects a candidate — which remains `not_instruction_tuned` and `not_chat_ready`, and is never assigned to the public chatbot. See [docs/phase_11_report.md](docs/phase_11_report.md) and [docs/architecture.md](docs/architecture.md).

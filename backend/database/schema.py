@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -1501,5 +1501,238 @@ CREATE TRIGGER IF NOT EXISTS base_training_candidate_selections_immutable_update
 CREATE TRIGGER IF NOT EXISTS base_training_candidate_selections_immutable_delete BEFORE DELETE ON base_training_candidate_selections BEGIN SELECT RAISE(ABORT, 'candidate selections are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS base_training_reproducibility_manifests_immutable_update BEFORE UPDATE ON base_training_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'reproducibility manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS base_training_reproducibility_manifests_immutable_delete BEFORE DELETE ON base_training_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'reproducibility manifests are append-only'); END;
+"""
+
+MIGRATION_012_NAME = "012_phase12_instruction_tuning"
+
+PHASE12_SCHEMA = """
+CREATE TABLE IF NOT EXISTS instruction_tuning_experiments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    objective TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','profiled','template_validated','ready','running','completed','completed_with_warnings','failed','archived')),
+    base_core_model_version_id INTEGER NOT NULL,
+    source_base_checkpoint_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    instruction_template_id INTEGER,
+    initialization_seed INTEGER NOT NULL DEFAULT 42,
+    sampling_seed INTEGER NOT NULL DEFAULT 42,
+    training_configuration_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_configuration_json TEXT NOT NULL DEFAULT '{}',
+    resource_limits_json TEXT NOT NULL DEFAULT '{}',
+    latest_profile_public_id TEXT,
+    latest_candidate_public_id TEXT,
+    latest_manifest_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    archived_at TEXT,
+    FOREIGN KEY (base_core_model_version_id) REFERENCES core_model_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_base_checkpoint_id) REFERENCES pretraining_checkpoints(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (instruction_template_id) REFERENCES instruction_format_templates(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS instruction_tuning_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_experiment_id INTEGER NOT NULL,
+    pretraining_job_id INTEGER,
+    instruction_template_id INTEGER,
+    run_label TEXT NOT NULL,
+    run_index INTEGER NOT NULL CHECK (run_index > 0),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','queued','running','completed','completed_with_warnings','failed','cancelled')),
+    config_diff_json TEXT NOT NULL DEFAULT '{}',
+    truncation_policy TEXT NOT NULL DEFAULT 'truncate_prompt_first' CHECK (truncation_policy IN ('reject','truncate_prompt_first','truncate_response_tail')),
+    input_stream_checksum_sha256 TEXT,
+    label_stream_checksum_sha256 TEXT,
+    assistant_target_tokens INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    ignored_tokens INTEGER NOT NULL DEFAULT 0,
+    processed_examples INTEGER NOT NULL DEFAULT 0,
+    test_evaluated INTEGER NOT NULL DEFAULT 0 CHECK (test_evaluated IN (0,1)),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (instruction_tuning_experiment_id) REFERENCES instruction_tuning_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE SET NULL,
+    FOREIGN KEY (instruction_template_id) REFERENCES instruction_format_templates(id) ON DELETE SET NULL,
+    UNIQUE(instruction_tuning_experiment_id, run_index)
+);
+CREATE TABLE IF NOT EXISTS instruction_format_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    template_json TEXT NOT NULL,
+    required_special_tokens_json TEXT NOT NULL DEFAULT '[]',
+    special_token_validation_json TEXT NOT NULL DEFAULT '{}',
+    is_valid INTEGER NOT NULL DEFAULT 0 CHECK (is_valid IN (0,1)),
+    template_checksum_sha256 TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    UNIQUE(name, version)
+);
+CREATE TABLE IF NOT EXISTS instruction_dataset_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_experiment_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    total_records INTEGER NOT NULL DEFAULT 0,
+    eligible_records INTEGER NOT NULL DEFAULT 0,
+    invalid_records INTEGER NOT NULL DEFAULT 0,
+    excluded_records INTEGER NOT NULL DEFAULT 0,
+    train_count INTEGER NOT NULL DEFAULT 0,
+    validation_count INTEGER NOT NULL DEFAULT 0,
+    test_count INTEGER NOT NULL DEFAULT 0,
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    record_type_distribution_json TEXT NOT NULL DEFAULT '{}',
+    source_distribution_json TEXT NOT NULL DEFAULT '{}',
+    licence_distribution_json TEXT NOT NULL DEFAULT '{}',
+    system_prompt_count INTEGER NOT NULL DEFAULT 0,
+    input_field_count INTEGER NOT NULL DEFAULT 0,
+    synthesized_flat_chat_count INTEGER NOT NULL DEFAULT 0,
+    average_prompt_tokens REAL NOT NULL DEFAULT 0,
+    average_response_tokens REAL NOT NULL DEFAULT 0,
+    maximum_prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    maximum_response_tokens INTEGER NOT NULL DEFAULT 0,
+    empty_response_count INTEGER NOT NULL DEFAULT 0,
+    duplicate_prompt_count INTEGER NOT NULL DEFAULT 0,
+    duplicate_response_count INTEGER NOT NULL DEFAULT 0,
+    exact_prompt_response_duplicate_count INTEGER NOT NULL DEFAULT 0,
+    response_language_mismatch_count INTEGER NOT NULL DEFAULT 0,
+    special_token_collision_count INTEGER NOT NULL DEFAULT 0,
+    truncation_risk_count INTEGER NOT NULL DEFAULT 0,
+    maskable_assistant_token_count INTEGER NOT NULL DEFAULT 0,
+    exclusion_reasons_json TEXT NOT NULL DEFAULT '{}',
+    input_stream_checksum_sha256 TEXT NOT NULL,
+    label_stream_checksum_sha256 TEXT NOT NULL,
+    data_sufficiency_status TEXT NOT NULL DEFAULT 'insufficient' CHECK (data_sufficiency_status IN ('sufficient','limited_instruction_experiment','insufficient')),
+    profile_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instruction_tuning_experiment_id) REFERENCES instruction_tuning_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS instruction_tuning_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_run_id INTEGER NOT NULL,
+    step INTEGER NOT NULL,
+    examples_processed INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    target_tokens INTEGER NOT NULL DEFAULT 0,
+    ignored_tokens INTEGER NOT NULL DEFAULT 0,
+    training_loss REAL,
+    validation_response_loss REAL,
+    learning_rate REAL NOT NULL,
+    gradient_norm REAL,
+    tokens_per_second REAL,
+    step_duration_ms INTEGER NOT NULL DEFAULT 0,
+    process_memory_bytes INTEGER,
+    system_available_memory_bytes INTEGER,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instruction_tuning_run_id) REFERENCES instruction_tuning_runs(id) ON DELETE CASCADE,
+    UNIQUE(instruction_tuning_run_id, step)
+);
+CREATE TABLE IF NOT EXISTS instruction_tuning_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_run_id INTEGER NOT NULL,
+    evaluation_type TEXT NOT NULL CHECK (evaluation_type IN ('validation_response_loss','test_response_loss','language_compliance','leakage_check','memorization_check','bounded_generation_sample')),
+    split TEXT CHECK (split IS NULL OR split IN ('validation','test')),
+    checkpoint_public_id TEXT,
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (instruction_tuning_run_id) REFERENCES instruction_tuning_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS instruction_tuning_evaluation_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_evaluation_id INTEGER NOT NULL,
+    language TEXT NOT NULL CHECK (language IN ('ta','en','tgl','mixed','overall')),
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instruction_tuning_evaluation_id) REFERENCES instruction_tuning_evaluations(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS instruction_learning_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_run_id INTEGER NOT NULL,
+    check_code TEXT NOT NULL CHECK (check_code IN (
+        'response_only_masking_verified','training_loss_improves','validation_response_loss_finite',
+        'language_metrics_complete','instruction_format_compliance','role_token_leakage_bounded',
+        'prompt_leakage_bounded','repetition_bounded','memorization_risk_bounded',
+        'checkpoint_integrity','base_model_lineage_complete','resource_limits_respected'
+    )),
+    status TEXT NOT NULL CHECK (status IN ('pass','warning','fail')),
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instruction_tuning_run_id) REFERENCES instruction_tuning_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS instruction_tuning_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_experiment_id INTEGER NOT NULL,
+    selected_run_id INTEGER,
+    selected_checkpoint_public_id TEXT,
+    status TEXT NOT NULL CHECK (status IN ('instruction_tuned_candidate','instruction_tuned_with_warnings','rejected')),
+    role_leakage_result TEXT NOT NULL DEFAULT 'not_assessed',
+    memorization_warning_count INTEGER NOT NULL DEFAULT 0,
+    base_checkpoint_checksum_before TEXT,
+    base_checkpoint_checksum_after TEXT,
+    rationale_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instruction_tuning_experiment_id) REFERENCES instruction_tuning_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (selected_run_id) REFERENCES instruction_tuning_runs(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS instruction_reproducibility_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    instruction_tuning_experiment_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (instruction_tuning_experiment_id) REFERENCES instruction_tuning_experiments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_experiments_status ON instruction_tuning_experiments(status,created_at);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_runs_experiment ON instruction_tuning_runs(instruction_tuning_experiment_id,run_index);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_runs_job ON instruction_tuning_runs(pretraining_job_id);
+CREATE INDEX IF NOT EXISTS ix_instruction_format_templates_tokenizer ON instruction_format_templates(tokenizer_version_id);
+CREATE INDEX IF NOT EXISTS ix_instruction_dataset_profiles_experiment ON instruction_dataset_profiles(instruction_tuning_experiment_id);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_metrics_run ON instruction_tuning_metrics(instruction_tuning_run_id,step);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_evaluations_run ON instruction_tuning_evaluations(instruction_tuning_run_id,evaluation_type);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_evaluation_results_eval ON instruction_tuning_evaluation_results(instruction_tuning_evaluation_id,language);
+CREATE INDEX IF NOT EXISTS ix_instruction_learning_checks_run ON instruction_learning_checks(instruction_tuning_run_id,status);
+CREATE INDEX IF NOT EXISTS ix_instruction_tuning_candidates_experiment ON instruction_tuning_candidates(instruction_tuning_experiment_id);
+CREATE INDEX IF NOT EXISTS ix_instruction_reproducibility_manifests_experiment ON instruction_reproducibility_manifests(instruction_tuning_experiment_id);
+CREATE TRIGGER IF NOT EXISTS instruction_format_templates_immutable_update BEFORE UPDATE ON instruction_format_templates BEGIN SELECT RAISE(ABORT, 'instruction format templates are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_format_templates_immutable_delete BEFORE DELETE ON instruction_format_templates BEGIN SELECT RAISE(ABORT, 'instruction format templates are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_dataset_profiles_immutable_update BEFORE UPDATE ON instruction_dataset_profiles BEGIN SELECT RAISE(ABORT, 'instruction dataset profiles are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_dataset_profiles_immutable_delete BEFORE DELETE ON instruction_dataset_profiles BEGIN SELECT RAISE(ABORT, 'instruction dataset profiles are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_metrics_immutable_update BEFORE UPDATE ON instruction_tuning_metrics BEGIN SELECT RAISE(ABORT, 'instruction tuning metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_metrics_immutable_delete BEFORE DELETE ON instruction_tuning_metrics BEGIN SELECT RAISE(ABORT, 'instruction tuning metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_evaluations_immutable_update BEFORE UPDATE ON instruction_tuning_evaluations BEGIN SELECT RAISE(ABORT, 'instruction tuning evaluations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_evaluations_immutable_delete BEFORE DELETE ON instruction_tuning_evaluations BEGIN SELECT RAISE(ABORT, 'instruction tuning evaluations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_evaluation_results_immutable_update BEFORE UPDATE ON instruction_tuning_evaluation_results BEGIN SELECT RAISE(ABORT, 'instruction tuning evaluation results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_evaluation_results_immutable_delete BEFORE DELETE ON instruction_tuning_evaluation_results BEGIN SELECT RAISE(ABORT, 'instruction tuning evaluation results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_learning_checks_immutable_update BEFORE UPDATE ON instruction_learning_checks BEGIN SELECT RAISE(ABORT, 'instruction learning checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_learning_checks_immutable_delete BEFORE DELETE ON instruction_learning_checks BEGIN SELECT RAISE(ABORT, 'instruction learning checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_candidates_immutable_update BEFORE UPDATE ON instruction_tuning_candidates BEGIN SELECT RAISE(ABORT, 'instruction tuning candidates are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_tuning_candidates_immutable_delete BEFORE DELETE ON instruction_tuning_candidates BEGIN SELECT RAISE(ABORT, 'instruction tuning candidates are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_reproducibility_manifests_immutable_update BEFORE UPDATE ON instruction_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'instruction reproducibility manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS instruction_reproducibility_manifests_immutable_delete BEFORE DELETE ON instruction_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'instruction reproducibility manifests are append-only'); END;
 """
 

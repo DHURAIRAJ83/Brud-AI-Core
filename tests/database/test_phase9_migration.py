@@ -47,7 +47,7 @@ def test_upgrade_v8_to_v9_is_additive_verified_and_backed_up(tmp_path: Path) -> 
         allow_external_storage=True,
     )
     version, backup, integrity = upgrade_database(settings)
-    assert version == SCHEMA_VERSION == 11
+    assert version == SCHEMA_VERSION
     assert backup is not None and backup.path.is_file()
     assert sha256_file(backup.path) == backup.backup_checksum
     assert integrity == "ok"
@@ -90,7 +90,7 @@ def test_fresh_v9_is_idempotent(tmp_path: Path) -> None:
     database = tmp_path / "fresh.db"
     initialize_database(database)
     initialize_database(database)
-    assert current_schema_version(database) == 11
+    assert current_schema_version(database) == SCHEMA_VERSION
     with database_connection(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

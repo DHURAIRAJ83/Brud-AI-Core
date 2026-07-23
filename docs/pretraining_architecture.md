@@ -45,3 +45,20 @@ execution — per-language loss/perplexity against fixed held-out fixtures,
 See [base_training_experiments.md](base_training_experiments.md),
 [base_training_language_evaluation.md](base_training_language_evaluation.md),
 and [base_training_generalization.md](base_training_generalization.md).
+
+Phase 12 (`backend/services/instruction_tuning_service.py`) is the first
+phase to add a genuinely different training loop —
+`core_model.training.trainer.run_instruction_tuning()` — but it is a
+sibling of `run_pretraining()`, not a replacement: identical optimizer,
+scheduler, gradient-accumulation, checkpoint-callback, and pause/cancel
+contract, differing only in consuming precomputed response-only labeled
+examples instead of raw token blocks. Job creation, queueing, checkpoint
+saving, worker leases, and recovery are all the same Phase 9/10 code paths,
+reused via direct composition of `PretrainingService`. The one required
+addition is worker-dispatch isolation: `PretrainingService._claim()` gained
+an additive `require_instruction_tuning` parameter so the base-pretraining
+worker can never claim an instruction-tuning job and vice versa (proven by
+test, not by convention). See
+[instruction_tuning_training.md](instruction_tuning_training.md),
+[instruction_label_masking.md](instruction_label_masking.md), and
+[instruction_candidate_selection.md](instruction_candidate_selection.md).

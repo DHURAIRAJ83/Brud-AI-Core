@@ -4,6 +4,7 @@ import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
+import InstructionTuningPage from './pages/InstructionTuningPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
@@ -31,5 +32,6 @@ export default function App() {
   if (active === 'Core Model') page = <CoreModelPage />
   if (active === 'Training') page = <TrainingPage />
   if (active === 'Base Training') page = <BaseTrainingPage />
+  if (active === 'Instruction Tuning') page = <InstructionTuningPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

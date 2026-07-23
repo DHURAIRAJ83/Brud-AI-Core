@@ -652,7 +652,9 @@ class PretrainingService:
         model.load_state_dict(states["model"])
         return states
 
-    def _claim(self, worker_id: str) -> tuple[sqlite3.Row, int] | None:
+    def _claim(
+        self, worker_id: str, *, require_instruction_tuning: bool = False
+    ) -> tuple[sqlite3.Row, int] | None:
         with self.repository.transaction() as connection:
             stale = connection.execute(
                 """SELECT id, worker_id FROM pretraining_jobs
@@ -674,8 +676,14 @@ class PretrainingService:
                     "queued",
                     dumps_json({"previous_worker_id": (stale_job["worker_id"] or "")[:12]}),
                 )
+            linkage = """EXISTS (
+                SELECT 1 FROM instruction_tuning_runs itr
+                WHERE itr.pretraining_job_id = pretraining_jobs.id
+            )"""
+            ownership_clause = linkage if require_instruction_tuning else f"NOT {linkage}"
             row = connection.execute(
-                """SELECT * FROM pretraining_jobs WHERE status='queued' AND recovery_required=0
+                f"""SELECT * FROM pretraining_jobs WHERE status='queued' AND recovery_required=0
+                AND {ownership_clause}
                 ORDER BY queued_at,id LIMIT 1"""
             ).fetchone()
             if not row:

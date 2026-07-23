@@ -39,3 +39,20 @@ generalization learning checks; a candidate that fails either is
 before or including Phase 11 assigns any model version to the
 `public_chat` assignment key. See
 [base_training_candidate_selection.md](base_training_candidate_selection.md).
+
+## Phase 12 instruction-tuned lineage
+
+Phase 12's `instruction_tuning_service.select_candidate()` promotes into a
+**new** `core_model_versions` row (new lineage; the base model row and its
+checkpoint file are never modified) carrying
+`{"base_pretrained": true, "instruction_tuned": true, "evaluation_required": true,
+"not_public_chat_ready": true, "source_experiment_public_id": ..., "source_base_model_public_id": ...}`,
+`lifecycle_status = "staging"`. Only a base candidate produced by Phase 11
+(`lifecycle_status IN ('staging','active')` and
+`architecture_summary_json.base_pretrained == true`, with a verified
+checkpoint) is eligible as an instruction-tuning source; an already
+instruction-tuned model cannot be selected as a Phase 12 source. Candidate
+status is `instruction_tuned_candidate` or `instruction_tuned_with_warnings`
+(never a plain "selected"), or `rejected`. No phase up to and including
+Phase 12 assigns any model version to the `public_chat` assignment key. See
+[instruction_candidate_selection.md](instruction_candidate_selection.md).

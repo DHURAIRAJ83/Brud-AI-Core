@@ -457,6 +457,48 @@ class Settings(BaseSettings):
     base_training_tokenizer_min_round_trip: float = Field(
         default=0.95, ge=0, le=1, validation_alias="BRUD_BASE_TRAINING_TOKENIZER_MIN_ROUND_TRIP"
     )
+    instruction_tuning_min_records: int = Field(
+        default=1000, ge=1, validation_alias="BRUD_INSTRUCTION_TUNING_MIN_RECORDS"
+    )
+    instruction_tuning_limited_experiment_floor: int = Field(
+        default=200, ge=1, validation_alias="BRUD_INSTRUCTION_TUNING_LIMITED_EXPERIMENT_FLOOR"
+    )
+    instruction_tuning_min_validation_records: int = Field(
+        default=10, ge=1, validation_alias="BRUD_INSTRUCTION_TUNING_MIN_VALIDATION_RECORDS"
+    )
+    instruction_tuning_min_test_records: int = Field(
+        default=10, ge=1, validation_alias="BRUD_INSTRUCTION_TUNING_MIN_TEST_RECORDS"
+    )
+    instruction_tuning_max_role_leakage_rate: float = Field(
+        default=0.0, ge=0, le=1, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_ROLE_LEAKAGE_RATE"
+    )
+    instruction_tuning_max_prompt_leakage_rate: float = Field(
+        default=0.1, ge=0, le=1, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_PROMPT_LEAKAGE_RATE"
+    )
+    instruction_tuning_max_repetition_rate: float = Field(
+        default=0.2, ge=0, le=1, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_REPETITION_RATE"
+    )
+    instruction_tuning_max_exact_match_rate: float = Field(
+        default=0.2, ge=0, le=1, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_EXACT_MATCH_RATE"
+    )
+    instruction_tuning_max_duplicate_output_rate: float = Field(
+        default=0.3, ge=0, le=1,
+        validation_alias="BRUD_INSTRUCTION_TUNING_MAX_DUPLICATE_OUTPUT_RATE",
+    )
+    instruction_tuning_max_longest_span_ratio: float = Field(
+        default=0.8, ge=0, le=1, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_LONGEST_SPAN_RATIO"
+    )
+    instruction_tuning_max_train_validation_gap: float = Field(
+        default=4.0, ge=0, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_TRAIN_VALIDATION_GAP"
+    )
+    instruction_tuning_generation_max_new_tokens: int = Field(
+        default=32, ge=1, le=256,
+        validation_alias="BRUD_INSTRUCTION_TUNING_GENERATION_MAX_NEW_TOKENS",
+    )
+    instruction_tuning_generation_timeout_seconds: float = Field(
+        default=5.0, ge=0.1, le=60.0,
+        validation_alias="BRUD_INSTRUCTION_TUNING_GENERATION_TIMEOUT_SECONDS",
+    )
 
     @field_validator("log_level")
     @classmethod

@@ -491,6 +491,13 @@ class TokenizerService:
             "decoded_text": processor.decode(ids),
         }
 
+    def processor_for_version(self, public_id: str):
+        """Return a checksum-verified SentencePiece processor for a registered version."""
+
+        with self.repository.transaction() as connection:
+            version = self.repository.version(connection, public_id)
+            return self._processor(version)
+
     def compare(self, left_id: str, right_id: str, text: str) -> dict[str, Any]:
         return {"left": self.encode(left_id, text), "right": self.encode(right_id, text)}
 

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from backend import __version__
+from backend import PROJECT_PHASE, __version__
 from backend.api.dependencies import SettingsDependency
 from backend.database.connection import database_is_connected
 
@@ -23,4 +23,4 @@ async def health(settings: SettingsDependency) -> dict[str, str]:
 
 @router.get("/version")
 async def version() -> dict[str, str | int]:
-    return {"project": "Brud AI", "version": __version__, "phase": 1}
+    return {"project": "Brud AI", "version": __version__, "phase": PROJECT_PHASE}

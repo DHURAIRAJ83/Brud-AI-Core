@@ -1,9 +1,11 @@
-"""Phase 1 chatbot placeholder endpoint."""
+"""Chatbot placeholder endpoint (no trained model is wired up yet)."""
 
 from typing import Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+
+from backend import PROJECT_PHASE
 
 router = APIRouter(tags=["chat"])
 
@@ -28,5 +30,5 @@ async def chat(_: ChatRequest) -> ChatResponse:
         reply="Brud AI chatbot foundation is working.",
         detected_language="unknown",
         model="placeholder",
-        phase=1,
+        phase=PROJECT_PHASE,
     )

@@ -1,20 +1,91 @@
+import hashlib
 import json
 import time
 from threading import Thread
 
 import pytest
+import sentencepiece as spm
 from fastapi import FastAPI
 
+from backend.core.json_utils import dumps_json
 from backend.database.connection import database_connection
 from backend.database.repositories.pretraining import PretrainingRepository
+from backend.models.tokenizers import SPECIAL_TOKENS
 from backend.services.pretraining_service import PretrainingService
 from tests.backend.test_dataset_api import authenticated_client
 
 pytestmark = pytest.mark.anyio
 
 
+def _sha256(path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _create_tokenizer_artifact(app: FastAPI) -> tuple[int, str, str, str]:
+    settings = app.state.settings
+    corpus = settings.resolved_tokenizer_corpus_dir / "phase9-test-corpus.txt"
+    corpus.parent.mkdir(parents=True, exist_ok=True)
+    corpus.write_text(
+        "\n".join(
+            [
+                "வணக்கம் hello tanglish mixed",
+                "Say hello வணக்கம் hello",
+                "தமிழ் English vanakkam",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    temp_prefix = settings.resolved_tokenizer_dir / "phase9-test-tokenizer"
+    temp_prefix.parent.mkdir(parents=True, exist_ok=True)
+    spm.SentencePieceTrainer.train(
+        input=str(corpus),
+        model_prefix=str(temp_prefix),
+        model_type="bpe",
+        vocab_size=64,
+        character_coverage=0.9995,
+        hard_vocab_limit=False,
+        pad_id=0,
+        unk_id=1,
+        bos_id=2,
+        eos_id=3,
+        pad_piece="<pad>",
+        unk_piece="<unk>",
+        bos_piece="<bos>",
+        eos_piece="<eos>",
+        user_defined_symbols=",".join(SPECIAL_TOKENS[4:]),
+    )
+    artifact_dir = settings.resolved_tokenizer_dir / "versions" / "tok" / "v1"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    model = artifact_dir / "tokenizer.model"
+    vocab = artifact_dir / "tokenizer.vocab"
+    temp_prefix.with_suffix(".model").replace(model)
+    temp_prefix.with_suffix(".vocab").replace(vocab)
+    processor = spm.SentencePieceProcessor(model_file=str(model))
+    manifest = {
+        "files": ["tokenizer.model", "tokenizer.vocab", "artifact_manifest.json"],
+        "model_checksum_sha256": _sha256(model),
+        "vocabulary_checksum_sha256": _sha256(vocab),
+        "special_tokens": SPECIAL_TOKENS,
+    }
+    (artifact_dir / "artifact_manifest.json").write_text(dumps_json(manifest), encoding="utf-8")
+    return (
+        processor.vocab_size(),
+        manifest["model_checksum_sha256"],
+        manifest["vocabulary_checksum_sha256"],
+        dumps_json(manifest),
+    )
+
+
 def _fixture_refs(app: FastAPI, dataset_status: str = "ready") -> dict[str, str]:
     database = app.state.settings.resolved_database_path
+    vocab_size, model_checksum, vocab_checksum, artifact_manifest_json = _create_tokenizer_artifact(
+        app
+    )
     with database_connection(database) as connection:
         connection.execute(
             """INSERT INTO dataset_sources(public_id,name,source_type,status,language,
@@ -84,23 +155,25 @@ def _fixture_refs(app: FastAPI, dataset_status: str = "ready") -> dict[str, str]
             """INSERT INTO tokenizer_versions(public_id,tokenizer_family_id,version,
             lifecycle_status,algorithm,vocabulary_size,character_coverage,
             normalization_rule_name,model_type,dataset_version_id,corpus_checksum_sha256,
-            model_checksum_sha256,vocabulary_checksum_sha256,special_tokens_json)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            model_checksum_sha256,vocabulary_checksum_sha256,artifact_manifest_json,
+            special_tokens_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 "00000000-0000-0000-0000-000000009032",
                 family_id,
                 "v1",
                 "active",
                 "bpe",
-                64,
+                vocab_size,
                 0.9995,
                 "nmt_nfkc",
                 "sentencepiece",
                 dataset_id,
                 "a" * 64,
-                "b" * 64,
-                "c" * 64,
-                "[]",
+                model_checksum,
+                vocab_checksum,
+                artifact_manifest_json,
+                dumps_json(SPECIAL_TOKENS),
             ),
         )
         tokenizer_id = connection.execute("SELECT id FROM tokenizer_versions").fetchone()[0]
@@ -123,7 +196,7 @@ def _fixture_refs(app: FastAPI, dataset_status: str = "ready") -> dict[str, str]
                 "00000000-0000-0000-0000-000000009042",
                 "micro",
                 "v1",
-                64,
+                vocab_size,
                 16,
                 16,
                 32,
@@ -168,8 +241,8 @@ def _fixture_refs(app: FastAPI, dataset_status: str = "ready") -> dict[str, str]
                 config_id,
                 tokenizer_id,
                 "brud_decoder_transformer",
-                1000,
-                1000,
+                1000 + vocab_size,
+                1000 + vocab_size,
                 1000000,
                 2000000,
                 123,

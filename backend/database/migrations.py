@@ -33,7 +33,6 @@ from backend.database.schema import (
     PHASE7_SCHEMA,
     PHASE8_SCHEMA,
     PHASE9_SCHEMA,
-    PHASE10_TABLES,
     SCHEMA_VERSION,
 )
 
@@ -305,22 +304,10 @@ def _apply_v9(connection: sqlite3.Connection) -> None:
     if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (9,)).fetchone():
         return
     connection.executescript(PHASE9_SCHEMA)
-    for table_name, columns in PHASE10_TABLES.items():
-        _column = _has_column(connection, table_name, "public_id")
-        if not _column:
-            connection.execute(
-                f'CREATE TABLE IF NOT EXISTS "{table_name}" (id INTEGER PRIMARY KEY AUTOINCREMENT, public_id TEXT NOT NULL UNIQUE)'
-            )
-            for col_name, col_def in columns:
-                if col_name == "public_id":
-                    continue
-                connection.execute(f'ALTER TABLE "{table_name}" ADD COLUMN "{col_name}" {col_def}')
-    connection.executescript("\n".join(PHASE10_INDEXES))
-    connection.executescript("\n".join(PHASE10_TRIGGERS))
     connection.execute(
-        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (10, "010_phase10_pretraining_reliability")
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (9, MIGRATION_009_NAME)
     )
-    connection.execute("PRAGMA user_version = 10")
+    connection.execute("PRAGMA user_version = 9")
 
 
 def _audit_migration(
@@ -368,7 +355,7 @@ def initialize_database(
     busy_timeout_ms: int = 5000,
     wal_enabled: bool = True,
 ) -> int:
-    """Initialize a fresh database or safely upgrade an existing one to v2."""
+    """Initialize a fresh database or safely upgrade an existing one to the current schema."""
 
     database_path.parent.mkdir(parents=True, exist_ok=True)
     existed = database_path.exists() and database_path.stat().st_size > 0

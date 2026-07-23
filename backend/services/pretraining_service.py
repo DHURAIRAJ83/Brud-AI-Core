@@ -15,11 +15,13 @@ from backend.core.config import Settings
 from backend.core.json_utils import dumps_json, loads_json, redact_secrets
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.pretraining import PretrainingRepository, public_row
+from backend.database.repositories.tokenizers import TokenizerRepository
 from backend.models.pretraining import PretrainingJobCreate, PretrainingJobPatch
+from backend.services.tokenizer_registry import TokenizerService
 from core_model.architecture.config import BrudModelConfig
 from core_model.architecture.model import BrudForCausalLM
 from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
-from core_model.training.dataset_stream import packed_blocks
+from core_model.training.dataset_stream import packed_blocks, token_sequences
 from core_model.training.pretraining_config import from_mapping
 from core_model.training.trainer import run_pretraining
 
@@ -674,41 +676,65 @@ class PretrainingService:
             ).fetchall()
         train, valid = [], []
         for row in rows:
-            text = " ".join(
-                str(row[key] or "")
-                for key in (
-                    "instruction",
-                    "input_text",
-                    "output_text",
-                    "normalized_input",
-                    "content",
-                )
+            target = train if row["split"] == "train" else valid
+            target.append(dict(row))
+        processor = TokenizerService(
+            TokenizerRepository(self.repository.database_path),
+            self.settings,
+        ).processor_for_version(job["tokenizer_version_public_id"])
+        model_config = self._model_config(job)
+        train_sequences, train_counts = token_sequences(train, processor, model_config.eos_token_id)
+        validation_sequences, validation_counts = token_sequences(
+            valid,
+            processor,
+            model_config.eos_token_id,
+        )
+        if not train_sequences:
+            raise ValidationError("training split has no tokenized records")
+        if not validation_sequences:
+            raise ValidationError("validation split has no tokenized records")
+        self._validate_token_ids(
+            train_sequences + validation_sequences, model_config.vocabulary_size
+        )
+        if train_counts["empty"] or validation_counts["empty"]:
+            self._stream_event(
+                job["public_id"],
+                {
+                    "train_empty_fields": train_counts["empty"],
+                    "validation_empty_fields": validation_counts["empty"],
+                },
             )
-            ids = (
-                [2]
-                + [
-                    4 + (ord(ch) % max(1, job["tokenizer_version_id"] + 120))
-                    for ch in text
-                    if ch.strip()
-                ]
-                + [3]
-            )
-            ids = [token % self._model_config(job).vocabulary_size for token in ids]
-            (train if row["split"] == "train" else valid).append(ids)
         return (
             packed_blocks(
-                train,
+                train_sequences,
                 sequence_length=config.sequence_length,
-                pad_token_id=0,
+                pad_token_id=model_config.pad_token_id,
                 policy=config.overlength_policy,
             ),
             packed_blocks(
-                valid,
+                validation_sequences,
                 sequence_length=config.sequence_length,
-                pad_token_id=0,
+                pad_token_id=model_config.pad_token_id,
                 policy=config.overlength_policy,
             ),
         )
+
+    def _validate_token_ids(self, sequences: list[list[int]], vocabulary_size: int) -> None:
+        for sequence in sequences:
+            if any(token < 0 or token >= vocabulary_size for token in sequence):
+                raise ValidationError("token id outside core model vocabulary")
+
+    def _stream_event(self, public_id: str, metadata: dict[str, Any]) -> None:
+        with self.repository.transaction() as connection:
+            job = self.repository.job(connection, public_id)
+            self.repository.add_event(
+                connection,
+                job["id"],
+                "token_stream_warning",
+                job["status"],
+                job["status"],
+                dumps_json(metadata),
+            )
 
     def _metric(self, job_id: str, metric: dict[str, Any]) -> None:
         with self.repository.transaction() as connection:

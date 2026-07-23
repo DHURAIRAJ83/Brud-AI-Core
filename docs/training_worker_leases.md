@@ -2,171 +2,70 @@
 
 ## Overview
 
-`worker_heartbeats` provides reliable tracking of active workers and their ownership of pretraining jobs. Workers report heartbeats to claim, renew, and release ownership of running jobs.
+`worker_heartbeats` tracks registered worker processes; `training_worker_leases`
+(a Phase 9 table, extended in Phase 10) tracks which job a worker currently
+owns and its fencing generation. Both are managed entirely by
+`backend/database/repositories/training_reliability.py` and
+`backend/services/pretraining_service.py` — there is no separate heartbeat
+network protocol; a worker is just a process calling
+`PretrainingService.run_one()` in a loop (`backend/training_worker.py`).
 
-## Heartbeat Status Lifecycle
+## Worker heartbeat statuses
 
 ```text
-starting  → worker identifies itself to the service
-idle       → worker is ready but not running any job
-claiming   → worker is validating lease eligibility and parameters
-running    → worker is actively training on a job
-pausing    → worker received pause request, safely completing current step
-recovering → worker recovered a job from an abandoned checkpoint
-stopping   → worker received shutdown request
-stopped    → worker gracefully exited or crashed without recovering
-failed     → worker process terminated unexpectedly
+starting  → registered, not yet polling
+idle      → polling, no job claimed
+claiming  → about to attempt a claim
+running   → actively training a claimed job
+failed    → the last run_one() call raised and the worker released its lease
+stopped   → the worker exited (graceful shutdown, or --once with no work)
 ```
 
-## Lease Fields
+`pausing`, `recovering`, and `stopping` are reserved in the schema's `CHECK`
+constraint for future finer-grained reporting but are not currently emitted —
+this module reports honestly, not speculatively.
 
-```python
-class WorkerHeartbeat:
-    public_id: str
-    worker_id: str                          # Server-generated, safe reference
-    status: str
-    current_job_public_id: str | None
-    hostname_hash: str                      # Safe instance reference
-    process_started_at: datetime
-    last_heartbeat_at: datetime
-    lease_expires_at: datetime
-    shutdown_requested: bool
-    metadata_json: dict
-    created_at: datetime
-    updated_at: datetime
-```
+## Lease generation and fencing
 
-**Key guarantee:** A `worker_id` is **server-generated** and never exposed directly to workers. Workers identify only by `hostname_hash` and lease generation token.
+`pretraining_jobs.lease_generation` is the fencing token, not a separate
+lease table lookup:
 
-## Lease Generation
+1. `PretrainingService._claim()` claims a `queued` job (with
+   `recovery_required=0`) inside one SQLite transaction: it increments
+   `lease_generation`, sets `worker_id`, and sets `lease_expires_at` to
+   `now + BRUD_PRETRAINING_WORKER_LEASE_SECONDS`. The same transaction upserts
+   `training_worker_leases` and `worker_heartbeats` for that worker.
+2. Every metric callback (`PretrainingService._metric`, roughly every
+   `metric_interval_steps`) and every periodic checkpoint
+   (`_save_periodic_checkpoint`, every `checkpoint_interval_steps`) re-checks
+   that `pretraining_jobs.worker_id` and `lease_generation` still match what
+   the worker was granted, and renews `lease_expires_at`. If they don't match,
+   the call raises `StaleWorkerError` immediately — no further writes happen.
+3. On completion, pause, cancel, or failure, the lease is released
+   (`training_worker_leases.released_at` set, `worker_heartbeats` set to
+   `idle`/`failed`).
 
-Every running job obtains a lease with:
+## Stale-lease detection
 
-* **Lease generation:** Monotonically incrementing integer for fencing
-* **Lease expires after:** Configurable interval (e.g., 30 seconds)
-* **Heartbeat interval:** Configurable minimum (e.g., 3 seconds)
+Every call to `_claim()` first sweeps for `running` jobs whose
+`lease_expires_at` has passed: it flips them to `status='queued',
+recovery_required=1` and bumps `lease_generation` again (invalidating the
+crashed worker's fencing token immediately), and records a
+`stale_lease_detected` job event. A swept job cannot be claimed normally again
+— it must go through `WorkerRecoveryService.recover()` first, which validates
+its latest checkpoint and clears `recovery_required`.
 
-When a job is claimed:
+## No PID or hostname exposure
 
-1. Repository generates the next lease generation
-2. Repository records the job owner ID and lease expiry
-3. Repository returns the generation to the caller
-4. Caller must return the generation on every heartbeat
+`worker_heartbeats` has no PID or hostname column. Workers are identified only
+by a server-issued `public_id` and a caller-supplied `worker_id` (name), and
+the admin API/UI only ever shows `worker_id`/`public_id`, current job public
+ID, lease generation, and heartbeat/expiry timestamps.
 
-## Heartbeat Protocol
+## Ungraceful termination
 
-**Worker → Backend (heartbeat):**
-```python
-{
-    "status": "running",
-    "current_job_public_id": "<job_id>",
-    "lease_generation": 7,
-    "hostname_hash": "safe_ref",
-}
-```
-
-**Backend → Worker (response):**
-```python
-{
-    "valid": true,
-    "next_heartbeat_at": "2026-07-22T10:15:37Z"
-}
-```
-
-If the generation is stale or the job lease has expired:
-
-```python
-{
-    "valid": false,
-    "error": "stale_generation" | "lease_expired" | "not_owner"
-}
-```
-
-**Backend → Worker (shutdown):**
-```python
-{
-    "action": "shutdown" | "pause",
-    "grace_period_seconds": N
-}
-```
-
-## Lease Validation in Phase 9
-
-Phase 9 already includes some lease validation in `pretraining_service._claim()`:
-
-1. Job status check (must be `queued`)
-2. Status mutation to `running`
-3. Worker ID assignment
-4. Event logging
-
-This is **sufficient for Phase 9** but Phase 10 extends it with:
-
-1. Heartbeat table for monitoring
-2. Lease generation fencing
-3. Stale worker detection
-4. Lease expiry automatic job recovery
-5. Best-effort graceful shutdown
-
-## Stale Worker Detection
-
-The heartbeat manager periodically queries heartbeats and identifies stale entries:
-
-```python
-def cleanup_stale_heartbeats():
-    now = time.time()
-    stale_heartbeats = db.execute("""
-        SELECT *
-        FROM worker_heartbeats
-        WHERE last_heartbeat_at < now - HEARTBEAT_TIMEOUT
-        AND status NOT IN ('stopped', 'failed')
-    """).fetchall()
-
-    for hb in stale_heartbeats:
-        if hb.current_job_public_id:
-            mark_job_recoverable(hb.current_job_public_id)
-        mark_heartbeat_stale(hb.public_id)
-```
-
-## Automatic Recovery
-
-When a job is marked recoverable:
-
-1. Detect eligible verified checkpoint
-2. Create `training_recovery_attempts` record
-3. Mark start time and source status
-4. Wait for active lease expiry
-5. Allow new worker to claim
-6. Load checkpoint state
-7. Resume training from next uncompleted step
-
-## No Process detail Exposure
-
-Workers **never** send process ID (PID) or full hostnames. They send only:
-
-* Safe instance reference (`hostname_hash`)
-* Server-generated worker ID
-* Lease generation token
-
-The backend logs PID as audit data but never exposes it to the UI or other workers.
-
-## Phase 10 Integration
-
-Phase 10 extends the worker to:
-
-1. **Start** with `status = 'starting'`
-2. **Update** on each heartbeat to `status = 'running'`
-3. **Extend lease** on every heartbeat by regeneration
-4. **Gracefully shut down** on stop signal by transition to `status = 'stopping'`
-5. **Report leak** if shutdown fails by `status = 'failed'`
-6. **Clean up** after graceful exit by `status = 'stopped'`
-
-## Phase 9 Continuity
-
-Phase 9 workers remain compatible with Phase 10 systems by:
-
-1. Returning lease generation on claim
-2. Including lease generation on status updates
-3. Responding to shutdown requests
-4. Logging exit status
-
-Phase 9 code can be evolved in place without breaking existing functionality.
+If a worker process is killed (`SIGKILL`, crash, power loss), nothing updates
+its heartbeat or lease further — the row simply goes stale. This is
+intentional: a frozen `last_heartbeat_at` and an expired `lease_expires_at`
+are exactly the evidence `_claim()`'s stale sweep and
+`GET /api/admin/pretraining/recovery/stale-jobs` need to detect it.

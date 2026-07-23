@@ -14,6 +14,7 @@ from backend.api.routes import (
     pretraining,
     system,
     tokenizers,
+    training_reliability,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -28,3 +29,4 @@ api_router.include_router(datasets.router)
 api_router.include_router(tokenizers.router)
 api_router.include_router(core_models.router)
 api_router.include_router(pretraining.router)
+api_router.include_router(training_reliability.router)

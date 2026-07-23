@@ -7,7 +7,7 @@ export default function Sidebar({ active, open, onSelect, onClose }) {
       <nav aria-label="Admin modules">{menuItems.map((item) => (
         <button className={active === item ? 'active' : ''} key={item} onClick={() => { onSelect(item); onClose() }}>{item}</button>
       ))}</nav>
-      <div className="phase-tag">Phase 9 · Bounded pretraining</div>
+      <div className="phase-tag">Phase 10 · Training reliability</div>
     </aside>
   )
 }

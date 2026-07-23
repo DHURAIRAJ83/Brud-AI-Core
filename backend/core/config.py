@@ -370,6 +370,54 @@ class Settings(BaseSettings):
     pretraining_default_port: int = Field(
         default=8019, ge=1, le=65535, validation_alias="BRUD_PRETRAINING_DEFAULT_PORT"
     )
+    pretraining_keep_periodic: int = Field(
+        default=3, ge=0, le=100, validation_alias="BRUD_PRETRAINING_KEEP_PERIODIC"
+    )
+    pretraining_keep_best: int = Field(
+        default=1, ge=0, le=10, validation_alias="BRUD_PRETRAINING_KEEP_BEST"
+    )
+    pretraining_keep_final: int = Field(
+        default=1, ge=0, le=10, validation_alias="BRUD_PRETRAINING_KEEP_FINAL"
+    )
+    pretraining_keep_pause: int = Field(
+        default=1, ge=0, le=10, validation_alias="BRUD_PRETRAINING_KEEP_PAUSE"
+    )
+    pretraining_retention_dry_run: bool = Field(
+        default=True, validation_alias="BRUD_PRETRAINING_RETENTION_DRY_RUN"
+    )
+    training_quality_ruleset_version: str = Field(
+        default="phase10-v1", validation_alias="BRUD_TRAINING_QUALITY_RULESET_VERSION"
+    )
+    training_min_processed_tokens: int = Field(
+        default=8, ge=0, validation_alias="BRUD_TRAINING_MIN_PROCESSED_TOKENS"
+    )
+    training_min_loss_improvement_ratio: float = Field(
+        default=0.0, ge=0, le=1, validation_alias="BRUD_TRAINING_MIN_LOSS_IMPROVEMENT_RATIO"
+    )
+    training_max_train_validation_gap: float = Field(
+        default=5.0, ge=0, validation_alias="BRUD_TRAINING_MAX_TRAIN_VALIDATION_GAP"
+    )
+    training_max_excluded_record_ratio: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_TRAINING_MAX_EXCLUDED_RECORD_RATIO"
+    )
+    training_min_validation_tokens: int = Field(
+        default=4, ge=0, validation_alias="BRUD_TRAINING_MIN_VALIDATION_TOKENS"
+    )
+    training_require_validation: bool = Field(
+        default=True, validation_alias="BRUD_TRAINING_REQUIRE_VALIDATION"
+    )
+    training_require_resume_check_if_resumed: bool = Field(
+        default=True, validation_alias="BRUD_TRAINING_REQUIRE_RESUME_CHECK_IF_RESUMED"
+    )
+    training_max_non_finite_events: int = Field(
+        default=0, ge=0, validation_alias="BRUD_TRAINING_MAX_NON_FINITE_EVENTS"
+    )
+    training_require_all_checkpoints_verified: bool = Field(
+        default=True, validation_alias="BRUD_TRAINING_REQUIRE_ALL_CHECKPOINTS_VERIFIED"
+    )
+    training_min_coverage_ratio: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_TRAINING_MIN_COVERAGE_RATIO"
+    )
 
     @field_validator("log_level")
     @classmethod

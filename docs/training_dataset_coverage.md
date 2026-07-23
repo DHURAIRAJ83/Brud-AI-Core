@@ -2,98 +2,54 @@
 
 ## Overview
 
-`training_dataset_coverage` provides comprehensive, deterministic reporting of the dataset records actually encoded and packed for training. Coverage is generated at job creation time and at completion time.
+`training_dataset_coverage` (implemented in `core_model/training/coverage.py`,
+persisted via `backend/database/repositories/training_reliability.py`) reports
+exactly what happened to every record in a dataset-version split when it was
+tokenized for a pretraining job. Coverage is generated automatically the first
+time a job's stream is built (`PretrainingService._blocks`), and can also be
+generated on demand — before a job is even queued — via
+`POST /api/admin/pretraining/jobs/{public_id}/coverage`.
 
-## Coverage Dimensions
+## Fields
 
-### Record Counts
+* **total_records** — every record in the split, before any filtering.
+* **eligible_records** — records with at least one non-empty extractable text field.
+* **encoded_records** — eligible records that produced at least one real token sequence.
+* **excluded_records** — `total_records - encoded_records`; every excluded record has a reason in `exclusion_reasons_json`.
+* **zero_token_records** — eligible records whose text tokenized to zero tokens.
+* **oversized_records** — records that produced at least one sequence longer than `sequence_length`.
+* **split_records** — records whose oversized sequence was split into multiple blocks (only under `overlength_policy="split_oversized"`).
+* **dropped_records** — records that contributed zero tokens to the stream (no extractable text, zero-token, or fully dropped as oversized).
+* **total_tokens / usable_tokens / padding_tokens** — token accounting for the split; `padding_tokens` is the padding added to fill the final fixed-length block.
+* **language_distribution_json / record_type_distribution_json / source_type_distribution_json** — per-record counts by `language`, `record_type`, and `source_type`.
+* **exclusion_reasons_json** — counts by reason (`no_extractable_text`, `zero_token_sequence`, `oversized_dropped`).
+* **coverage_ratio** — `usable_tokens / total_tokens`, clamped to `[0, 1]`.
+* **stream_checksum_sha256** — a SHA-256 fingerprint over every produced token sequence's length and token IDs, in record order.
 
-* **total_records** - All records in the dataset version (train + valid)
-* **eligible_records** - Records that passed basic format validation
-* **encoded_records** - Records successfully tokenized
-* **excluded_records** - Records excluded by policy
-* **zero_token_records** - Records that encoded to empty sequences
-* **split_records** - Records assigned to train or validation split
-* **truncated_records** - Records exceeding sequence length limits
+## Determinism
 
-### Token Counts
+Coverage is a pure function of `(records, tokenizer processor, eos_id,
+sequence_length, overlength_policy)` — identical inputs always produce an
+identical `stream_checksum_sha256` and identical counts. There is no shuffling
+or sampling in coverage generation itself.
 
-* **total_tokens** - All tokens in eligible records
-* **usable_tokens** - Tokens used in final packed blocks
-* **padding_tokens** - Padding tokens added to complete blocks
+## Storage model
 
-### Distribution Data
+Every generation appends a new row (`train` and `valid` computed together);
+nothing is overwritten. `GET /api/admin/pretraining/jobs/{public_id}/coverage`
+returns the latest row per split. `pretraining_jobs.latest_coverage_public_id`
+points at the most recent `train`-split coverage row.
 
-**Language token distribution** reports proportions of Tamil, English, Tanglish, and mixed-language tokens within usable tokens.
+## No silent exclusion
 
-**Record-type distribution** reports counts by logical record category (pretrain, instruction, chat, translation, safety, preference, etc.).
+Every record not reflected in `encoded_records` is accounted for in
+`exclusion_reasons_json`, and `total_records == encoded_records +
+dropped_records` always holds. Coverage never has to guess why a record didn't
+make it into the stream.
 
-**Source-type distribution** reports counts by source/document ID or classification.
+## Test split isolation
 
-### Exclusion Reporting
-
-Each excluded record is counted with a reason:
-* `oversized` - record longer than configured sequence length
-* `invalid_format` - unable to extract content
-* `encoder_error` - tokenizer raised an error
-* `empty` - all content was whitespace
-
-## Consumption in Phase 9
-
-In Phase 9:
-
-1. **Job creation** generates a coverage snapshot after tokenization and packing
-2. **On loading** a job, the coverage records are read and used to verify training split correctness
-3. **Metrics** include `dataset_coverage_public_id` to reference this record
-4. **Validation** can reject jobs when coverage is empty or contains only excluded records
-
-## Determinism Guarantees
-
-The coverage generation process is deterministic when:
-
-* Same dataset version ID
-* Same tokenizer version ID
-* Same sequence length
-* Same EOS policy
-* Same overlength policy
-* Same bootstrap random seed
-
-Identical inputs produce identical checksums and distribution reports.
-
-## Interaction with Phase 10
-
-Phase 10 builds on this record by:
-
-1. **Generating coverage at worker startup** with registered tokenizer validation
-2. **Reporting coverage lapses** when new waves of data are added
-3. **Idempotent regeneration** when job status is `paused` or `queued`
-4. **Enforcing validation** that coverage includes train data before training starts
-5. **Blocking promotion** when coverage passes below configured thresholds
-
-## Querying Coverage
-
-```sql
--- Get coverage of a job
-SELECT * FROM training_dataset_coverage
-WHERE pretraining_job_public_id = ?
-ORDER BY created_at DESC LIMIT 1;
-
--- Get coverage of all jobs for a dataset version
-SELECT pretraining_job_id,
-       total_records,
-       encoded_records,
-       usable_tokens,
-       EXCLUDED_TOKENS / NULLIF(TOTAL_RECORDS, 0) AS EXCLUSION_RATIO
-FROM training_dataset_coverage
-WHERE dataset_version_public_id = ?;
-```
-
-## No Privacy Risks
-
-Coverage records do not contain:
-
-* Record content
-* Full token streams
-* Database record text
-* Individual record IDs (except FK)
-**Padding tokens are masked** in distribution summaries.
+Coverage is only ever generated for `train` and `valid` splits.
+`PretrainingService._blocks` explicitly skips `split == "test"` rows before
+any tokenization happens, so test-split records never appear in coverage,
+streams, or the trained model.

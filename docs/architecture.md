@@ -80,9 +80,45 @@ Ready dataset version → deterministic token blocks → queued pretraining job
 
 The worker is launched with `python -m backend.training_worker`. It claims at most one queued job, persists metrics and events, checks pause/cancel flags at safe boundaries, writes registered checkpoints, and can resume from the latest job checkpoint. CPU remains the default device, and public chat stays disconnected.
 
+Phase 10 adds training reliability, recovery, and dataset coverage on top of the same worker and service:
+
+```text
+Admin Dashboard
+      ↓
+Pretraining API → Pretraining Reliability / Worker Recovery / Training Evaluation services
+      ↓
+Worker Lease Manager (lease generation fencing on pretraining_jobs)
+      ↓
+Tokenizer-backed Dataset Stream → Coverage + Stream Manifest
+      ↓
+Trainer (periodic checkpoints via on_checkpoint)
+      ↓
+Checkpoint Manager → Recovery Validator (never resumes an unverified checkpoint)
+      ↓
+Training Evaluation (run summary, safe perplexity, quality gates)
+      ↓
+Quality Gate → Model Promotion (blocking issues cannot be overridden)
+```
+
+The worker heartbeats and its job lease are tracked in `worker_heartbeats` and
+`training_worker_leases`; `pretraining_jobs.lease_generation` is the fencing
+token that makes a stale worker's writes provably rejected after a takeover.
+Coverage, stream manifests, recovery attempts, run summaries, quality
+assessments/issues, and comparisons are all append-only evidence tables. See
+[pretraining_architecture.md](pretraining_architecture.md),
+[training_worker_leases.md](training_worker_leases.md),
+[training_crash_recovery.md](training_crash_recovery.md),
+[training_dataset_coverage.md](training_dataset_coverage.md),
+[training_stream_manifest.md](training_stream_manifest.md),
+[training_quality_gates.md](training_quality_gates.md),
+[training_run_comparison.md](training_run_comparison.md), and
+[checkpoint_retention.md](checkpoint_retention.md) for the full detail. No
+instruction tuning, RAG, quantization, GGUF export, or distributed training
+was added in this phase; the public chatbot remains an unchanged placeholder.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables.
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md).
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

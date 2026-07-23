@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import math
+import sqlite3
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -16,14 +18,31 @@ from backend.core.json_utils import dumps_json, loads_json, redact_secrets
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.pretraining import PretrainingRepository, public_row
 from backend.database.repositories.tokenizers import TokenizerRepository
+from backend.database.repositories.training_reliability import TrainingReliabilityRepository
 from backend.models.pretraining import PretrainingJobCreate, PretrainingJobPatch
 from backend.services.tokenizer_registry import TokenizerService
+from backend.services.worker_recovery_service import WorkerRecoveryService
 from core_model.architecture.config import BrudModelConfig
 from core_model.architecture.model import BrudForCausalLM
 from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
-from core_model.training.dataset_stream import packed_blocks, token_sequences
+from core_model.training.coverage import generate_coverage
+from core_model.training.dataset_stream import token_sequences
+from core_model.training.diagnostics import loss_improvement_ratio, safe_perplexity
+from core_model.training.packing import pack_stream
 from core_model.training.pretraining_config import from_mapping
 from core_model.training.trainer import run_pretraining
+
+
+class StaleWorkerError(RuntimeError):
+    """Raised when a worker's lease was taken over by another worker mid-run."""
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _page(items: list[dict[str, Any]], total: int, page: int, page_size: int) -> dict[str, Any]:
@@ -51,6 +70,7 @@ class PretrainingService:
     def __init__(self, repository: PretrainingRepository, settings: Settings) -> None:
         self.repository = repository
         self.settings = settings
+        self.reliability = TrainingReliabilityRepository(repository.database_path)
 
     def capabilities(self) -> dict[str, Any]:
         return {
@@ -213,9 +233,13 @@ class PretrainingService:
         )
 
     def resume(self, public_id: str, admin_id: str) -> dict[str, Any]:
-        return self._request(
-            public_id, admin_id, "resume_requested", "resume_requested", "resume_requested"
+        recovery = WorkerRecoveryService(self.repository, self.reliability, self.settings).recover(
+            public_id, admin_id, "pause_resume"
         )
+        if recovery["status"] != "completed":
+            raise ValidationError("checkpoint failed recovery validation and cannot resume")
+        with self.repository.transaction() as connection:
+            return public_row(self.repository.job(connection, public_id))
 
     def cancel(self, public_id: str, admin_id: str) -> dict[str, Any]:
         return self._request(
@@ -223,23 +247,39 @@ class PretrainingService:
         )
 
     def run_one(self, worker_id: str) -> dict[str, Any] | None:
-        job = self._claim(worker_id)
-        if not job:
+        with self.repository.transaction() as connection:
+            self.reliability.register_worker(connection, worker_id)
+            self.reliability.heartbeat(connection, worker_id, status="claiming")
+        claimed = self._claim(worker_id)
+        if not claimed:
+            with self.repository.transaction() as connection:
+                self.reliability.heartbeat(connection, worker_id, status="idle")
             return None
+        job, lease_generation = claimed
         try:
-            result = self._run_claimed(job, worker_id)
+            result = self._run_claimed(job, worker_id, lease_generation)
             return result
+        except StaleWorkerError as exc:
+            with self.repository.transaction() as connection:
+                self.reliability.heartbeat(connection, worker_id, status="idle")
+            return {"status": "stale", "error": "StaleWorkerError", "message": str(exc)[:200]}
         except Exception as exc:
             with self.repository.transaction() as connection:
                 current = self.repository.job(connection, job["public_id"])
-                connection.execute(
-                    """UPDATE pretraining_jobs SET status='failed',error_code='training_failed',
-                    error_message=?,failed_at=CURRENT_TIMESTAMP WHERE id=?""",
-                    (str(exc)[:500], current["id"]),
-                )
-                self.repository.add_event(
-                    connection, current["id"], "training_failed", current["status"], "failed"
-                )
+                if (
+                    current["worker_id"] == worker_id
+                    and current["lease_generation"] == lease_generation
+                ):
+                    connection.execute(
+                        """UPDATE pretraining_jobs SET status='failed',error_code='training_failed',
+                        error_message=?,failed_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (str(exc)[:500], current["id"]),
+                    )
+                    self.repository.add_event(
+                        connection, current["id"], "training_failed", current["status"], "failed"
+                    )
+                self.reliability.release_lease(connection, worker_id, reason="training_failed")
+                self.reliability.heartbeat(connection, worker_id, status="failed")
             return {"status": "failed", "error": type(exc).__name__, "message": str(exc)[:200]}
 
     def events(self, public_id: str) -> dict[str, Any]:
@@ -320,19 +360,6 @@ class PretrainingService:
             )
         return {"verified": status == "verified", "status": status}
 
-    def compare_checkpoints(self, left: str, right: str) -> dict[str, Any]:
-        with self.repository.transaction() as connection:
-            rows = [
-                connection.execute(
-                    "SELECT * FROM pretraining_checkpoints WHERE public_id=?", (item,)
-                ).fetchone()
-                for item in (left, right)
-            ]
-        if not rows[0] or not rows[1]:
-            raise ValidationError("checkpoint not found")
-        if rows[0]["core_model_version_id"] != rows[1]["core_model_version_id"]:
-            raise ValidationError("checkpoints use incompatible model versions")
-        return {"compatible": True, "left": public_row(rows[0]), "right": public_row(rows[1])}
 
     def evaluate(self, public_id: str, admin_id: str) -> dict[str, Any]:
         with self.repository.transaction() as connection:
@@ -402,7 +429,9 @@ class PretrainingService:
         data["results"] = [public_row(item) for item in results]
         return data
 
-    def promote(self, checkpoint_public_id: str, admin_id: str) -> dict[str, Any]:
+    def promote(
+        self, checkpoint_public_id: str, admin_id: str, override_comment: str | None = None
+    ) -> dict[str, Any]:
         verify = self.verify_checkpoint(checkpoint_public_id, admin_id)
         if not verify["verified"]:
             raise ValidationError("only verified checkpoints can promote")
@@ -419,6 +448,16 @@ class PretrainingService:
             ).fetchone()
             if job["status"] not in {"completed", "completed_with_warnings"}:
                 raise ValidationError("only completed jobs can promote")
+            assessment = self.reliability.latest_quality_assessment(connection, job["id"])
+            if assessment is None:
+                raise ValidationError("a training quality assessment is required before promotion")
+            readiness = assessment["readiness_status"]
+            if readiness == "blocked":
+                raise ValidationError("promotion is blocked by a non-overridable quality issue")
+            if readiness == "warning" and not (override_comment and override_comment.strip()):
+                raise ValidationError(
+                    "promotion has warning-level quality issues and requires an override comment"
+                )
             promoted_id = str(uuid4())
             connection.execute(
                 """INSERT INTO core_model_versions(public_id,core_model_family_id,version,
@@ -465,7 +504,13 @@ class PretrainingService:
                 "model_promoted_to_staging",
                 None,
                 "staging",
-                dumps_json({"promoted_model_public_id": promoted_id}),
+                dumps_json(
+                    {
+                        "promoted_model_public_id": promoted_id,
+                        "quality_readiness_status": readiness,
+                        "override_comment": override_comment if readiness == "warning" else None,
+                    }
+                ),
             )
             self._audit(connection, "pretraining_checkpoint_promoted", admin_id, promoted_id)
             return {
@@ -474,7 +519,7 @@ class PretrainingService:
                 "not_chat_ready": True,
             }
 
-    def _run_claimed(self, job, worker_id: str) -> dict[str, Any]:
+    def _run_claimed(self, job, worker_id: str, lease_generation: int) -> dict[str, Any]:
         config = from_mapping(loads_json(job["configuration_json"]))
         model_config = self._model_config(job)
         torch.manual_seed(int(job["initialization_seed"]))
@@ -482,27 +527,46 @@ class PretrainingService:
         train_blocks, validation_blocks = self._blocks(job, config)
         resume_state = self._latest_checkpoint_state(job, model) if job["completed_steps"] else {}
         started = time.perf_counter()
+        initial_training_loss = job["latest_training_loss"] if job["completed_steps"] else None
+        non_finite_events = 0
 
         def on_step(metric: dict[str, Any]) -> None:
-            self._metric(job["public_id"], metric)
+            self._metric(job["public_id"], worker_id, lease_generation, metric)
 
-        result = run_pretraining(
-            model=model,
-            train_blocks=train_blocks,
-            validation_blocks=validation_blocks,
-            config=config,
-            pad_token_id=model_config.pad_token_id,
-            start_step=job["completed_steps"],
-            start_processed_tokens=job["processed_tokens"],
-            start_block_index=resume_state.get("trainer_state", {}).get("block_index", 0),
-            optimizer_state=resume_state.get("optimizer"),
-            scheduler_state=resume_state.get("scheduler"),
-            rng_state=resume_state.get("rng"),
-            on_step=on_step,
-            should_pause=lambda: self._flags(job["public_id"])[0],
-            should_cancel=lambda: self._flags(job["public_id"])[1],
+        def on_checkpoint(**state: Any) -> None:
+            self._save_periodic_checkpoint(job, worker_id, lease_generation, model, config, state)
+
+        try:
+            result = run_pretraining(
+                model=model,
+                train_blocks=train_blocks,
+                validation_blocks=validation_blocks,
+                config=config,
+                pad_token_id=model_config.pad_token_id,
+                start_step=job["completed_steps"],
+                start_processed_tokens=job["processed_tokens"],
+                start_block_index=resume_state.get("trainer_state", {}).get("block_index", 0),
+                optimizer_state=resume_state.get("optimizer"),
+                scheduler_state=resume_state.get("scheduler"),
+                rng_state=resume_state.get("rng"),
+                on_step=on_step,
+                on_checkpoint=on_checkpoint,
+                should_pause=lambda: self._flags(job["public_id"])[0],
+                should_cancel=lambda: self._flags(job["public_id"])[1],
+            )
+        except ValueError as exc:
+            if "non-finite" in str(exc):
+                non_finite_events += 1
+                with self.repository.transaction() as connection:
+                    current = self.repository.job(connection, job["public_id"])
+                    self.repository.add_event(
+                        connection, current["id"], "non_finite_training_value",
+                        current["status"], current["status"], dumps_json({"error": str(exc)}),
+                    )
+            raise
+        checkpoint = self._save_training_checkpoint(
+            job, worker_id, lease_generation, model, config, result
         )
-        checkpoint = self._save_training_checkpoint(job, model, config, result)
         with self.repository.transaction() as connection:
             current = self.repository.job(connection, job["public_id"])
             status = "completed" if result.status == "completed" else result.status
@@ -550,6 +614,17 @@ class PretrainingService:
                     }
                 ),
             )
+            self.reliability.release_lease(connection, worker_id, reason=f"job_{status}")
+            self.reliability.heartbeat(connection, worker_id, status="idle")
+        if status in {"completed", "completed_with_warnings"}:
+            self._select_best_checkpoint(current["id"])
+            self._generate_run_summary(
+                current["id"],
+                status=status,
+                initial_training_loss=initial_training_loss,
+                elapsed_seconds=time.perf_counter() - started,
+                non_finite_event_count=non_finite_events,
+            )
         return {
             "status": status,
             "checkpoint_public_id": checkpoint["public_id"],
@@ -577,21 +652,48 @@ class PretrainingService:
         model.load_state_dict(states["model"])
         return states
 
-    def _claim(self, worker_id: str):
+    def _claim(self, worker_id: str) -> tuple[sqlite3.Row, int] | None:
         with self.repository.transaction() as connection:
+            stale = connection.execute(
+                """SELECT id, worker_id FROM pretraining_jobs
+                WHERE status='running' AND lease_expires_at IS NOT NULL
+                AND lease_expires_at < CURRENT_TIMESTAMP"""
+            ).fetchall()
+            for stale_job in stale:
+                connection.execute(
+                    """UPDATE pretraining_jobs SET status='queued', recovery_required=1,
+                    lease_generation=lease_generation+1, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=? AND status='running'""",
+                    (stale_job["id"],),
+                )
+                self.repository.add_event(
+                    connection,
+                    stale_job["id"],
+                    "stale_lease_detected",
+                    "running",
+                    "queued",
+                    dumps_json({"previous_worker_id": (stale_job["worker_id"] or "")[:12]}),
+                )
             row = connection.execute(
-                "SELECT * FROM pretraining_jobs WHERE status='queued' ORDER BY queued_at,id LIMIT 1"
+                """SELECT * FROM pretraining_jobs WHERE status='queued' AND recovery_required=0
+                ORDER BY queued_at,id LIMIT 1"""
             ).fetchone()
             if not row:
                 return None
+            new_generation = row["lease_generation"] + 1
+            expires_at = _iso(
+                _now() + timedelta(seconds=self.settings.pretraining_worker_lease_seconds)
+            )
             connection.execute(
                 """UPDATE pretraining_jobs
                 SET status='running',
                     worker_id=?,
+                    lease_generation=?,
+                    lease_expires_at=?,
                     started_at=COALESCE(started_at,CURRENT_TIMESTAMP),
                     updated_at=CURRENT_TIMESTAMP
-                WHERE id=? AND status='queued'""",
-                (worker_id, row["id"]),
+                WHERE id=? AND status='queued' AND recovery_required=0""",
+                (worker_id, new_generation, expires_at, row["id"]),
             )
             self.repository.add_event(
                 connection,
@@ -599,9 +701,28 @@ class PretrainingService:
                 "worker_claimed",
                 "queued",
                 "running",
-                dumps_json({"worker_id": worker_id[:12]}),
+                dumps_json({"worker_id": worker_id[:12], "lease_generation": new_generation}),
             )
-            return self.repository.job(connection, row["public_id"])
+            worker = self.reliability.worker(connection, worker_id)
+            self.reliability.upsert_lease(
+                connection,
+                worker_id=worker_id,
+                pretraining_job_id=row["id"],
+                status="claimed",
+                lease_generation=new_generation,
+                lease_expires_at=expires_at,
+                owner_public_id=worker["public_id"],
+            )
+            self.reliability.heartbeat(
+                connection,
+                worker_id,
+                status="running",
+                current_job_public_id=row["public_id"],
+                lease_generation=new_generation,
+                lease_expires_at=expires_at,
+            )
+            job = self.repository.job(connection, row["public_id"])
+            return job, new_generation
 
     def _references(self, connection, payload: PretrainingJobCreate):
         dataset = connection.execute(
@@ -676,6 +797,8 @@ class PretrainingService:
             ).fetchall()
         train, valid = [], []
         for row in rows:
+            if row["split"] == "test":
+                continue
             target = train if row["split"] == "train" else valid
             target.append(dict(row))
         processor = TokenizerService(
@@ -704,20 +827,103 @@ class PretrainingService:
                     "validation_empty_fields": validation_counts["empty"],
                 },
             )
-        return (
-            packed_blocks(
-                train_sequences,
-                sequence_length=config.sequence_length,
-                pad_token_id=model_config.pad_token_id,
-                policy=config.overlength_policy,
-            ),
-            packed_blocks(
-                validation_sequences,
-                sequence_length=config.sequence_length,
-                pad_token_id=model_config.pad_token_id,
-                policy=config.overlength_policy,
-            ),
+        train_packed = pack_stream(
+            train_sequences,
+            sequence_length=config.sequence_length,
+            pad_token_id=model_config.pad_token_id,
+            overlength_policy=config.overlength_policy,
+            partial_block_policy="pad",
         )
+        validation_packed = pack_stream(
+            validation_sequences,
+            sequence_length=config.sequence_length,
+            pad_token_id=model_config.pad_token_id,
+            overlength_policy=config.overlength_policy,
+            partial_block_policy="pad",
+        )
+        self._record_streams(
+            job, config, train, valid, processor, model_config, train_packed, validation_packed
+        )
+        return train_packed["blocks"], validation_packed["blocks"]
+
+    def _record_streams(
+        self,
+        job,
+        config,
+        train_records,
+        valid_records,
+        processor,
+        model_config,
+        train_packed,
+        validation_packed,
+    ) -> None:
+        with self.repository.transaction() as connection:
+            current = self.repository.job(connection, job["public_id"])
+            checksums = self._reference_checksums(connection, current)
+            train_checksum = None
+            train_coverage_public_id = None
+            for split, records, packed in (
+                ("train", train_records, train_packed),
+                ("valid", valid_records, validation_packed),
+            ):
+                coverage = generate_coverage(
+                    records,
+                    processor,
+                    eos_id=model_config.eos_token_id,
+                    sequence_length=config.sequence_length,
+                    overlength_policy=config.overlength_policy,
+                )
+                coverage_public_id = self.reliability.record_coverage(
+                    connection,
+                    current["id"],
+                    split,
+                    {
+                        **coverage,
+                        "language_distribution_json": dumps_json(
+                            coverage["language_distribution"]
+                        ),
+                        "record_type_distribution_json": dumps_json(
+                            coverage["record_type_distribution"]
+                        ),
+                        "source_type_distribution_json": dumps_json(
+                            coverage["source_type_distribution"]
+                        ),
+                        "exclusion_reasons_json": dumps_json(coverage["exclusion_reasons"]),
+                    },
+                )
+                self.reliability.record_stream_manifest(
+                    connection,
+                    current["id"],
+                    {
+                        "split": split,
+                        "dataset_version_public_id": current["dataset_version_public_id"],
+                        "dataset_checksum_sha256": checksums["dataset_checksum_sha256"],
+                        "tokenizer_version_public_id": current["tokenizer_version_public_id"],
+                        "tokenizer_checksum_sha256": checksums["tokenizer_checksum_sha256"],
+                        "sequence_length": config.sequence_length,
+                        "packing_policy": "fixed_length",
+                        "partial_block_policy": "pad",
+                        "eos_policy": config.eos_policy,
+                        "overlength_policy": config.overlength_policy,
+                        "shuffle": config.shuffle,
+                        "seed": config.sampling_seed,
+                        "eligible_records": coverage["eligible_records"],
+                        "encoded_records": coverage["encoded_records"],
+                        "excluded_records": coverage["excluded_records"],
+                        "total_tokens": coverage["total_tokens"],
+                        "usable_tokens": packed["usable_tokens"],
+                        "block_count": packed["block_count"],
+                        "stream_checksum_sha256": coverage["stream_checksum_sha256"],
+                    },
+                )
+                if split == "train":
+                    train_checksum = coverage["stream_checksum_sha256"]
+                    train_coverage_public_id = coverage_public_id
+            connection.execute(
+                """UPDATE pretraining_jobs SET latest_stream_checksum_sha256=?,
+                latest_coverage_public_id=? WHERE id=?""",
+                (train_checksum, train_coverage_public_id, current["id"]),
+            )
 
     def _validate_token_ids(self, sequences: list[list[int]], vocabulary_size: int) -> None:
         for sequence in sequences:
@@ -736,9 +942,32 @@ class PretrainingService:
                 dumps_json(metadata),
             )
 
-    def _metric(self, job_id: str, metric: dict[str, Any]) -> None:
+    def _metric(
+        self, job_id: str, worker_id: str, lease_generation: int, metric: dict[str, Any]
+    ) -> None:
         with self.repository.transaction() as connection:
             job = self.repository.job(connection, job_id)
+            if job["worker_id"] != worker_id or job["lease_generation"] != lease_generation:
+                self.repository.add_event(
+                    connection, job["id"], "stale_write_rejected", job["status"], job["status"],
+                    dumps_json({"worker_id": worker_id[:12], "held_generation": lease_generation}),
+                )
+                raise StaleWorkerError(
+                    f"worker {worker_id} no longer holds the lease for job {job_id}"
+                )
+            expires_at = _iso(
+                _now() + timedelta(seconds=self.settings.pretraining_worker_lease_seconds)
+            )
+            connection.execute(
+                "UPDATE pretraining_jobs SET lease_expires_at=? WHERE id=?",
+                (expires_at, job["id"]),
+            )
+            self.reliability.renew_lease(connection, worker_id, lease_expires_at=expires_at)
+            self.reliability.heartbeat(
+                connection, worker_id, status="running",
+                current_job_public_id=job["public_id"], lease_generation=lease_generation,
+                lease_expires_at=expires_at,
+            )
             step = metric["step"]
             connection.execute(
                 """INSERT OR REPLACE INTO pretraining_metrics(public_id,pretraining_job_id,
@@ -780,13 +1009,136 @@ class PretrainingService:
                 ),
             )
 
-    def _save_training_checkpoint(self, job, model, config, result) -> dict[str, Any]:
+    def _reference_checksums(self, connection, job) -> dict[str, str | None]:
+        dataset_checksum = connection.execute(
+            "SELECT checksum_sha256 FROM dataset_versions WHERE id=?", (job["dataset_version_id"],)
+        ).fetchone()[0]
+        tokenizer_checksum = connection.execute(
+            "SELECT model_checksum_sha256 FROM tokenizer_versions WHERE id=?",
+            (job["tokenizer_version_id"],),
+        ).fetchone()[0]
+        model_config_checksum = connection.execute(
+            """SELECT c.config_checksum_sha256 FROM core_model_configs c
+            JOIN core_model_versions v ON v.config_id=c.id WHERE v.id=?""",
+            (job["core_model_version_id"],),
+        ).fetchone()[0]
+        return {
+            "dataset_checksum_sha256": dataset_checksum,
+            "tokenizer_checksum_sha256": tokenizer_checksum,
+            "model_config_checksum_sha256": model_config_checksum,
+            "stream_checksum_sha256": job["latest_stream_checksum_sha256"],
+        }
+
+    def _save_periodic_checkpoint(
+        self, job, worker_id: str, lease_generation: int, model, config, state: dict[str, Any]
+    ) -> None:
+        with self.repository.transaction() as connection:
+            current = self.repository.job(connection, job["public_id"])
+            if current["worker_id"] != worker_id or current["lease_generation"] != lease_generation:
+                raise StaleWorkerError(
+                    f"worker {worker_id} no longer holds the lease for job {job['public_id']}"
+                )
+            references = {
+                "job_public_id": job["public_id"],
+                **self._reference_checksums(connection, current),
+            }
+        safe_name = f"{_safe(job['public_id'])}/step-{state['step']:08d}-{uuid4().hex[:8]}"
+        target = self.settings.resolved_pretraining_dir / safe_name
+        saved = TrainingCheckpointManager(
+            self.settings.resolved_pretraining_dir, self.settings.core_checkpoint_max_bytes
+        ).save(
+            target,
+            model=model,
+            optimizer=None,
+            scheduler=None,
+            optimizer_state=state["optimizer_state"],
+            scheduler_state=state["scheduler_state"],
+            rng_state=state["rng_state"],
+            trainer_state={
+                "step": state["step"],
+                "processed_tokens": state["processed_tokens"],
+                "block_index": state["block_index"],
+                "status": "running",
+            },
+            config=config.to_dict(),
+            references=references,
+        )
+        with self.repository.transaction() as connection:
+            current = self.repository.job(connection, job["public_id"])
+            connection.execute(
+                "UPDATE pretraining_checkpoints SET is_latest=0 WHERE pretraining_job_id=?",
+                (current["id"],),
+            )
+            public_id = str(uuid4())
+            connection.execute(
+                """INSERT INTO pretraining_checkpoints(
+                public_id,pretraining_job_id,core_model_version_id,
+                checkpoint_kind,status,step,processed_tokens,safe_name,file_size_bytes,manifest_json,
+                model_checksum_sha256,optimizer_checksum_sha256,scheduler_checksum_sha256,
+                trainer_state_checksum_sha256,combined_checksum_sha256,training_loss,validation_loss,
+                is_best,is_latest)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    public_id,
+                    current["id"],
+                    current["core_model_version_id"],
+                    "periodic",
+                    "completed",
+                    state["step"],
+                    state["processed_tokens"],
+                    safe_name,
+                    saved["file_size_bytes"],
+                    dumps_json(saved["manifest"]),
+                    saved["model_checksum_sha256"],
+                    saved["optimizer_checksum_sha256"],
+                    saved["scheduler_checksum_sha256"],
+                    saved["trainer_state_checksum_sha256"],
+                    saved["combined_checksum_sha256"],
+                    state.get("training_loss"),
+                    None,
+                    0,
+                    1,
+                ),
+            )
+            connection.execute(
+                """UPDATE pretraining_jobs SET completed_steps=?,processed_tokens=?
+                WHERE id=?""",
+                (state["step"], state["processed_tokens"], current["id"]),
+            )
+            self.repository.add_event(
+                connection,
+                current["id"],
+                "checkpoint_completed",
+                None,
+                None,
+                dumps_json(
+                    {
+                        "step": state["step"],
+                        "checksum": saved["combined_checksum_sha256"][:12],
+                        "kind": "periodic",
+                    }
+                ),
+            )
+
+    def _save_training_checkpoint(
+        self, job, worker_id: str, lease_generation: int, model, config, result
+    ) -> dict[str, Any]:
         import torch as _torch
 
         opt = _torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
         sched = _torch.optim.lr_scheduler.LambdaLR(opt, lambda _: 1.0)
         safe_name = f"{_safe(job['public_id'])}/step-{result.completed_steps:08d}-{uuid4().hex[:8]}"
         target = self.settings.resolved_pretraining_dir / safe_name
+        with self.repository.transaction() as connection:
+            current = self.repository.job(connection, job["public_id"])
+            if current["worker_id"] != worker_id or current["lease_generation"] != lease_generation:
+                raise StaleWorkerError(
+                    f"worker {worker_id} no longer holds the lease for job {job['public_id']}"
+                )
+            references = {
+                "job_public_id": job["public_id"],
+                **self._reference_checksums(connection, current),
+            }
         saved = TrainingCheckpointManager(
             self.settings.resolved_pretraining_dir, self.settings.core_checkpoint_max_bytes
         ).save(
@@ -804,7 +1156,7 @@ class PretrainingService:
                 "status": result.status,
             },
             config=config.to_dict(),
-            references={"job_public_id": job["public_id"]},
+            references=references,
         )
         with self.repository.transaction() as connection:
             current = self.repository.job(connection, job["public_id"])
@@ -839,7 +1191,7 @@ class PretrainingService:
                     saved["combined_checksum_sha256"],
                     result.final_loss,
                     result.validation_loss,
-                    1,
+                    0,
                     1,
                 ),
             )
@@ -857,6 +1209,124 @@ class PretrainingService:
                 ),
             )
         return {"public_id": public_id, **saved}
+
+    def _select_best_checkpoint(self, job_id: int) -> None:
+        with self.repository.transaction() as connection:
+            rows = connection.execute(
+                """SELECT public_id,step,training_loss,validation_loss FROM pretraining_checkpoints
+                WHERE pretraining_job_id=? AND status IN ('completed','verified')
+                ORDER BY step, id""",
+                (job_id,),
+            ).fetchall()
+            if not rows:
+                return
+            with_validation = [row for row in rows if row["validation_loss"] is not None]
+            if with_validation:
+                best = min(with_validation, key=lambda row: (row["validation_loss"], row["step"]))
+            else:
+                with_training = [row for row in rows if row["training_loss"] is not None]
+                if with_training:
+                    best = min(with_training, key=lambda row: (row["training_loss"], row["step"]))
+                else:
+                    best = rows[-1]
+            connection.execute(
+                "UPDATE pretraining_checkpoints SET is_best=0 WHERE pretraining_job_id=?", (job_id,)
+            )
+            connection.execute(
+                "UPDATE pretraining_checkpoints SET is_best=1 WHERE public_id=?",
+                (best["public_id"],),
+            )
+            connection.execute(
+                "UPDATE pretraining_jobs SET best_checkpoint_public_id=? WHERE id=?",
+                (best["public_id"], job_id),
+            )
+            self.repository.add_event(
+                connection, job_id, "best_checkpoint_selected", None, None,
+                dumps_json({"checkpoint_public_id": best["public_id"], "step": best["step"]}),
+            )
+
+    def _generate_run_summary(
+        self,
+        job_id: int,
+        *,
+        status: str,
+        initial_training_loss: float | None,
+        elapsed_seconds: float,
+        non_finite_event_count: int,
+    ) -> str:
+        with self.repository.transaction() as connection:
+            job = connection.execute(
+                "SELECT * FROM pretraining_jobs WHERE id=?", (job_id,)
+            ).fetchone()
+            metrics = connection.execute(
+                "SELECT * FROM pretraining_metrics WHERE pretraining_job_id=? ORDER BY step",
+                (job_id,),
+            ).fetchall()
+            checkpoints = connection.execute(
+                "SELECT * FROM pretraining_checkpoints WHERE pretraining_job_id=?", (job_id,)
+            ).fetchall()
+            events = connection.execute(
+                "SELECT event_type FROM pretraining_job_events WHERE pretraining_job_id=?",
+                (job_id,),
+            ).fetchall()
+            pause_count = sum(1 for row in events if row["event_type"] == "job_paused")
+            resume_count = sum(1 for row in events if row["event_type"] == "recovery_completed")
+            recovery_count = len(self.reliability.recovery_attempts(connection, job_id))
+            first_loss = metrics[0]["training_loss"] if metrics else None
+            initial_loss = (
+                initial_training_loss if initial_training_loss is not None else first_loss
+            )
+            average_tps = (
+                sum(row["tokens_per_second"] or 0 for row in metrics) / len(metrics)
+                if metrics
+                else None
+            )
+            peak_memory = max(
+                (row["process_memory_bytes"] for row in metrics if row["process_memory_bytes"]),
+                default=None,
+            )
+            public_id = self.reliability.record_run_summary(
+                connection,
+                job_id,
+                {
+                    "status": status,
+                    "initial_step": metrics[0]["step"] if metrics else 0,
+                    "final_step": job["completed_steps"],
+                    "initial_training_loss": initial_loss,
+                    "final_training_loss": job["latest_training_loss"],
+                    "best_training_loss": min(
+                        (
+                            row["training_loss"]
+                            for row in metrics
+                            if row["training_loss"] is not None
+                        ),
+                        default=None,
+                    ),
+                    "initial_validation_loss": None,
+                    "final_validation_loss": job["latest_validation_loss"],
+                    "best_validation_loss": job["best_validation_loss"],
+                    "initial_perplexity": safe_perplexity(initial_loss),
+                    "final_perplexity": safe_perplexity(job["latest_training_loss"]),
+                    "processed_tokens": job["processed_tokens"],
+                    "optimizer_steps": job["completed_steps"],
+                    "elapsed_seconds": elapsed_seconds,
+                    "average_tokens_per_second": average_tps,
+                    "peak_process_memory_bytes": peak_memory,
+                    "checkpoint_count": len(checkpoints),
+                    "pause_count": pause_count,
+                    "resume_count": resume_count,
+                    "recovery_count": recovery_count,
+                    "non_finite_event_count": non_finite_event_count,
+                    "summary_json": dumps_json(
+                        {
+                            "loss_improvement_ratio": loss_improvement_ratio(
+                                initial_loss, job["latest_training_loss"]
+                            )
+                        }
+                    ),
+                },
+            )
+        return public_id
 
     def _flags(self, public_id: str) -> tuple[bool, bool]:
         from backend.database.connection import database_connection

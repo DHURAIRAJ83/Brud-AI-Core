@@ -328,15 +328,70 @@ async def test_pretraining_api_worker_checkpoint_and_promotion(api_app: FastAPI)
             headers=headers,
         )
         assert evaluation.status_code == 200
+        quality = await client.post(
+            f"/api/admin/pretraining/jobs/{job_id}/quality/assess",
+            headers=headers,
+        )
+        assert quality.status_code == 200
         promoted = await client.post(
             f"/api/admin/pretraining/checkpoints/{checkpoint_id}/promote",
             headers=headers,
         )
+        assert promoted.status_code == 200
         assert promoted.json()["not_chat_ready"] is True
         payload = json.dumps([job, metrics, checkpoints, promoted.json()])
         assert "/tmp/" not in payload
         assert "pretraining_job_id" not in payload
         assert "password" not in payload
+    finally:
+        await client.aclose()
+
+
+async def test_pretraining_coverage_and_streams_cover_the_validation_split(
+    api_app: FastAPI,
+) -> None:
+    """Regression test: coverage/stream verification must not silently treat
+    the validation split as empty. ``dataset_version_items.split`` uses
+    'train'/'validation'/'test', while coverage and stream manifests use the
+    shorter 'train'/'valid' labels — the two must be mapped correctly."""
+    refs = _fixture_refs(api_app)
+    client, headers = await authenticated_client(api_app)
+    try:
+        created = await client.post(
+            "/api/admin/pretraining/jobs", headers=headers, json=_payload(refs)
+        )
+        job_id = created.json()["public_id"]
+        await client.post(f"/api/admin/pretraining/jobs/{job_id}/validate", headers=headers)
+        await client.post(f"/api/admin/pretraining/jobs/{job_id}/queue", headers=headers)
+        result = PretrainingService(
+            PretrainingRepository(api_app.state.settings.resolved_database_path),
+            api_app.state.settings,
+        ).run_one("test-worker")
+        assert result["status"] == "completed"
+
+        coverage = (
+            await client.get(f"/api/admin/pretraining/jobs/{job_id}/coverage")
+        ).json()["items"]
+        splits = {item["split"]: item for item in coverage}
+        assert splits.keys() == {"train", "valid"}
+        assert splits["valid"]["total_records"] > 0
+        assert splits["valid"]["encoded_records"] > 0
+        assert splits["valid"]["usable_tokens"] > 0
+
+        verify = await client.post(
+            f"/api/admin/pretraining/jobs/{job_id}/streams/verify", headers=headers
+        )
+        assert verify.status_code == 200
+        body = verify.json()
+        assert body["verified"] is True
+        assert body["splits"]["valid"]["matches"] is True
+        assert body["splits"]["train"]["matches"] is True
+
+        generated = await client.post(
+            f"/api/admin/pretraining/jobs/{job_id}/coverage", headers=headers
+        )
+        assert generated.status_code == 200
+        assert generated.json()["valid"]["total_records"] > 0
     finally:
         await client.aclose()
 

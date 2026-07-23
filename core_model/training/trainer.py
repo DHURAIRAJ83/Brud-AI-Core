@@ -46,6 +46,7 @@ def run_pretraining(
     scheduler_state: dict[str, Any] | None = None,
     rng_state: torch.Tensor | None = None,
     on_step: Callable[[dict], None] | None = None,
+    on_checkpoint: Callable[..., None] | None = None,
     should_pause: Callable[[], bool] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> TrainerResult:
@@ -139,6 +140,20 @@ def run_pretraining(
                     "process_memory_bytes": process_memory_bytes(),
                     "system_available_memory_bytes": available_memory_bytes(),
                 }
+            )
+        if (
+            on_checkpoint
+            and config.checkpoint_interval_steps
+            and step % config.checkpoint_interval_steps == 0
+        ):
+            on_checkpoint(
+                optimizer_state=optimizer.state_dict(),
+                scheduler_state=scheduler.state_dict(),
+                rng_state=torch.random.get_rng_state(),
+                step=step,
+                processed_tokens=processed,
+                block_index=block_index,
+                training_loss=step_loss,
             )
     validation = validation_loss(
         model,

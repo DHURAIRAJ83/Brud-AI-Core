@@ -5,12 +5,15 @@ from fastapi import APIRouter, Depends, Query
 from backend.api.auth import CsrfDependency, require_admin
 from backend.api.dependencies import SettingsDependency
 from backend.database.repositories.pretraining import PretrainingRepository
+from backend.database.repositories.training_reliability import TrainingReliabilityRepository
 from backend.models.pretraining import (
     CheckpointCompareRequest,
     PretrainingJobCreate,
     PretrainingJobPatch,
 )
+from backend.models.training_reliability import PromotionRequest
 from backend.services.pretraining_service import PretrainingService
+from backend.services.training_evaluation_service import TrainingEvaluationService
 
 router = APIRouter(
     prefix="/admin/pretraining",
@@ -21,6 +24,14 @@ router = APIRouter(
 
 def service(settings) -> PretrainingService:
     return PretrainingService(PretrainingRepository(settings.resolved_database_path), settings)
+
+
+def evaluation_service(settings) -> TrainingEvaluationService:
+    return TrainingEvaluationService(
+        PretrainingRepository(settings.resolved_database_path),
+        TrainingReliabilityRepository(settings.resolved_database_path),
+        settings,
+    )
 
 
 @router.get("/capabilities")
@@ -135,10 +146,15 @@ async def verify_checkpoint(
 
 
 @router.post("/checkpoints/compare")
-async def compare_checkpoints(payload: CheckpointCompareRequest, settings: SettingsDependency):
-    return service(settings).compare_checkpoints(
+async def compare_checkpoints(
+    payload: CheckpointCompareRequest,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+):
+    return evaluation_service(settings).compare_checkpoints(
         payload.left_checkpoint_public_id,
         payload.right_checkpoint_public_id,
+        admin.admin.public_id,
     )
 
 
@@ -162,5 +178,7 @@ async def promote_checkpoint(
     checkpoint_public_id: str,
     settings: SettingsDependency,
     admin: CsrfDependency,
+    payload: PromotionRequest | None = None,
 ):
-    return service(settings).promote(checkpoint_public_id, admin.admin.public_id)
+    override_comment = payload.override_comment if payload else None
+    return service(settings).promote(checkpoint_public_id, admin.admin.public_id, override_comment)

@@ -104,4 +104,5 @@ class TrainingCheckpointManager:
             "trainer_state": loads_json(
                 (target / "trainer_state.json").read_text(encoding="utf-8")
             ),
+            "references": loads_json((target / "references.json").read_text(encoding="utf-8")),
         }

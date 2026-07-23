@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -1104,5 +1104,240 @@ CREATE INDEX IF NOT EXISTS ix_pretraining_evaluations_job ON pretraining_evaluat
 CREATE INDEX IF NOT EXISTS ix_training_worker_leases_job ON training_worker_leases(pretraining_job_id);
 CREATE TRIGGER IF NOT EXISTS pretraining_events_immutable_update BEFORE UPDATE ON pretraining_job_events BEGIN SELECT RAISE(ABORT, 'pretraining events are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS pretraining_events_immutable_delete BEFORE DELETE ON pretraining_job_events BEGIN SELECT RAISE(ABORT, 'pretraining events are immutable'); END;
+"""
+
+MIGRATION_010_NAME = "010_phase10_training_reliability"
+
+PHASE10_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "pretraining_jobs": [
+        ("lease_generation", "INTEGER NOT NULL DEFAULT 0"),
+        ("recovery_required", "INTEGER NOT NULL DEFAULT 0"),
+        ("latest_stream_checksum_sha256", "TEXT"),
+        ("latest_coverage_public_id", "TEXT"),
+        ("quality_readiness_status", "TEXT NOT NULL DEFAULT 'not_assessed'"),
+        ("best_checkpoint_public_id", "TEXT"),
+    ],
+    "training_worker_leases": [
+        ("lease_generation", "INTEGER NOT NULL DEFAULT 0"),
+        ("owner_public_id", "TEXT"),
+        ("released_at", "TEXT"),
+        ("release_reason", "TEXT"),
+    ],
+}
+
+PHASE10_SCHEMA = """
+CREATE TABLE IF NOT EXISTS worker_heartbeats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    worker_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'starting' CHECK (status IN ('starting','idle','claiming','running','pausing','recovering','stopping','stopped','failed')),
+    current_job_public_id TEXT,
+    lease_generation INTEGER,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_heartbeat_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lease_expires_at TEXT,
+    shutdown_requested INTEGER NOT NULL DEFAULT 0 CHECK (shutdown_requested IN (0,1)),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS training_recovery_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    recovery_type TEXT NOT NULL CHECK (recovery_type IN ('pause_resume','manual_resume','stale_lease','worker_crash','checkpoint_recovery')),
+    status TEXT NOT NULL CHECK (status IN ('validating','recovering','completed','completed_with_warnings','failed','cancelled')),
+    source_worker_id TEXT,
+    recovering_worker_id TEXT NOT NULL,
+    source_checkpoint_public_id TEXT,
+    previous_lease_generation INTEGER NOT NULL,
+    new_lease_generation INTEGER NOT NULL,
+    recovered_step INTEGER,
+    recovered_tokens INTEGER,
+    validation_summary_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    error_message TEXT,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_dataset_coverage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    split TEXT NOT NULL CHECK (split IN ('train','valid')),
+    total_records INTEGER NOT NULL DEFAULT 0,
+    eligible_records INTEGER NOT NULL DEFAULT 0,
+    encoded_records INTEGER NOT NULL DEFAULT 0,
+    excluded_records INTEGER NOT NULL DEFAULT 0,
+    zero_token_records INTEGER NOT NULL DEFAULT 0,
+    oversized_records INTEGER NOT NULL DEFAULT 0,
+    split_records INTEGER NOT NULL DEFAULT 0,
+    dropped_records INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    usable_tokens INTEGER NOT NULL DEFAULT 0,
+    padding_tokens INTEGER NOT NULL DEFAULT 0,
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    record_type_distribution_json TEXT NOT NULL DEFAULT '{}',
+    source_type_distribution_json TEXT NOT NULL DEFAULT '{}',
+    exclusion_reasons_json TEXT NOT NULL DEFAULT '{}',
+    coverage_ratio REAL NOT NULL DEFAULT 0 CHECK (coverage_ratio BETWEEN 0 AND 1),
+    stream_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_stream_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    split TEXT NOT NULL CHECK (split IN ('train','valid')),
+    dataset_version_public_id TEXT NOT NULL,
+    dataset_checksum_sha256 TEXT NOT NULL,
+    tokenizer_version_public_id TEXT NOT NULL,
+    tokenizer_checksum_sha256 TEXT NOT NULL,
+    sequence_length INTEGER NOT NULL,
+    packing_policy TEXT NOT NULL,
+    partial_block_policy TEXT NOT NULL,
+    eos_policy TEXT NOT NULL,
+    overlength_policy TEXT NOT NULL,
+    shuffle INTEGER NOT NULL DEFAULT 0 CHECK (shuffle IN (0,1)),
+    seed INTEGER NOT NULL,
+    eligible_records INTEGER NOT NULL,
+    encoded_records INTEGER NOT NULL,
+    excluded_records INTEGER NOT NULL,
+    total_tokens INTEGER NOT NULL,
+    usable_tokens INTEGER NOT NULL,
+    block_count INTEGER NOT NULL,
+    stream_checksum_sha256 TEXT NOT NULL,
+    manifest_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_run_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    initial_step INTEGER NOT NULL DEFAULT 0,
+    final_step INTEGER NOT NULL DEFAULT 0,
+    initial_training_loss REAL,
+    final_training_loss REAL,
+    best_training_loss REAL,
+    initial_validation_loss REAL,
+    final_validation_loss REAL,
+    best_validation_loss REAL,
+    initial_perplexity REAL,
+    final_perplexity REAL,
+    processed_tokens INTEGER NOT NULL DEFAULT 0,
+    optimizer_steps INTEGER NOT NULL DEFAULT 0,
+    elapsed_seconds REAL NOT NULL DEFAULT 0,
+    average_tokens_per_second REAL,
+    peak_process_memory_bytes INTEGER,
+    checkpoint_count INTEGER NOT NULL DEFAULT 0,
+    pause_count INTEGER NOT NULL DEFAULT 0,
+    resume_count INTEGER NOT NULL DEFAULT 0,
+    recovery_count INTEGER NOT NULL DEFAULT 0,
+    non_finite_event_count INTEGER NOT NULL DEFAULT 0,
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_quality_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    assessment_version TEXT NOT NULL,
+    overall_score REAL NOT NULL CHECK (overall_score BETWEEN 0 AND 1),
+    dimension_scores_json TEXT NOT NULL DEFAULT '{}',
+    readiness_status TEXT NOT NULL CHECK (readiness_status IN ('ready_for_staging','warning','blocked','not_assessed')),
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_quality_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    training_quality_assessment_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL CHECK (issue_code IN (
+        'dataset_checksum_mismatch','tokenizer_checksum_mismatch','model_config_mismatch',
+        'stream_checksum_mismatch','coverage_too_low','too_many_excluded_records',
+        'insufficient_training_tokens','loss_not_improving','loss_divergence',
+        'non_finite_loss','non_finite_gradient','validation_loss_missing',
+        'validation_loss_worsening','train_validation_gap_high','too_few_validation_tokens',
+        'checkpoint_corrupt','resume_inconsistent','worker_lease_conflict',
+        'stale_worker_write','worker_recovery_failed','memory_limit_exceeded',
+        'disk_limit_exceeded','throughput_unusually_low'
+    )),
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','error','blocking')),
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (training_quality_assessment_id) REFERENCES training_quality_assessments(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS training_checkpoint_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    left_checkpoint_public_id TEXT NOT NULL,
+    right_checkpoint_public_id TEXT NOT NULL,
+    compatibility TEXT NOT NULL CHECK (compatibility IN ('compatible','partially_compatible','incompatible')),
+    comparison_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS training_run_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    left_job_public_id TEXT NOT NULL,
+    right_job_public_id TEXT NOT NULL,
+    compatibility TEXT NOT NULL CHECK (compatibility IN ('compatible','partially_compatible','incompatible')),
+    comparison_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS checkpoint_retention_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_job_id INTEGER NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('preview','apply')),
+    checkpoint_public_id TEXT NOT NULL,
+    classification TEXT NOT NULL CHECK (classification IN ('protected','eligible','archived')),
+    protection_reason TEXT,
+    dry_run INTEGER NOT NULL DEFAULT 0 CHECK (dry_run IN (0,1)),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_worker_heartbeats_status ON worker_heartbeats(status,last_heartbeat_at);
+CREATE INDEX IF NOT EXISTS ix_worker_heartbeats_job ON worker_heartbeats(current_job_public_id);
+CREATE INDEX IF NOT EXISTS ix_training_recovery_attempts_job ON training_recovery_attempts(pretraining_job_id);
+CREATE INDEX IF NOT EXISTS ix_training_recovery_attempts_status ON training_recovery_attempts(status,completed_at);
+CREATE INDEX IF NOT EXISTS ix_training_dataset_coverage_job ON training_dataset_coverage(pretraining_job_id,split);
+CREATE INDEX IF NOT EXISTS ix_training_stream_manifests_job ON training_stream_manifests(pretraining_job_id,split);
+CREATE INDEX IF NOT EXISTS ix_training_run_summaries_job ON training_run_summaries(pretraining_job_id);
+CREATE INDEX IF NOT EXISTS ix_training_quality_assessments_job ON training_quality_assessments(pretraining_job_id);
+CREATE INDEX IF NOT EXISTS ix_training_quality_issues_assessment ON training_quality_issues(training_quality_assessment_id);
+CREATE INDEX IF NOT EXISTS ix_training_quality_issues_severity ON training_quality_issues(severity);
+CREATE INDEX IF NOT EXISTS ix_checkpoint_retention_actions_job ON checkpoint_retention_actions(pretraining_job_id);
+CREATE TRIGGER IF NOT EXISTS training_recovery_attempts_immutable_update BEFORE UPDATE ON training_recovery_attempts BEGIN SELECT RAISE(ABORT, 'recovery attempts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_recovery_attempts_immutable_delete BEFORE DELETE ON training_recovery_attempts BEGIN SELECT RAISE(ABORT, 'recovery attempts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_dataset_coverage_immutable_update BEFORE UPDATE ON training_dataset_coverage BEGIN SELECT RAISE(ABORT, 'dataset coverage records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_dataset_coverage_immutable_delete BEFORE DELETE ON training_dataset_coverage BEGIN SELECT RAISE(ABORT, 'dataset coverage records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_stream_manifests_immutable_update BEFORE UPDATE ON training_stream_manifests BEGIN SELECT RAISE(ABORT, 'stream manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_stream_manifests_immutable_delete BEFORE DELETE ON training_stream_manifests BEGIN SELECT RAISE(ABORT, 'stream manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_run_summaries_immutable_update BEFORE UPDATE ON training_run_summaries BEGIN SELECT RAISE(ABORT, 'run summaries are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_run_summaries_immutable_delete BEFORE DELETE ON training_run_summaries BEGIN SELECT RAISE(ABORT, 'run summaries are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_quality_assessments_immutable_update BEFORE UPDATE ON training_quality_assessments BEGIN SELECT RAISE(ABORT, 'quality assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_quality_assessments_immutable_delete BEFORE DELETE ON training_quality_assessments BEGIN SELECT RAISE(ABORT, 'quality assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_quality_issues_immutable_update BEFORE UPDATE ON training_quality_issues BEGIN SELECT RAISE(ABORT, 'quality issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_quality_issues_immutable_delete BEFORE DELETE ON training_quality_issues BEGIN SELECT RAISE(ABORT, 'quality issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_checkpoint_comparisons_immutable_update BEFORE UPDATE ON training_checkpoint_comparisons BEGIN SELECT RAISE(ABORT, 'checkpoint comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_checkpoint_comparisons_immutable_delete BEFORE DELETE ON training_checkpoint_comparisons BEGIN SELECT RAISE(ABORT, 'checkpoint comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_run_comparisons_immutable_update BEFORE UPDATE ON training_run_comparisons BEGIN SELECT RAISE(ABORT, 'run comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_run_comparisons_immutable_delete BEFORE DELETE ON training_run_comparisons BEGIN SELECT RAISE(ABORT, 'run comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS checkpoint_retention_actions_immutable_update BEFORE UPDATE ON checkpoint_retention_actions BEGIN SELECT RAISE(ABORT, 'retention actions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS checkpoint_retention_actions_immutable_delete BEFORE DELETE ON checkpoint_retention_actions BEGIN SELECT RAISE(ABORT, 'retention actions are append-only'); END;
 """
 

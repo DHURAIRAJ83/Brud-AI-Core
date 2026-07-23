@@ -105,6 +105,22 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_PRETRAINING_VALIDATION_MAX_BATCHES` | `10` | Validation-loss batch bound |
 | `BRUD_PRETRAINING_NAN_FAILURE` | `true` | Treat non-finite values as failure |
 | `BRUD_PRETRAINING_DEFAULT_PORT` | `8001` | Alternate local verification port |
+| `BRUD_PRETRAINING_KEEP_PERIODIC` | `3` | Periodic checkpoints retained per job (newest first) |
+| `BRUD_PRETRAINING_KEEP_BEST` | `1` | Best-validation checkpoints retained per job |
+| `BRUD_PRETRAINING_KEEP_FINAL` | `1` | Final checkpoints retained per job |
+| `BRUD_PRETRAINING_KEEP_PAUSE` | `1` | Pause checkpoints retained per job |
+| `BRUD_PRETRAINING_RETENTION_DRY_RUN` | `true` | Retention apply records actions without archiving when true |
+| `BRUD_TRAINING_QUALITY_RULESET_VERSION` | `phase10-v1` | Deterministic training-quality ruleset label |
+| `BRUD_TRAINING_MIN_PROCESSED_TOKENS` | `8` | Minimum processed tokens before an insufficient-tokens issue |
+| `BRUD_TRAINING_MIN_LOSS_IMPROVEMENT_RATIO` | `0.0` | Minimum required training-loss improvement ratio |
+| `BRUD_TRAINING_MAX_TRAIN_VALIDATION_GAP` | `5.0` | Maximum allowed validation-minus-training loss gap |
+| `BRUD_TRAINING_MAX_EXCLUDED_RECORD_RATIO` | `0.5` | Maximum allowed excluded-record ratio |
+| `BRUD_TRAINING_MIN_VALIDATION_TOKENS` | `4` | Minimum validation-split tokens |
+| `BRUD_TRAINING_REQUIRE_VALIDATION` | `true` | Require a validation loss before ready-for-staging |
+| `BRUD_TRAINING_REQUIRE_RESUME_CHECK_IF_RESUMED` | `true` | Require resume-integrity pass for resumed jobs |
+| `BRUD_TRAINING_MAX_NON_FINITE_EVENTS` | `0` | Maximum tolerated non-finite loss/gradient events |
+| `BRUD_TRAINING_REQUIRE_ALL_CHECKPOINTS_VERIFIED` | `true` | Require every checkpoint verified before ready-for-staging |
+| `BRUD_TRAINING_MIN_COVERAGE_RATIO` | `0.5` | Minimum dataset coverage ratio before a coverage warning |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
@@ -132,7 +148,9 @@ Tokenizer work can be inspected with `python -m backend.tokenizer_cli capabiliti
 
 Core model architecture work can be inspected with `python -m backend.core_model_cli capabilities`, `list-configs`, `inspect-config <public_id>`, `list-versions`, `inspect-version <public_id>`, `initialize <public_id>`, `verify <public_id>`, `smoke-test <public_id>`, and `verify-checkpoint <public_id>`. Initialization and smoke tests require typed confirmation and operate only on registered public IDs.
 
-Bounded pretraining can be inspected with `python -m backend.pretraining_cli capabilities`, `list`, `inspect <job_public_id>`, `preflight <job_public_id>`, `queue <job_public_id>`, `pause <job_public_id>`, `resume <job_public_id>`, `cancel <job_public_id>`, `metrics <job_public_id>`, `list-checkpoints <job_public_id>`, `verify-checkpoint <checkpoint_public_id>`, and `promote <checkpoint_public_id>`. Mutating commands require typed confirmation. Run the local worker separately with `python -m backend.training_worker`; add `--once` for a single claim-and-exit verification run.
+Bounded pretraining can be inspected with `python -m backend.pretraining_cli capabilities`, `list`, `inspect <job_public_id>`, `preflight <job_public_id>`, `queue <job_public_id>`, `pause <job_public_id>`, `resume <job_public_id>`, `cancel <job_public_id>`, `metrics <job_public_id>`, `list-checkpoints <job_public_id>`, `verify-checkpoint <checkpoint_public_id>`, and `promote <checkpoint_public_id>`. Mutating commands require typed confirmation. Run the local worker separately with `python -m backend.training_worker`; add `--once` for a single claim-and-exit verification run, `--poll-seconds <n>` to override the poll interval, and `--worker-name <name>` to set a stable worker identity across restarts.
+
+Training reliability and recovery can be inspected and controlled with `python -m backend.training_recovery_cli status`, `stale-jobs`, `inspect <job_public_id>`, `verify-resume <job_public_id>` (read-only dry check), and `recover <job_public_id>` (mutating; requires typing `recover` to confirm). Every command operates on public IDs only. See [training_crash_recovery.md](training_crash_recovery.md).
 
 ## Troubleshooting
 

@@ -1,5 +1,10 @@
 # Brud AI Database Schema v9
 
+> Superseded by schema v10 (Phase 10) — see
+> [database_schema_v10.md](database_schema_v10.md). This document is preserved
+> as an accurate historical snapshot of what schema v9 alone introduced;
+> migration `009_phase9_core_pretraining` remains unchanged in v10.
+
 Schema v9 is additive on top of schema v8. It adds bounded core-model pretraining control-plane tables and does not rebuild or drop existing dataset, tokenizer, or core-model architecture tables.
 
 ## New tables

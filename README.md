@@ -1,6 +1,6 @@
 # Brud AI
 
-Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 9 adds bounded CPU base-pretraining infrastructure for Brud Core; it does not add instruction tuning or chatbot inference.
+Brud AI is a standalone foundation for a small AI system intended to understand and respond to Tamil, English, Tanglish, and mixed-language input. Phase 9 added bounded CPU base-pretraining infrastructure for Brud Core; Phase 10 adds training reliability, crash recovery, dataset coverage, and quality gating on top of it. Neither phase adds instruction tuning or chatbot inference.
 
 ## Products
 
@@ -86,3 +86,7 @@ There is no public registration, remote import, instruction tuning, chat inferen
 ## Phase 9 status
 
 Schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, job events, and worker leases. The local worker is explicit (`python -m backend.training_worker`) and trains only from registered immutable dataset versions, verified tokenizer metadata, and architecture-verified Brud Core versions. Verification is recorded in [docs/phase_9_report.md](docs/phase_9_report.md).
+
+## Phase 10 status
+
+Schema v10 adds worker heartbeats, lease-generation fencing, verified recovery, dataset coverage, stream manifests, run summaries, training-process quality gates, and checkpoint/run comparisons — all on top of the existing Phase 9 worker and service, with no second training loop. A resumed job is never restarted from an unverified checkpoint. Promotion is blocked by any integrity issue and requires a comment to override a warning-level one. See [docs/phase_10_report.md](docs/phase_10_report.md) and [docs/architecture.md](docs/architecture.md).

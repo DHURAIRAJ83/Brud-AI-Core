@@ -4,6 +4,7 @@ import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
+import InferenceRuntimePage from './pages/InferenceRuntimePage.jsx'
 import InstructionTuningPage from './pages/InstructionTuningPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ModelEvaluationPage from './pages/ModelEvaluationPage.jsx'
@@ -37,5 +38,6 @@ export default function App() {
   if (active === 'Instruction Tuning') page = <InstructionTuningPage />
   if (active === 'Evaluation') page = <ModelEvaluationPage />
   if (active === 'Model Registry') page = <ModelRegistryPage />
+  if (active === 'Inference Runtime') page = <InferenceRuntimePage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

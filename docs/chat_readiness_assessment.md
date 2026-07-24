@@ -71,3 +71,19 @@ a candidate whose linked run has `status = "evaluation_blocked"` always
 produces the `evaluation_blocked` blocking reason at the release-
 eligibility layer too, with no path for an approval to override it. See
 [model_release_eligibility.md](model_release_eligibility.md).
+
+## Consumed live, never cached, by Phase 15
+
+`InferenceRuntimeService.gather_release_facts()` re-reads the *latest*
+`model_chat_readiness_assessments.status` for the release candidate's
+linked evaluation run at **every** assignment-eligibility check,
+compatibility assessment, and model-load attempt — never once at
+release-creation time and then trusted forever. A release that was
+`evaluation_passed_with_limits` when it was created and released can
+still be correctly rejected for assignment/loading the moment a new,
+append-only, blocking assessment is recorded against its evaluation
+run — proven directly by automated test
+(`tests/backend/test_inference_runtime_api.py
+::test_evaluation_blocked_release_rejected_end_to_end`) and by the
+Phase 15 manual verification run. See
+[inference_runtime_architecture.md](inference_runtime_architecture.md).

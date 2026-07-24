@@ -73,6 +73,7 @@ async def test_schema_and_audit_endpoints(protected_api_app: FastAPI) -> None:
             "012_phase12_instruction_tuning",
             "013_phase13_multilingual_evaluation",
             "014_phase14_model_release_registry",
+            "015_phase15_controlled_inference_runtime",
         }
     audit = (await get(protected_api_app, "/api/admin/audit/recent?limit=2")).json()
     assert audit["limit"] == 2

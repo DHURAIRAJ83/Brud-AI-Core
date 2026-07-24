@@ -617,6 +617,73 @@ class Settings(BaseSettings):
     release_checksum_algorithm: str = Field(
         default="sha256", validation_alias="BRUD_RELEASE_CHECKSUM_ALGORITHM"
     )
+    inference_runtime_enabled: bool = Field(
+        default=True, validation_alias="BRUD_INFERENCE_RUNTIME_ENABLED"
+    )
+    public_chat_model_enabled: bool = Field(
+        default=False, validation_alias="BRUD_PUBLIC_CHAT_MODEL_ENABLED"
+    )
+    inference_max_loaded_models: int = Field(
+        default=1, ge=1, validation_alias="BRUD_INFERENCE_MAX_LOADED_MODELS"
+    )
+    inference_max_concurrent_requests: int = Field(
+        default=1, ge=1, validation_alias="BRUD_INFERENCE_MAX_CONCURRENT_REQUESTS"
+    )
+    inference_max_context_length: int = Field(
+        default=512, ge=8, validation_alias="BRUD_INFERENCE_MAX_CONTEXT_LENGTH"
+    )
+    inference_max_new_tokens: int = Field(
+        default=128, ge=1, validation_alias="BRUD_INFERENCE_MAX_NEW_TOKENS"
+    )
+    inference_request_timeout_seconds: int = Field(
+        default=30, ge=1, validation_alias="BRUD_INFERENCE_REQUEST_TIMEOUT_SECONDS"
+    )
+    inference_idle_unload_seconds: int = Field(
+        default=900, ge=1, validation_alias="BRUD_INFERENCE_IDLE_UNLOAD_SECONDS"
+    )
+    inference_min_available_memory_bytes: int = Field(
+        default=500_000_000, ge=0, validation_alias="BRUD_INFERENCE_MIN_AVAILABLE_MEMORY_BYTES"
+    )
+    inference_min_available_disk_bytes: int = Field(
+        default=500_000_000, ge=0, validation_alias="BRUD_INFERENCE_MIN_AVAILABLE_DISK_BYTES"
+    )
+    inference_memory_safety_multiplier: float = Field(
+        default=1.5, gt=0, validation_alias="BRUD_INFERENCE_MEMORY_SAFETY_MULTIPLIER"
+    )
+    inference_allow_warning_releases: bool = Field(
+        default=True, validation_alias="BRUD_INFERENCE_ALLOW_WARNING_RELEASES"
+    )
+    inference_allow_registry_fixture_diagnostics: bool = Field(
+        default=False, validation_alias="BRUD_INFERENCE_ALLOW_REGISTRY_FIXTURE_DIAGNOSTICS"
+    )
+    inference_require_canary: bool = Field(
+        default=True, validation_alias="BRUD_INFERENCE_REQUIRE_CANARY"
+    )
+    inference_require_rollback_target: bool = Field(
+        default=True, validation_alias="BRUD_INFERENCE_REQUIRE_ROLLBACK_TARGET"
+    )
+    inference_canary_max_requests: int = Field(
+        default=30, ge=1, validation_alias="BRUD_INFERENCE_CANARY_MAX_REQUESTS"
+    )
+    inference_canary_max_failure_rate: float = Field(
+        default=0.2, ge=0, le=1, validation_alias="BRUD_INFERENCE_CANARY_MAX_FAILURE_RATE"
+    )
+    inference_canary_max_timeout_rate: float = Field(
+        default=0.2, ge=0, le=1, validation_alias="BRUD_INFERENCE_CANARY_MAX_TIMEOUT_RATE"
+    )
+    inference_canary_max_role_leakage_rate: float = Field(
+        default=0.0, ge=0, le=1, validation_alias="BRUD_INFERENCE_CANARY_MAX_ROLE_LEAKAGE_RATE"
+    )
+    inference_canary_max_prompt_leakage_rate: float = Field(
+        default=0.0, ge=0, le=1, validation_alias="BRUD_INFERENCE_CANARY_MAX_PROMPT_LEAKAGE_RATE"
+    )
+    inference_canary_max_duplicate_rate: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_INFERENCE_CANARY_MAX_DUPLICATE_RATE"
+    )
+    inference_required_public_approval_roles: str = Field(
+        default="technical,evaluation,security,release",
+        validation_alias="BRUD_INFERENCE_REQUIRED_PUBLIC_APPROVAL_ROLES",
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -713,6 +780,10 @@ class Settings(BaseSettings):
         }
         if not allowed_formats or not allowed_formats <= {"zip", "tar_gz"}:
             raise ValueError("BRUD_RELEASE_ALLOWED_BUNDLE_FORMATS supports only zip and tar_gz")
+        if self.inference_max_new_tokens > self.inference_max_context_length:
+            raise ValueError(
+                "BRUD_INFERENCE_MAX_NEW_TOKENS must not exceed BRUD_INFERENCE_MAX_CONTEXT_LENGTH"
+            )
         return self
 
     @field_validator("ocr_languages")
@@ -833,6 +904,14 @@ class Settings(BaseSettings):
             root.strip()
             for root in self.release_allowed_artifact_roots.split(",")
             if root.strip()
+        )
+
+    @property
+    def inference_required_public_approval_roles_list(self) -> tuple[str, ...]:
+        return tuple(
+            role.strip()
+            for role in self.inference_required_public_approval_roles.split(",")
+            if role.strip()
         )
 
     @property

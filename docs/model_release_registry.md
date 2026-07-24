@@ -69,3 +69,17 @@ A model may legitimately be `core_model.lifecycle_status = staging`,
 `deployment_eligibility = not_deployable`, and
 `public_chat_assignment = none` — all at once. This is the expected,
 correct state for an unproven model, not a bug.
+
+## Consumed, never re-derived from scratch, by Phase 15
+
+`InferenceRuntimeService.gather_release_facts()` reads a release's
+`status`/`deployment_eligibility` and its candidate's artifact
+verification directly from these Phase 14 tables — it never recomputes
+eligibility or re-verifies an artifact Phase 14 already verified.
+Evaluation readiness is the one exception: it is re-read **live** from
+`model_chat_readiness_assessments` at every Phase 15 check (never cached
+on the release), so Phase 15 correctly rejects a release whose
+underlying evaluation evidence has since been superseded by a blocking
+assessment, even though `model_releases.deployment_eligibility` itself
+is immutable once set. See
+[inference_runtime_architecture.md](inference_runtime_architecture.md).

@@ -1,4 +1,4 @@
-export const menuItems = ['Overview', 'System', 'Datasets', 'Documents', 'Tokenizer', 'Core Model', 'Training', 'Base Training', 'Instruction Tuning', 'Evaluation', 'Model Registry', 'Chat Testing', 'Feedback', 'Admin Assistant', 'Audit Logs', 'Settings']
+export const menuItems = ['Overview', 'System', 'Datasets', 'Documents', 'Tokenizer', 'Core Model', 'Training', 'Base Training', 'Instruction Tuning', 'Evaluation', 'Model Registry', 'Inference Runtime', 'Chat Testing', 'Feedback', 'Admin Assistant', 'Audit Logs', 'Settings']
 
 export default function Sidebar({ active, open, onSelect, onClose }) {
   return (

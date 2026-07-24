@@ -97,3 +97,23 @@ assigns any model version to the `public_chat` assignment key, and no
 release is ever created for a candidate whose evaluation status is
 `evaluation_blocked`. See
 [model_release_eligibility.md](model_release_eligibility.md).
+
+## Phase 15 inference runtime (also no new lineage row, no lifecycle change)
+
+Phase 15 never rewrites a `core_model_versions` row, its lifecycle
+status, or the Phase 14 release/candidate rows it reads. A model
+assignment (`inference_model_assignments`) references an existing
+`model_releases` row entirely by foreign key, and re-derives evaluation
+readiness **live** from `model_chat_readiness_assessments` at every
+eligibility check rather than caching it — so a release that was
+eligible when created can still be correctly rejected for assignment if
+a later append-only readiness assessment reveals a blocking issue.
+Runtime instance status, assignment status, and public-chat activation
+are three more separate fields, on three different tables, never
+conflated with release status, deployment eligibility, or evaluation
+status. No phase up to and including Phase 15 assigns any model version
+to the `public_chat` assignment key, and no runtime instance ever loads
+a release whose evaluation status is `evaluation_blocked` or whose
+deployment eligibility is `not_deployable`. See
+[inference_runtime_architecture.md](inference_runtime_architecture.md)
+and [model_assignment_lifecycle.md](model_assignment_lifecycle.md).

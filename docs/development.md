@@ -186,6 +186,28 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_RELEASE_REQUIRE_INSTRUCTION_MANIFEST` | `true` | Require a verified instruction-tuning-manifest artifact for instruction-tuned candidates |
 | `BRUD_RELEASE_REQUIRE_BASE_TRAINING_MANIFEST` | `true` | Require a verified base-training-manifest artifact before eligibility |
 | `BRUD_RELEASE_CHECKSUM_ALGORITHM` | `sha256` | Checksum algorithm used for all release artifacts (only `sha256` is currently supported) |
+| `BRUD_INFERENCE_RUNTIME_ENABLED` | `true` | Master switch for the Phase 15 inference runtime API |
+| `BRUD_PUBLIC_CHAT_MODEL_ENABLED` | `false` | When `false`, `/api/chat` always returns the placeholder regardless of any assignment; when `true`, an assignment must still pass every runtime/eligibility/activation gate — the flag alone never bypasses approval |
+| `BRUD_INFERENCE_MAX_LOADED_MODELS` | `1` | Default `maximum_loaded_models` for new runtime profiles |
+| `BRUD_INFERENCE_MAX_CONCURRENT_REQUESTS` | `1` | Default `maximum_concurrent_requests` for new runtime profiles |
+| `BRUD_INFERENCE_MAX_CONTEXT_LENGTH` | `512` | Default `maximum_context_length` for new runtime profiles |
+| `BRUD_INFERENCE_MAX_NEW_TOKENS` | `128` | Default `maximum_new_tokens` for new runtime profiles |
+| `BRUD_INFERENCE_REQUEST_TIMEOUT_SECONDS` | `30` | Default generation wall-clock timeout |
+| `BRUD_INFERENCE_IDLE_UNLOAD_SECONDS` | `900` | Default idle-instance unload interval |
+| `BRUD_INFERENCE_MIN_AVAILABLE_MEMORY_BYTES` | `500000000` | Default resource-guard minimum available memory |
+| `BRUD_INFERENCE_MIN_AVAILABLE_DISK_BYTES` | `500000000` | Default resource-guard minimum available disk |
+| `BRUD_INFERENCE_MEMORY_SAFETY_MULTIPLIER` | `1.5` | Safety-overhead multiplier applied to the estimated peak inference memory footprint |
+| `BRUD_INFERENCE_ALLOW_WARNING_RELEASES` | `true` | Allow `deployable_with_warnings` releases to be assigned |
+| `BRUD_INFERENCE_ALLOW_REGISTRY_FIXTURE_DIAGNOSTICS` | `false` | Test-only override allowing a registry-workflow fixture into `admin_diagnostic`; never enable against real development data |
+| `BRUD_INFERENCE_REQUIRE_CANARY` | `true` | Require a successful canary before the public-chat activation gate can pass |
+| `BRUD_INFERENCE_REQUIRE_ROLLBACK_TARGET` | `true` | Require a verified rollback target before the public-chat activation gate can pass |
+| `BRUD_INFERENCE_CANARY_MAX_REQUESTS` | `30` | Default canary `max_request_count` |
+| `BRUD_INFERENCE_CANARY_MAX_FAILURE_RATE` | `0.2` | Canary auto-stop threshold for failure rate |
+| `BRUD_INFERENCE_CANARY_MAX_TIMEOUT_RATE` | `0.2` | Canary auto-stop threshold for timeout rate |
+| `BRUD_INFERENCE_CANARY_MAX_ROLE_LEAKAGE_RATE` | `0.0` | Canary auto-stop threshold for role-token leakage rate |
+| `BRUD_INFERENCE_CANARY_MAX_PROMPT_LEAKAGE_RATE` | `0.0` | Canary auto-stop threshold for prompt leakage rate |
+| `BRUD_INFERENCE_CANARY_MAX_DUPLICATE_RATE` | `0.5` | Canary auto-stop threshold for duplicate-output rate |
+| `BRUD_INFERENCE_REQUIRED_PUBLIC_APPROVAL_ROLES` | `technical,evaluation,security,release` | Comma-separated roles that must all approve a `public_chat` assignment |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 

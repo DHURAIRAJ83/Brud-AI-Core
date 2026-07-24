@@ -12,6 +12,7 @@ from backend.api.routes import (
     documents,
     health,
     imports,
+    inference_runtime,
     instruction_tuning,
     model_evaluation,
     model_release,
@@ -38,3 +39,4 @@ api_router.include_router(base_training.router)
 api_router.include_router(instruction_tuning.router)
 api_router.include_router(model_evaluation.router)
 api_router.include_router(model_release.router)
+api_router.include_router(inference_runtime.router)

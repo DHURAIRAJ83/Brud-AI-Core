@@ -317,9 +317,69 @@ infrastructure were added in this phase; a registered release is never
 automatically deployable or available to the public chatbot, which
 remains the unchanged placeholder.
 
+Phase 15 answers the next question: not "is this candidate safe enough
+to release" (Phase 14), but "can this already-released, already-eligible
+model be loaded into a bounded local runtime and safely used for admin
+testing" — never "is it ready for the public":
+
+```text
+Released, deployable, evaluation-ready release (Phase 14)
+      → release/runtime compatibility assessment (14 deterministic
+        dimensions; any integrity mismatch is blocking)
+      → resource guard (fail-closed, bounded estimate vs measured
+        available memory/disk, labelled honestly)
+      → registered-artifact-only model load (manifest → artifacts →
+        checkpoint → tokenizer → model config → resource guard → load
+        → health check; never an arbitrary path)
+      → scope-specific assignment (admin_diagnostic / admin_chat_lab /
+        internal_canary / public_chat, the last disabled by default;
+        a registry-workflow fixture can never reach internal_canary or
+        public_chat) → validate → approve (role-based, non-overridable
+        when blocked) → activate → versioned, immutable once approved
+      → admin diagnostic generation / admin chat lab (bounded, never
+        the public chatbot) / explicit fixture-based canary (append-
+        only lifecycle, auto-stop on leakage/failure/timeout thresholds)
+      → assignment-level rollback (restores a prior version's full
+        config snapshot; never touches an artifact on disk) / runtime
+        manifest (checksummed, no paths/secrets/raw content)
+      → public-chat activation gate (release readiness + runtime
+        health + canary success + all required approvals + a verified
+        rollback target; rejects outright on any gap — never fabricated
+        to pass)
+```
+
+`InferenceRuntimeService` (`backend/services/inference_runtime_service.py`)
+and `ModelAssignmentService`
+(`backend/services/model_assignment_service.py`) compose the existing
+release registry, checkpoint verifier, tokenizer registry, and core-model
+loader rather than building a second one of any of them. The new
+pure-function modules live under `core_model/inference_runtime/`:
+`runtime_config.py`, `resource_guard.py`, `model_loader.py`,
+`generation_config.py`, `generation_engine.py`, `context_builder.py`,
+`assignment_policy.py`, `canary.py`, `runtime_health.py`, `fallback.py`,
+and `comparison.py`. See
+[database_schema_v15.md](database_schema_v15.md),
+[inference_runtime_architecture.md](inference_runtime_architecture.md),
+[inference_runtime_profiles.md](inference_runtime_profiles.md),
+[inference_resource_guard.md](inference_resource_guard.md),
+[inference_model_loading.md](inference_model_loading.md),
+[model_assignment_scopes.md](model_assignment_scopes.md),
+[model_assignment_lifecycle.md](model_assignment_lifecycle.md),
+[admin_diagnostic_inference.md](admin_diagnostic_inference.md),
+[admin_chat_lab.md](admin_chat_lab.md),
+[inference_canary.md](inference_canary.md),
+[inference_fallback.md](inference_fallback.md),
+[inference_assignment_rollback.md](inference_assignment_rollback.md), and
+[inference_runtime_manifest.md](inference_runtime_manifest.md). No RAG,
+web search, tool calling, external model providers, multi-model
+concurrent serving, GPU cluster/distributed serving, quantization, GGUF
+export, RLHF, DPO, or production deployment were added in this phase;
+the public chatbot remains the unchanged placeholder, and public-chat
+activation remains rejected/disabled against real development data.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md); schema v11 (migration `011_phase11_base_pretraining_evaluation`, independent of migration 010) adds base-training experiments, experiment runs, dataset profiles, language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining/checkpoint tables rather than duplicating them — see [database_schema_v11.md](database_schema_v11.md); schema v12 (migration `012_phase12_instruction_tuning`, independent of migration 011) adds instruction-tuning experiments, runs, dataset profiles, instruction templates, per-step metrics, evaluations/evaluation results, learning checks, candidate selections, and reproducibility manifests, again referencing existing tables rather than duplicating them — see [database_schema_v12.md](database_schema_v12.md); schema v13 (migration `013_phase13_multilingual_evaluation`, independent of migration 012) adds evaluation suites, fixture sets, fixtures, evaluation runs, outputs, metrics, issues, human reviews, comparisons, chat-readiness assessments, and reproducibility manifests — see [database_schema_v13.md](database_schema_v13.md); schema v14 (migration `014_phase14_model_release_registry`, independent of migration 013) adds release families, release candidates, artifacts, manifests, model cards, eligibility assessments, issues, approvals, releases, comparisons, rollback plans/events, and bundles, all referencing existing candidate/checkpoint/tokenizer/dataset/evaluation tables rather than duplicating them — see [database_schema_v14.md](database_schema_v14.md).
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md); schema v11 (migration `011_phase11_base_pretraining_evaluation`, independent of migration 010) adds base-training experiments, experiment runs, dataset profiles, language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining/checkpoint tables rather than duplicating them — see [database_schema_v11.md](database_schema_v11.md); schema v12 (migration `012_phase12_instruction_tuning`, independent of migration 011) adds instruction-tuning experiments, runs, dataset profiles, instruction templates, per-step metrics, evaluations/evaluation results, learning checks, candidate selections, and reproducibility manifests, again referencing existing tables rather than duplicating them — see [database_schema_v12.md](database_schema_v12.md); schema v13 (migration `013_phase13_multilingual_evaluation`, independent of migration 012) adds evaluation suites, fixture sets, fixtures, evaluation runs, outputs, metrics, issues, human reviews, comparisons, chat-readiness assessments, and reproducibility manifests — see [database_schema_v13.md](database_schema_v13.md); schema v14 (migration `014_phase14_model_release_registry`, independent of migration 013) adds release families, release candidates, artifacts, manifests, model cards, eligibility assessments, issues, approvals, releases, comparisons, rollback plans/events, and bundles, all referencing existing candidate/checkpoint/tokenizer/dataset/evaluation tables rather than duplicating them — see [database_schema_v14.md](database_schema_v14.md); schema v15 (migration `015_phase15_controlled_inference_runtime`, independent of migration 014) adds runtime profiles/instances, runtime health checks, compatibility assessments, assignment scopes/assignments/versions/approvals/events, chat-lab sessions, inference requests/results/failures, canary runs/results, and runtime manifests, all referencing existing release/core-model/checkpoint/tokenizer tables rather than duplicating them — see [database_schema_v15.md](database_schema_v15.md).
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 

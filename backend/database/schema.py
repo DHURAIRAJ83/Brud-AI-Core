@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -2219,5 +2219,329 @@ CREATE TRIGGER IF NOT EXISTS model_release_rollback_events_immutable_update BEFO
 CREATE TRIGGER IF NOT EXISTS model_release_rollback_events_immutable_delete BEFORE DELETE ON model_release_rollback_events BEGIN SELECT RAISE(ABORT, 'release rollback events are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS model_release_bundles_immutable_update BEFORE UPDATE ON model_release_bundles BEGIN SELECT RAISE(ABORT, 'release bundles are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS model_release_bundles_immutable_delete BEFORE DELETE ON model_release_bundles BEGIN SELECT RAISE(ABORT, 'release bundles are append-only'); END;
+"""
+
+MIGRATION_015_NAME = "015_phase15_controlled_inference_runtime"
+
+PHASE15_SCHEMA = """
+CREATE TABLE IF NOT EXISTS inference_runtime_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    runtime_type TEXT NOT NULL DEFAULT 'local_cpu' CHECK (runtime_type IN ('local_cpu','local_gpu')),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    device TEXT NOT NULL DEFAULT 'cpu',
+    dtype TEXT NOT NULL DEFAULT 'float32' CHECK (dtype IN ('float32')),
+    maximum_loaded_models INTEGER NOT NULL DEFAULT 1,
+    maximum_concurrent_requests INTEGER NOT NULL DEFAULT 1,
+    maximum_context_length INTEGER NOT NULL,
+    maximum_new_tokens INTEGER NOT NULL,
+    request_timeout_seconds INTEGER NOT NULL DEFAULT 60,
+    idle_unload_seconds INTEGER NOT NULL DEFAULT 900,
+    minimum_available_memory_bytes INTEGER NOT NULL,
+    minimum_available_disk_bytes INTEGER NOT NULL,
+    resource_policy_json TEXT NOT NULL DEFAULT '{}',
+    generation_defaults_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS inference_runtime_instances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    inference_runtime_profile_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'offline' CHECK (status IN (
+        'offline','starting','idle','loading','ready','busy','unloading','degraded','failed','stopped'
+    )),
+    loaded_release_public_id TEXT,
+    loaded_checkpoint_public_id TEXT,
+    loaded_tokenizer_public_id TEXT,
+    loaded_at TEXT,
+    last_request_at TEXT,
+    last_health_at TEXT,
+    failure_code TEXT,
+    failure_summary TEXT,
+    memory_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inference_runtime_profile_id) REFERENCES inference_runtime_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_runtime_health_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    inference_runtime_instance_id INTEGER NOT NULL,
+    check_type TEXT NOT NULL CHECK (check_type IN (
+        'runtime_process','model_loaded','tokenizer_loaded','checkpoint_verified',
+        'memory_available','generation_smoke_test','latency_within_limit','special_token_output_safe'
+    )),
+    status TEXT NOT NULL CHECK (status IN ('healthy','degraded','unhealthy','not_checked')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inference_runtime_instance_id) REFERENCES inference_runtime_instances(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS inference_model_compatibility_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_id INTEGER NOT NULL,
+    inference_runtime_profile_id INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('compatible','compatible_with_warnings','incompatible','not_assessed')),
+    dimension_scores_json TEXT NOT NULL DEFAULT '{}',
+    blocking_issue_count INTEGER NOT NULL DEFAULT 0,
+    warning_issue_count INTEGER NOT NULL DEFAULT 0,
+    rationale_json TEXT NOT NULL DEFAULT '{}',
+    compatibility_checksum_sha256 TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_id) REFERENCES model_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY (inference_runtime_profile_id) REFERENCES inference_runtime_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_assignment_scopes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    scope_key TEXT NOT NULL UNIQUE CHECK (scope_key IN (
+        'admin_diagnostic','admin_chat_lab','internal_canary','public_chat'
+    )),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+    description TEXT NOT NULL DEFAULT '',
+    policy_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS inference_model_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_scope_id INTEGER NOT NULL,
+    model_release_id INTEGER NOT NULL,
+    inference_runtime_profile_id INTEGER NOT NULL,
+    generation_config_json TEXT NOT NULL DEFAULT '{}',
+    context_policy_json TEXT NOT NULL DEFAULT '{}',
+    fallback_policy_json TEXT NOT NULL DEFAULT '{}',
+    canary_percentage INTEGER NOT NULL DEFAULT 0 CHECK (canary_percentage BETWEEN 0 AND 100),
+    start_at TEXT,
+    expire_at TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validating','approved','active','paused','rolled_back','rejected','expired','archived'
+    )),
+    current_version_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_assignment_scope_id) REFERENCES inference_assignment_scopes(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_release_id) REFERENCES model_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY (inference_runtime_profile_id) REFERENCES inference_runtime_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_assignment_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    model_release_id INTEGER NOT NULL,
+    inference_runtime_profile_id INTEGER NOT NULL,
+    generation_config_json TEXT NOT NULL DEFAULT '{}',
+    context_policy_json TEXT NOT NULL DEFAULT '{}',
+    fallback_policy_json TEXT NOT NULL DEFAULT '{}',
+    canary_percentage INTEGER NOT NULL DEFAULT 0 CHECK (canary_percentage BETWEEN 0 AND 100),
+    eligibility_checksum_sha256 TEXT NOT NULL,
+    compatibility_checksum_sha256 TEXT NOT NULL,
+    approval_checksum_sha256 TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_release_id) REFERENCES model_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY (inference_runtime_profile_id) REFERENCES inference_runtime_profiles(id) ON DELETE RESTRICT,
+    UNIQUE(model_assignment_id, version_number)
+);
+CREATE TABLE IF NOT EXISTS inference_assignment_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_id INTEGER NOT NULL,
+    model_assignment_version_id INTEGER,
+    admin_public_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('technical','evaluation','security','release')),
+    decision TEXT NOT NULL CHECK (decision IN ('approve','approve_with_warning','reject','request_changes')),
+    comment TEXT NOT NULL DEFAULT '',
+    eligibility_checksum_sha256 TEXT,
+    compatibility_checksum_sha256 TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_assignment_version_id) REFERENCES inference_assignment_versions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS inference_assignment_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'created','validated','approved','activated','paused','resumed','canary_started',
+        'canary_stopped','fallback_used','rollback_started','rollback_completed',
+        'rollback_failed','expired','rejected'
+    )),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    actor_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS inference_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_id INTEGER NOT NULL,
+    inference_runtime_instance_id INTEGER,
+    scope TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','expired','closed','failed')),
+    turn_count INTEGER NOT NULL DEFAULT 0,
+    max_turns INTEGER NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    closed_at TEXT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT,
+    FOREIGN KEY (inference_runtime_instance_id) REFERENCES inference_runtime_instances(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    inference_runtime_instance_id INTEGER NOT NULL,
+    model_assignment_id INTEGER NOT NULL,
+    model_assignment_version_id INTEGER,
+    scope TEXT NOT NULL,
+    inference_session_id INTEGER,
+    prompt_checksum_sha256 TEXT NOT NULL,
+    input_token_count INTEGER NOT NULL DEFAULT 0,
+    maximum_new_token_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN (
+        'accepted','validating','queued','running','completed','completed_with_warning',
+        'timed_out','cancelled','failed','rejected'
+    )),
+    started_at TEXT,
+    ended_at TEXT,
+    runtime_milliseconds INTEGER,
+    stop_reason TEXT,
+    failure_code TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inference_runtime_instance_id) REFERENCES inference_runtime_instances(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_version_id) REFERENCES inference_assignment_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (inference_session_id) REFERENCES inference_sessions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    inference_request_id INTEGER NOT NULL,
+    output_checksum_sha256 TEXT NOT NULL,
+    generated_token_count INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT NOT NULL,
+    runtime_milliseconds INTEGER NOT NULL DEFAULT 0,
+    role_token_leakage_flag INTEGER NOT NULL DEFAULT 0 CHECK (role_token_leakage_flag IN (0,1)),
+    prompt_leakage_flag INTEGER NOT NULL DEFAULT 0 CHECK (prompt_leakage_flag IN (0,1)),
+    repetition_warning INTEGER NOT NULL DEFAULT 0 CHECK (repetition_warning IN (0,1)),
+    unicode_valid_flag INTEGER NOT NULL DEFAULT 1 CHECK (unicode_valid_flag IN (0,1)),
+    model_release_public_id TEXT NOT NULL,
+    model_assignment_version_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inference_request_id) REFERENCES inference_requests(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS inference_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    inference_runtime_instance_id INTEGER,
+    inference_request_id INTEGER,
+    model_assignment_id INTEGER,
+    failure_code TEXT NOT NULL CHECK (failure_code IN (
+        'release_not_eligible','assignment_not_active','assignment_scope_forbidden',
+        'registry_fixture_forbidden','manifest_mismatch','artifact_verification_failed',
+        'checkpoint_corrupt','tokenizer_invalid','model_config_mismatch','vocabulary_mismatch',
+        'special_token_mismatch','memory_guard_failed','disk_guard_failed','model_load_failed',
+        'context_too_long','generation_timeout','generation_cancelled','role_token_leakage',
+        'prompt_leakage','unicode_invalid','runtime_busy','runtime_unavailable','fallback_used'
+    )),
+    failure_summary TEXT NOT NULL DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inference_runtime_instance_id) REFERENCES inference_runtime_instances(id) ON DELETE RESTRICT,
+    FOREIGN KEY (inference_request_id) REFERENCES inference_requests(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_canary_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_id INTEGER NOT NULL,
+    run_status TEXT NOT NULL CHECK (run_status IN ('started','running','paused','stopped','completed')),
+    percentage INTEGER NOT NULL DEFAULT 0 CHECK (percentage BETWEEN 0 AND 100),
+    max_request_count INTEGER NOT NULL DEFAULT 0,
+    requests_executed INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT,
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS inference_canary_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    inference_canary_run_id INTEGER NOT NULL,
+    inference_request_id INTEGER,
+    routing_key TEXT NOT NULL,
+    used_model INTEGER NOT NULL DEFAULT 1 CHECK (used_model IN (0,1)),
+    success INTEGER NOT NULL DEFAULT 0 CHECK (success IN (0,1)),
+    timed_out INTEGER NOT NULL DEFAULT 0 CHECK (timed_out IN (0,1)),
+    latency_ms INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    role_leakage INTEGER NOT NULL DEFAULT 0 CHECK (role_leakage IN (0,1)),
+    prompt_leakage INTEGER NOT NULL DEFAULT 0 CHECK (prompt_leakage IN (0,1)),
+    duplicate_output INTEGER NOT NULL DEFAULT 0 CHECK (duplicate_output IN (0,1)),
+    unicode_valid INTEGER NOT NULL DEFAULT 1 CHECK (unicode_valid IN (0,1)),
+    stop_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inference_canary_run_id) REFERENCES inference_canary_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (inference_request_id) REFERENCES inference_requests(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS inference_runtime_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_assignment_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_inference_runtime_instances_profile ON inference_runtime_instances(inference_runtime_profile_id,status);
+CREATE INDEX IF NOT EXISTS ix_inference_runtime_health_checks_instance ON inference_runtime_health_checks(inference_runtime_instance_id,check_type);
+CREATE INDEX IF NOT EXISTS ix_inference_model_compatibility_release ON inference_model_compatibility_assessments(model_release_id,inference_runtime_profile_id);
+CREATE INDEX IF NOT EXISTS ix_model_assignments_scope ON inference_model_assignments(model_assignment_scope_id,status);
+CREATE INDEX IF NOT EXISTS ix_model_assignments_release ON inference_model_assignments(model_release_id);
+CREATE INDEX IF NOT EXISTS ix_model_assignment_versions_assignment ON inference_assignment_versions(model_assignment_id,version_number);
+CREATE INDEX IF NOT EXISTS ix_model_assignment_approvals_assignment ON inference_assignment_approvals(model_assignment_id,role);
+CREATE INDEX IF NOT EXISTS ix_model_assignment_events_assignment ON inference_assignment_events(model_assignment_id,event_type);
+CREATE INDEX IF NOT EXISTS ix_inference_sessions_assignment ON inference_sessions(model_assignment_id,status);
+CREATE INDEX IF NOT EXISTS ix_inference_requests_assignment ON inference_requests(model_assignment_id,status);
+CREATE INDEX IF NOT EXISTS ix_inference_requests_instance ON inference_requests(inference_runtime_instance_id);
+CREATE INDEX IF NOT EXISTS ix_inference_results_request ON inference_results(inference_request_id);
+CREATE INDEX IF NOT EXISTS ix_inference_failures_assignment ON inference_failures(model_assignment_id,failure_code);
+CREATE INDEX IF NOT EXISTS ix_inference_canary_runs_assignment ON inference_canary_runs(model_assignment_id,run_status);
+CREATE INDEX IF NOT EXISTS ix_inference_canary_results_run ON inference_canary_results(inference_canary_run_id);
+CREATE INDEX IF NOT EXISTS ix_inference_runtime_manifests_assignment ON inference_runtime_manifests(model_assignment_id);
+CREATE TRIGGER IF NOT EXISTS inference_runtime_health_checks_immutable_update BEFORE UPDATE ON inference_runtime_health_checks BEGIN SELECT RAISE(ABORT, 'runtime health checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_runtime_health_checks_immutable_delete BEFORE DELETE ON inference_runtime_health_checks BEGIN SELECT RAISE(ABORT, 'runtime health checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_model_compatibility_immutable_update BEFORE UPDATE ON inference_model_compatibility_assessments BEGIN SELECT RAISE(ABORT, 'compatibility assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_model_compatibility_immutable_delete BEFORE DELETE ON inference_model_compatibility_assessments BEGIN SELECT RAISE(ABORT, 'compatibility assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_assignment_versions_immutable_update BEFORE UPDATE ON inference_assignment_versions BEGIN SELECT RAISE(ABORT, 'assignment versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_assignment_versions_immutable_delete BEFORE DELETE ON inference_assignment_versions BEGIN SELECT RAISE(ABORT, 'assignment versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_assignment_approvals_immutable_update BEFORE UPDATE ON inference_assignment_approvals BEGIN SELECT RAISE(ABORT, 'assignment approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_assignment_approvals_immutable_delete BEFORE DELETE ON inference_assignment_approvals BEGIN SELECT RAISE(ABORT, 'assignment approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_assignment_events_immutable_update BEFORE UPDATE ON inference_assignment_events BEGIN SELECT RAISE(ABORT, 'assignment events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_assignment_events_immutable_delete BEFORE DELETE ON inference_assignment_events BEGIN SELECT RAISE(ABORT, 'assignment events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_requests_immutable_update BEFORE UPDATE ON inference_requests BEGIN SELECT RAISE(ABORT, 'inference requests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_requests_immutable_delete BEFORE DELETE ON inference_requests BEGIN SELECT RAISE(ABORT, 'inference requests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_results_immutable_update BEFORE UPDATE ON inference_results BEGIN SELECT RAISE(ABORT, 'inference results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_results_immutable_delete BEFORE DELETE ON inference_results BEGIN SELECT RAISE(ABORT, 'inference results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_failures_immutable_update BEFORE UPDATE ON inference_failures BEGIN SELECT RAISE(ABORT, 'inference failures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_failures_immutable_delete BEFORE DELETE ON inference_failures BEGIN SELECT RAISE(ABORT, 'inference failures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_canary_runs_immutable_update BEFORE UPDATE ON inference_canary_runs BEGIN SELECT RAISE(ABORT, 'canary runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_canary_runs_immutable_delete BEFORE DELETE ON inference_canary_runs BEGIN SELECT RAISE(ABORT, 'canary runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_canary_results_immutable_update BEFORE UPDATE ON inference_canary_results BEGIN SELECT RAISE(ABORT, 'canary results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_canary_results_immutable_delete BEFORE DELETE ON inference_canary_results BEGIN SELECT RAISE(ABORT, 'canary results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_runtime_manifests_immutable_update BEFORE UPDATE ON inference_runtime_manifests BEGIN SELECT RAISE(ABORT, 'runtime manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS inference_runtime_manifests_immutable_delete BEFORE DELETE ON inference_runtime_manifests BEGIN SELECT RAISE(ABORT, 'runtime manifests are append-only'); END;
 """
 

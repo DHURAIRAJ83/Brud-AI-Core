@@ -1,4 +1,4 @@
-export const menuItems = ['Overview', 'System', 'Datasets', 'Documents', 'Tokenizer', 'Core Model', 'Training', 'Base Training', 'Instruction Tuning', 'Evaluation', 'Model Registry', 'Inference Runtime', 'Chat Testing', 'Feedback', 'Admin Assistant', 'Audit Logs', 'Settings']
+export const menuItems = ['Overview', 'System', 'Datasets', 'Documents', 'Tokenizer', 'Core Model', 'Training', 'Base Training', 'Instruction Tuning', 'Evaluation', 'Model Registry', 'Inference Runtime', 'Knowledge & RAG', 'Chat Testing', 'Feedback', 'Admin Assistant', 'Audit Logs', 'Settings']
 
 export default function Sidebar({ active, open, onSelect, onClose }) {
   return (
@@ -7,7 +7,7 @@ export default function Sidebar({ active, open, onSelect, onClose }) {
       <nav aria-label="Admin modules">{menuItems.map((item) => (
         <button className={active === item ? 'active' : ''} key={item} onClick={() => { onSelect(item); onClose() }}>{item}</button>
       ))}</nav>
-      <div className="phase-tag">Phase 12 · Supervised instruction tuning</div>
+      <div className="phase-tag">Phase 16 · Grounded RAG</div>
     </aside>
   )
 }

@@ -684,6 +684,79 @@ class Settings(BaseSettings):
         default="technical,evaluation,security,release",
         validation_alias="BRUD_INFERENCE_REQUIRED_PUBLIC_APPROVAL_ROLES",
     )
+    rag_enabled: bool = Field(default=True, validation_alias="BRUD_RAG_ENABLED")
+    rag_max_source_characters: int = Field(
+        default=2_000_000, ge=1, validation_alias="BRUD_RAG_MAX_SOURCE_CHARACTERS"
+    )
+    rag_target_chunk_tokens: int = Field(
+        default=350, ge=20, validation_alias="BRUD_RAG_TARGET_CHUNK_TOKENS"
+    )
+    rag_max_chunk_tokens: int = Field(
+        default=500, ge=20, validation_alias="BRUD_RAG_MAX_CHUNK_TOKENS"
+    )
+    rag_chunk_overlap_tokens: int = Field(
+        default=50, ge=0, validation_alias="BRUD_RAG_CHUNK_OVERLAP_TOKENS"
+    )
+    rag_min_chunk_characters: int = Field(
+        default=40, ge=1, validation_alias="BRUD_RAG_MIN_CHUNK_CHARACTERS"
+    )
+    rag_max_chunks_per_source: int = Field(
+        default=2000, ge=1, validation_alias="BRUD_RAG_MAX_CHUNKS_PER_SOURCE"
+    )
+    rag_embedding_batch_size: int = Field(
+        default=16, ge=1, validation_alias="BRUD_RAG_EMBEDDING_BATCH_SIZE"
+    )
+    rag_max_active_embedding_runs: int = Field(
+        default=1, ge=1, validation_alias="BRUD_RAG_MAX_ACTIVE_EMBEDDING_RUNS"
+    )
+    rag_max_vector_results: int = Field(
+        default=20, ge=1, validation_alias="BRUD_RAG_MAX_VECTOR_RESULTS"
+    )
+    rag_max_keyword_results: int = Field(
+        default=20, ge=1, validation_alias="BRUD_RAG_MAX_KEYWORD_RESULTS"
+    )
+    rag_max_final_results: int = Field(
+        default=5, ge=1, validation_alias="BRUD_RAG_MAX_FINAL_RESULTS"
+    )
+    rag_default_vector_weight: float = Field(
+        default=0.6, ge=0, le=1, validation_alias="BRUD_RAG_DEFAULT_VECTOR_WEIGHT"
+    )
+    rag_default_keyword_weight: float = Field(
+        default=0.4, ge=0, le=1, validation_alias="BRUD_RAG_DEFAULT_KEYWORD_WEIGHT"
+    )
+    rag_min_retrieval_score: float = Field(
+        default=0.15, ge=0, le=1, validation_alias="BRUD_RAG_MIN_RETRIEVAL_SCORE"
+    )
+    rag_context_token_budget: int = Field(
+        default=800, ge=50, validation_alias="BRUD_RAG_CONTEXT_TOKEN_BUDGET"
+    )
+    rag_max_citations: int = Field(
+        default=5, ge=1, validation_alias="BRUD_RAG_MAX_CITATIONS"
+    )
+    rag_no_answer_threshold: float = Field(
+        default=0.2, ge=0, le=1, validation_alias="BRUD_RAG_NO_ANSWER_THRESHOLD"
+    )
+    rag_block_injection_risk: bool = Field(
+        default=True, validation_alias="BRUD_RAG_BLOCK_INJECTION_RISK"
+    )
+    rag_allow_warning_chunks: bool = Field(
+        default=False, validation_alias="BRUD_RAG_ALLOW_WARNING_CHUNKS"
+    )
+    rag_max_active_sessions: int = Field(
+        default=5, ge=1, validation_alias="BRUD_RAG_MAX_ACTIVE_SESSIONS"
+    )
+    rag_max_session_turns: int = Field(
+        default=10, ge=1, validation_alias="BRUD_RAG_MAX_SESSION_TURNS"
+    )
+    rag_session_ttl_seconds: int = Field(
+        default=3600, ge=60, validation_alias="BRUD_RAG_SESSION_TTL_SECONDS"
+    )
+    rag_require_approved_sources: bool = Field(
+        default=True, validation_alias="BRUD_RAG_REQUIRE_APPROVED_SOURCES"
+    )
+    rag_allowed_index_roots: str = Field(
+        default="rag_indexes", validation_alias="BRUD_RAG_ALLOWED_INDEX_ROOTS"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -904,6 +977,12 @@ class Settings(BaseSettings):
             root.strip()
             for root in self.release_allowed_artifact_roots.split(",")
             if root.strip()
+        )
+
+    @property
+    def rag_allowed_index_roots_list(self) -> tuple[str, ...]:
+        return tuple(
+            root.strip() for root in self.rag_allowed_index_roots.split(",") if root.strip()
         )
 
     @property

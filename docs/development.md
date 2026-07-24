@@ -209,6 +209,12 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_INFERENCE_CANARY_MAX_DUPLICATE_RATE` | `0.5` | Canary auto-stop threshold for duplicate-output rate |
 | `BRUD_INFERENCE_REQUIRED_PUBLIC_APPROVAL_ROLES` | `technical,evaluation,security,release` | Comma-separated roles that must all approve a `public_chat` assignment |
 
+Phase 16's ~25 `BRUD_RAG_*` settings (chunking bounds, hybrid retrieval
+weights/budgets, injection-filter policy, RAG Chat Lab bounds) are
+documented separately in [rag_settings.md](rag_settings.md) rather than
+duplicated in this table; all default to conservative, fail-closed
+values.
+
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
 ## Common commands

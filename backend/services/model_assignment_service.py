@@ -570,6 +570,20 @@ class ModelAssignmentService:
         )
         return self.repository.instance(connection, instance["public_id"])
 
+    def ensure_instance_loaded(self, assignment_public_id: str, admin_id: str) -> dict[str, Any]:
+        """Public entrypoint for sibling services (e.g. RAG generation) that
+        need "a ready runtime instance for this admin assignment" without
+        duplicating the load pipeline or reaching into private internals.
+        Never loads a model directly — delegates to the same verify-then-load
+        flow every other caller in this service uses."""
+
+        with self.repository.transaction() as connection:
+            assignment = self.repository.assignment(connection, assignment_public_id)
+            if assignment["status"] != "active":
+                raise ValidationError("assignment must be active to load its instance")
+            instance = self._ensure_loaded(connection, assignment, admin_id)
+            return public_row(instance)
+
     # --- admin diagnostic generation -----------------------------------------------------
 
     def diagnostic_generate(

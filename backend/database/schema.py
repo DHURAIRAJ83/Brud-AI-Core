@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -2543,5 +2543,566 @@ CREATE TRIGGER IF NOT EXISTS inference_canary_results_immutable_update BEFORE UP
 CREATE TRIGGER IF NOT EXISTS inference_canary_results_immutable_delete BEFORE DELETE ON inference_canary_results BEGIN SELECT RAISE(ABORT, 'canary results are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS inference_runtime_manifests_immutable_update BEFORE UPDATE ON inference_runtime_manifests BEGIN SELECT RAISE(ABORT, 'runtime manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS inference_runtime_manifests_immutable_delete BEFORE DELETE ON inference_runtime_manifests BEGIN SELECT RAISE(ABORT, 'runtime manifests are append-only'); END;
+"""
+
+MIGRATION_016_NAME = "016_phase16_rag_grounded_answering"
+
+# Phase 16 deliberately reuses the existing `admin_diagnostic` assignment
+# scope for RAG grounded generation rather than adding a new `admin_rag_lab`
+# value to `inference_assignment_scopes.scope_key`'s CHECK constraint.
+# SQLite's `foreign_keys` pragma cannot be toggled mid-transaction (verified
+# directly: a `DROP TABLE` of a table with an incoming FK reference from
+# rows in another table fails under `foreign_keys=ON` even after issuing
+# `PRAGMA foreign_keys = OFF` inside an already-open transaction), and
+# `initialize_database()` applies every migration inside one shared
+# transaction — so a table rebuild to widen the CHECK constraint cannot
+# safely happen inside `_apply_v16` without weakening FK enforcement for
+# every other migration. The spec's own text allows this ("Add or reuse an
+# explicit scope: admin_rag_lab"); RAG-specific requirements (active
+# knowledge space, active indexes, active retrieval profile, no registry
+# fixture) are enforced entirely inside `RagGenerationService`, not via a
+# new schema-level scope value.
+#
+# `rag_grounded_requests` is classified MUTABLE here (no append-only
+# trigger), not append-only as its evidence-adjacent name might suggest.
+# It follows the same reasoning already used for `rag_embedding_runs` and
+# `rag_evaluation_runs`: a request row is created once retrieval succeeds
+# (status='accepted') and its status must be updated in place as
+# generation proceeds to a terminal status (completed / insufficient_
+# evidence / retrieval_failed / generation_failed / blocked_evidence) --
+# a genuine two-phase create-then-resolve lifecycle, mirroring Phase 13's
+# own precedent of documenting `model_evaluation_runs` as a "Mutable
+# lifecycle row" despite sitting next to append-only evidence tables. The
+# immutable evidence itself (the answer text checksum, citations, issues)
+# still lives in true append-only tables below.
+
+PHASE16_SCHEMA = """
+CREATE TABLE IF NOT EXISTS rag_knowledge_spaces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    supported_languages_json TEXT NOT NULL DEFAULT '["ta","en","tgl","mixed"]',
+    access_policy_json TEXT NOT NULL DEFAULT '{}',
+    default_retrieval_profile_public_id TEXT,
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','active','read_only','deprecated','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT
+);
+CREATE TABLE IF NOT EXISTS rag_knowledge_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL,
+    source_type TEXT NOT NULL CHECK (source_type IN (
+        'dataset_version','pdf_document','plain_text','markdown','html_snapshot',
+        'manual_admin_content','course_material','faq'
+    )),
+    source_entity_public_id TEXT,
+    title TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'unknown',
+    licence_status TEXT NOT NULL DEFAULT 'unknown' CHECK (licence_status IN (
+        'unknown','open','restricted','blocked'
+    )),
+    approval_status TEXT NOT NULL DEFAULT 'draft' CHECK (approval_status IN (
+        'draft','review_required','approved','rejected','quarantined','archived'
+    )),
+    content_checksum_sha256 TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_source_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_source_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    content_checksum_sha256 TEXT NOT NULL,
+    extraction_method TEXT NOT NULL DEFAULT 'direct',
+    extraction_version TEXT NOT NULL DEFAULT 'v1',
+    normalized_content_checksum_sha256 TEXT,
+    character_count INTEGER NOT NULL DEFAULT 0,
+    token_estimate INTEGER NOT NULL DEFAULT 0,
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'processing' CHECK (status IN (
+        'processing','ready','failed','superseded','archived'
+    )),
+    raw_content TEXT NOT NULL,
+    normalized_content TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_source_id) REFERENCES rag_knowledge_sources(id) ON DELETE RESTRICT,
+    UNIQUE(knowledge_source_id, version_number),
+    UNIQUE(knowledge_source_id, content_checksum_sha256)
+);
+CREATE TABLE IF NOT EXISTS rag_chunk_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_version_id INTEGER NOT NULL,
+    chunking_strategy TEXT NOT NULL DEFAULT 'heading_aware' CHECK (chunking_strategy IN (
+        'paragraph','heading_aware','sentence_window','fixed_token_window','record_based'
+    )),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','building','validated','active','superseded','failed'
+    )),
+    total_chunks INTEGER NOT NULL DEFAULT 0,
+    accepted_chunks INTEGER NOT NULL DEFAULT 0,
+    warning_chunks INTEGER NOT NULL DEFAULT 0,
+    rejected_chunks INTEGER NOT NULL DEFAULT 0,
+    quarantined_chunks INTEGER NOT NULL DEFAULT 0,
+    chunk_manifest_checksum_sha256 TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_version_id) REFERENCES rag_source_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    chunk_set_id INTEGER NOT NULL,
+    source_version_id INTEGER NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    heading_path_json TEXT NOT NULL DEFAULT '[]',
+    source_location_json TEXT NOT NULL DEFAULT '{}',
+    language TEXT NOT NULL DEFAULT 'unknown',
+    record_type TEXT,
+    normalized_text TEXT NOT NULL,
+    character_count INTEGER NOT NULL DEFAULT 0,
+    estimated_token_count INTEGER NOT NULL DEFAULT 0,
+    overlap_before_tokens INTEGER NOT NULL DEFAULT 0,
+    overlap_after_tokens INTEGER NOT NULL DEFAULT 0,
+    content_checksum_sha256 TEXT NOT NULL,
+    quality_status TEXT NOT NULL CHECK (quality_status IN (
+        'accepted','accepted_with_warning','rejected','quarantined'
+    )),
+    quality_issues_json TEXT NOT NULL DEFAULT '[]',
+    injection_status TEXT NOT NULL DEFAULT 'clean' CHECK (injection_status IN (
+        'clean','warning','quarantined','blocked'
+    )),
+    injection_reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chunk_set_id) REFERENCES rag_chunk_sets(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_version_id) REFERENCES rag_source_versions(id) ON DELETE RESTRICT,
+    UNIQUE(chunk_set_id, sequence_number)
+);
+CREATE TABLE IF NOT EXISTS rag_embedding_models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    provider_type TEXT NOT NULL CHECK (provider_type IN (
+        'local_sentence_transformer','local_custom_embedding','deterministic_test_embedding'
+    )),
+    architecture TEXT NOT NULL DEFAULT '',
+    dimensions INTEGER NOT NULL,
+    maximum_input_tokens INTEGER NOT NULL,
+    supported_languages_json TEXT NOT NULL DEFAULT '[]',
+    artifact_checksum TEXT,
+    configuration_checksum TEXT,
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','validated','active','deprecated','archived','failed'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(name, version)
+);
+CREATE TABLE IF NOT EXISTS rag_embedding_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    chunk_set_id INTEGER NOT NULL,
+    embedding_model_id INTEGER NOT NULL,
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    total_chunks INTEGER NOT NULL DEFAULT 0,
+    embedded_chunks INTEGER NOT NULL DEFAULT 0,
+    failed_chunks INTEGER NOT NULL DEFAULT 0,
+    dimensions INTEGER,
+    runtime_milliseconds INTEGER,
+    peak_memory_bytes INTEGER,
+    input_checksum_sha256 TEXT,
+    output_manifest_checksum_sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','running','completed','completed_with_warnings','failed','cancelled'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (chunk_set_id) REFERENCES rag_chunk_sets(id) ON DELETE RESTRICT,
+    FOREIGN KEY (embedding_model_id) REFERENCES rag_embedding_models(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_chunk_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    embedding_run_id INTEGER NOT NULL,
+    chunk_id INTEGER NOT NULL,
+    dimensions INTEGER NOT NULL,
+    vector_norm REAL NOT NULL,
+    vector_checksum_sha256 TEXT NOT NULL,
+    vector_blob BLOB NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (embedding_run_id) REFERENCES rag_embedding_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (chunk_id) REFERENCES rag_chunks(id) ON DELETE RESTRICT,
+    UNIQUE(embedding_run_id, chunk_id)
+);
+CREATE TABLE IF NOT EXISTS rag_vector_indexes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL,
+    chunk_set_id INTEGER NOT NULL,
+    embedding_run_id INTEGER NOT NULL,
+    index_type TEXT NOT NULL DEFAULT 'repository_flat' CHECK (index_type IN (
+        'faiss_flat','repository_flat'
+    )),
+    distance_metric TEXT NOT NULL DEFAULT 'cosine' CHECK (distance_metric IN (
+        'cosine','inner_product','l2'
+    )),
+    dimensions INTEGER,
+    vector_count INTEGER NOT NULL DEFAULT 0,
+    index_artifact_checksum_sha256 TEXT,
+    mapping_manifest_checksum_sha256 TEXT,
+    storage_key TEXT,
+    status TEXT NOT NULL DEFAULT 'building' CHECK (status IN (
+        'building','validated','active','deprecated','failed','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    activated_at TEXT,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE RESTRICT,
+    FOREIGN KEY (chunk_set_id) REFERENCES rag_chunk_sets(id) ON DELETE RESTRICT,
+    FOREIGN KEY (embedding_run_id) REFERENCES rag_embedding_runs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_keyword_indexes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL,
+    chunk_set_id INTEGER NOT NULL,
+    index_type TEXT NOT NULL DEFAULT 'fts5' CHECK (index_type IN ('fts5','repository_inverted')),
+    tokenizer_notes TEXT NOT NULL DEFAULT '',
+    document_count INTEGER NOT NULL DEFAULT 0,
+    index_artifact_checksum_sha256 TEXT,
+    storage_key TEXT,
+    status TEXT NOT NULL DEFAULT 'building' CHECK (status IN (
+        'building','validated','active','deprecated','failed','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    activated_at TEXT,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE RESTRICT,
+    FOREIGN KEY (chunk_set_id) REFERENCES rag_chunk_sets(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_retrieval_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    vector_top_k INTEGER NOT NULL DEFAULT 20,
+    keyword_top_k INTEGER NOT NULL DEFAULT 20,
+    final_top_k INTEGER NOT NULL DEFAULT 5,
+    vector_weight REAL NOT NULL DEFAULT 0.6,
+    keyword_weight REAL NOT NULL DEFAULT 0.4,
+    heading_boost REAL NOT NULL DEFAULT 0.05,
+    exact_match_boost REAL NOT NULL DEFAULT 0.1,
+    language_match_boost REAL NOT NULL DEFAULT 0.05,
+    source_priority_json TEXT NOT NULL DEFAULT '{}',
+    minimum_score REAL NOT NULL DEFAULT 0.15,
+    deduplication_policy TEXT NOT NULL DEFAULT 'exact_only' CHECK (deduplication_policy IN (
+        'exact_only','exact_and_near'
+    )),
+    diversity_policy TEXT NOT NULL DEFAULT 'none' CHECK (diversity_policy IN (
+        'none','source_diversity'
+    )),
+    context_token_budget INTEGER NOT NULL DEFAULT 800,
+    injection_filter_policy TEXT NOT NULL DEFAULT 'block' CHECK (injection_filter_policy IN (
+        'block','quarantine','warn'
+    )),
+    no_answer_threshold REAL NOT NULL DEFAULT 0.2,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','active','archived')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_retrieval_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    retrieval_profile_id INTEGER NOT NULL,
+    knowledge_space_id INTEGER NOT NULL,
+    vector_index_id INTEGER,
+    keyword_index_id INTEGER,
+    normalized_query TEXT NOT NULL,
+    query_checksum_sha256 TEXT NOT NULL,
+    query_language TEXT NOT NULL DEFAULT 'unknown',
+    filters_json TEXT NOT NULL DEFAULT '{}',
+    top_k_configuration_json TEXT NOT NULL DEFAULT '{}',
+    runtime_milliseconds INTEGER,
+    total_candidates INTEGER NOT NULL DEFAULT 0,
+    final_result_count INTEGER NOT NULL DEFAULT 0,
+    no_answer_score REAL,
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','no_results','failed')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (retrieval_profile_id) REFERENCES rag_retrieval_profiles(id) ON DELETE RESTRICT,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE RESTRICT,
+    FOREIGN KEY (vector_index_id) REFERENCES rag_vector_indexes(id) ON DELETE RESTRICT,
+    FOREIGN KEY (keyword_index_id) REFERENCES rag_keyword_indexes(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_retrieved_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    retrieval_run_id INTEGER NOT NULL,
+    rank INTEGER NOT NULL,
+    chunk_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    source_version_id INTEGER NOT NULL,
+    vector_score REAL,
+    keyword_score REAL,
+    combined_score REAL,
+    rerank_score REAL,
+    injection_status TEXT NOT NULL DEFAULT 'clean',
+    filter_evidence_json TEXT NOT NULL DEFAULT '{}',
+    selected_for_context INTEGER NOT NULL DEFAULT 0 CHECK (selected_for_context IN (0,1)),
+    exclusion_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (retrieval_run_id) REFERENCES rag_retrieval_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (chunk_id) REFERENCES rag_chunks(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_id) REFERENCES rag_knowledge_sources(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_version_id) REFERENCES rag_source_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_context_assemblies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    retrieval_run_id INTEGER NOT NULL,
+    maximum_model_context INTEGER NOT NULL,
+    prompt_template_tokens INTEGER NOT NULL DEFAULT 0,
+    query_tokens INTEGER NOT NULL DEFAULT 0,
+    retrieved_context_tokens INTEGER NOT NULL DEFAULT 0,
+    reserved_output_tokens INTEGER NOT NULL DEFAULT 0,
+    safety_margin_tokens INTEGER NOT NULL DEFAULT 0,
+    dropped_chunk_count INTEGER NOT NULL DEFAULT 0,
+    final_context_checksum_sha256 TEXT,
+    citation_map_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (retrieval_run_id) REFERENCES rag_retrieval_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rag_grounded_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    context_assembly_id INTEGER,
+    retrieval_run_id INTEGER NOT NULL,
+    model_assignment_id INTEGER,
+    scope TEXT NOT NULL DEFAULT 'admin_rag_lab',
+    session_id INTEGER,
+    query_checksum_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN (
+        'accepted','completed','insufficient_evidence','retrieval_failed',
+        'generation_failed','blocked_evidence'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (context_assembly_id) REFERENCES rag_context_assemblies(id) ON DELETE RESTRICT,
+    FOREIGN KEY (retrieval_run_id) REFERENCES rag_retrieval_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT,
+    FOREIGN KEY (session_id) REFERENCES inference_sessions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_grounded_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    grounded_request_id INTEGER NOT NULL,
+    answer_status TEXT NOT NULL CHECK (answer_status IN (
+        'grounded_answer','insufficient_evidence','retrieval_failed',
+        'generation_failed','blocked_evidence'
+    )),
+    answer_checksum_sha256 TEXT,
+    answer_language TEXT NOT NULL DEFAULT 'unknown',
+    citation_count INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT,
+    runtime_milliseconds INTEGER,
+    role_token_leakage INTEGER NOT NULL DEFAULT 0 CHECK (role_token_leakage IN (0,1)),
+    prompt_leakage INTEGER NOT NULL DEFAULT 0 CHECK (prompt_leakage IN (0,1)),
+    unicode_valid INTEGER NOT NULL DEFAULT 1 CHECK (unicode_valid IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grounded_request_id) REFERENCES rag_grounded_requests(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rag_answer_citations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    grounded_answer_id INTEGER NOT NULL,
+    citation_label TEXT NOT NULL,
+    chunk_id INTEGER,
+    source_id INTEGER,
+    source_version_id INTEGER,
+    rank INTEGER,
+    content_checksum_sha256 TEXT,
+    validation_status TEXT NOT NULL DEFAULT 'valid' CHECK (validation_status IN (
+        'valid','valid_with_warning','invalid','not_present'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grounded_answer_id) REFERENCES rag_grounded_answers(id) ON DELETE CASCADE,
+    FOREIGN KEY (chunk_id) REFERENCES rag_chunks(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_id) REFERENCES rag_knowledge_sources(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_version_id) REFERENCES rag_source_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_grounding_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    grounded_request_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL CHECK (issue_code IN (
+        'no_retrieval_results','retrieval_score_below_threshold','retrieval_filter_excluded_all',
+        'only_quarantined_chunks','context_budget_exceeded','context_empty',
+        'prompt_injection_chunk_detected','prompt_injection_chunk_included','unknown_citation',
+        'citation_not_in_context','citation_checksum_mismatch','citation_access_forbidden',
+        'unsupported_answer_claim','uncited_factual_claim','evidence_conflict',
+        'answer_language_mismatch','role_token_leakage','prompt_leakage','generation_timeout',
+        'generation_failed','retrieval_failed','index_mismatch','embedding_model_mismatch'
+    )),
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','error','blocking')),
+    message TEXT NOT NULL DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grounded_request_id) REFERENCES rag_grounded_requests(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rag_evaluation_suites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    evaluation_type TEXT NOT NULL DEFAULT 'both' CHECK (evaluation_type IN (
+        'retrieval','generation','both'
+    )),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','active','archived')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE RESTRICT,
+    UNIQUE(name, version)
+);
+CREATE TABLE IF NOT EXISTS rag_evaluation_fixtures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_suite_id INTEGER NOT NULL,
+    query TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'unknown',
+    expected_relevant_chunk_ids_json TEXT NOT NULL DEFAULT '[]',
+    expected_relevant_source_ids_json TEXT NOT NULL DEFAULT '[]',
+    expected_no_answer INTEGER NOT NULL DEFAULT 0 CHECK (expected_no_answer IN (0,1)),
+    required_keywords_json TEXT NOT NULL DEFAULT '[]',
+    forbidden_claims_json TEXT NOT NULL DEFAULT '[]',
+    expected_answer_language TEXT,
+    injection_test INTEGER NOT NULL DEFAULT 0 CHECK (injection_test IN (0,1)),
+    severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','warning','blocking')),
+    fixture_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_suite_id) REFERENCES rag_evaluation_suites(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rag_evaluation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_suite_id INTEGER NOT NULL,
+    retrieval_profile_id INTEGER,
+    model_assignment_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','running','completed','completed_with_warnings','failed'
+    )),
+    total_fixtures INTEGER NOT NULL DEFAULT 0,
+    completed_fixtures INTEGER NOT NULL DEFAULT 0,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (evaluation_suite_id) REFERENCES rag_evaluation_suites(id) ON DELETE RESTRICT,
+    FOREIGN KEY (retrieval_profile_id) REFERENCES rag_retrieval_profiles(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_evaluation_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_run_id INTEGER NOT NULL,
+    metric_scope TEXT NOT NULL CHECK (metric_scope IN ('retrieval','generation')),
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    sample_size INTEGER NOT NULL DEFAULT 0,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_run_id) REFERENCES rag_evaluation_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS rag_index_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    left_vector_index_id INTEGER,
+    right_vector_index_id INTEGER,
+    left_keyword_index_id INTEGER,
+    right_keyword_index_id INTEGER,
+    evaluation_suite_id INTEGER,
+    compatibility TEXT NOT NULL CHECK (compatibility IN (
+        'compatible','partially_compatible','incompatible'
+    )),
+    ranked INTEGER NOT NULL DEFAULT 0 CHECK (ranked IN (0,1)),
+    fields_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (left_vector_index_id) REFERENCES rag_vector_indexes(id) ON DELETE RESTRICT,
+    FOREIGN KEY (right_vector_index_id) REFERENCES rag_vector_indexes(id) ON DELETE RESTRICT,
+    FOREIGN KEY (left_keyword_index_id) REFERENCES rag_keyword_indexes(id) ON DELETE RESTRICT,
+    FOREIGN KEY (right_keyword_index_id) REFERENCES rag_keyword_indexes(id) ON DELETE RESTRICT,
+    FOREIGN KEY (evaluation_suite_id) REFERENCES rag_evaluation_suites(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS rag_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rag_knowledge_sources_space ON rag_knowledge_sources(knowledge_space_id,approval_status);
+CREATE INDEX IF NOT EXISTS ix_rag_source_versions_source ON rag_source_versions(knowledge_source_id,version_number);
+CREATE INDEX IF NOT EXISTS ix_rag_chunk_sets_source_version ON rag_chunk_sets(source_version_id);
+CREATE INDEX IF NOT EXISTS ix_rag_chunks_chunk_set ON rag_chunks(chunk_set_id,quality_status);
+CREATE INDEX IF NOT EXISTS ix_rag_chunks_injection ON rag_chunks(injection_status);
+CREATE INDEX IF NOT EXISTS ix_rag_embedding_runs_chunk_set ON rag_embedding_runs(chunk_set_id,status);
+CREATE INDEX IF NOT EXISTS ix_rag_chunk_embeddings_run ON rag_chunk_embeddings(embedding_run_id);
+CREATE INDEX IF NOT EXISTS ix_rag_vector_indexes_space ON rag_vector_indexes(knowledge_space_id,status);
+CREATE INDEX IF NOT EXISTS ix_rag_keyword_indexes_space ON rag_keyword_indexes(knowledge_space_id,status);
+CREATE INDEX IF NOT EXISTS ix_rag_retrieval_profiles_space ON rag_retrieval_profiles(knowledge_space_id,status);
+CREATE INDEX IF NOT EXISTS ix_rag_retrieval_runs_profile ON rag_retrieval_runs(retrieval_profile_id);
+CREATE INDEX IF NOT EXISTS ix_rag_retrieved_chunks_run ON rag_retrieved_chunks(retrieval_run_id,rank);
+CREATE INDEX IF NOT EXISTS ix_rag_context_assemblies_run ON rag_context_assemblies(retrieval_run_id);
+CREATE INDEX IF NOT EXISTS ix_rag_grounded_requests_status ON rag_grounded_requests(status);
+CREATE INDEX IF NOT EXISTS ix_rag_grounded_answers_request ON rag_grounded_answers(grounded_request_id);
+CREATE INDEX IF NOT EXISTS ix_rag_answer_citations_answer ON rag_answer_citations(grounded_answer_id);
+CREATE INDEX IF NOT EXISTS ix_rag_grounding_issues_request ON rag_grounding_issues(grounded_request_id,severity);
+CREATE INDEX IF NOT EXISTS ix_rag_evaluation_fixtures_suite ON rag_evaluation_fixtures(evaluation_suite_id);
+CREATE INDEX IF NOT EXISTS ix_rag_evaluation_runs_suite ON rag_evaluation_runs(evaluation_suite_id,status);
+CREATE INDEX IF NOT EXISTS ix_rag_evaluation_metrics_run ON rag_evaluation_metrics(evaluation_run_id,metric_scope);
+CREATE INDEX IF NOT EXISTS ix_rag_index_comparisons_suite ON rag_index_comparisons(evaluation_suite_id);
+CREATE INDEX IF NOT EXISTS ix_rag_manifests_space ON rag_manifests(knowledge_space_id);
+CREATE TRIGGER IF NOT EXISTS rag_chunks_immutable_update BEFORE UPDATE ON rag_chunks BEGIN SELECT RAISE(ABORT, 'chunks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_chunks_immutable_delete BEFORE DELETE ON rag_chunks BEGIN SELECT RAISE(ABORT, 'chunks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_chunk_embeddings_immutable_update BEFORE UPDATE ON rag_chunk_embeddings BEGIN SELECT RAISE(ABORT, 'chunk embeddings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_chunk_embeddings_immutable_delete BEFORE DELETE ON rag_chunk_embeddings BEGIN SELECT RAISE(ABORT, 'chunk embeddings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_retrieval_runs_immutable_update BEFORE UPDATE ON rag_retrieval_runs BEGIN SELECT RAISE(ABORT, 'retrieval runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_retrieval_runs_immutable_delete BEFORE DELETE ON rag_retrieval_runs BEGIN SELECT RAISE(ABORT, 'retrieval runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_retrieved_chunks_immutable_update BEFORE UPDATE ON rag_retrieved_chunks BEGIN SELECT RAISE(ABORT, 'retrieved chunks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_retrieved_chunks_immutable_delete BEFORE DELETE ON rag_retrieved_chunks BEGIN SELECT RAISE(ABORT, 'retrieved chunks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_context_assemblies_immutable_update BEFORE UPDATE ON rag_context_assemblies BEGIN SELECT RAISE(ABORT, 'context assemblies are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_context_assemblies_immutable_delete BEFORE DELETE ON rag_context_assemblies BEGIN SELECT RAISE(ABORT, 'context assemblies are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_grounded_answers_immutable_update BEFORE UPDATE ON rag_grounded_answers BEGIN SELECT RAISE(ABORT, 'grounded answers are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_grounded_answers_immutable_delete BEFORE DELETE ON rag_grounded_answers BEGIN SELECT RAISE(ABORT, 'grounded answers are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_answer_citations_immutable_update BEFORE UPDATE ON rag_answer_citations BEGIN SELECT RAISE(ABORT, 'answer citations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_answer_citations_immutable_delete BEFORE DELETE ON rag_answer_citations BEGIN SELECT RAISE(ABORT, 'answer citations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_grounding_issues_immutable_update BEFORE UPDATE ON rag_grounding_issues BEGIN SELECT RAISE(ABORT, 'grounding issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_grounding_issues_immutable_delete BEFORE DELETE ON rag_grounding_issues BEGIN SELECT RAISE(ABORT, 'grounding issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_evaluation_fixtures_immutable_update BEFORE UPDATE ON rag_evaluation_fixtures BEGIN SELECT RAISE(ABORT, 'evaluation fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_evaluation_fixtures_immutable_delete BEFORE DELETE ON rag_evaluation_fixtures BEGIN SELECT RAISE(ABORT, 'evaluation fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_evaluation_metrics_immutable_update BEFORE UPDATE ON rag_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_evaluation_metrics_immutable_delete BEFORE DELETE ON rag_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_index_comparisons_immutable_update BEFORE UPDATE ON rag_index_comparisons BEGIN SELECT RAISE(ABORT, 'index comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_index_comparisons_immutable_delete BEFORE DELETE ON rag_index_comparisons BEGIN SELECT RAISE(ABORT, 'index comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_manifests_immutable_update BEFORE UPDATE ON rag_manifests BEGIN SELECT RAISE(ABORT, 'rag manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_manifests_immutable_delete BEFORE DELETE ON rag_manifests BEGIN SELECT RAISE(ABORT, 'rag manifests are append-only'); END;
 """
 

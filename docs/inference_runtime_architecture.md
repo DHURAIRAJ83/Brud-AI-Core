@@ -95,3 +95,11 @@ No automatic public-chat activation, RAG, web search, tool calling,
 external model providers, multi-model concurrent serving, GPU cluster
 or distributed serving, quantization, GGUF export, RLHF, DPO, or
 production deployment.
+
+## Phase 16 addendum
+
+Phase 16 later builds admin-only grounded retrieval (RAG) directly on
+top of this runtime, reusing `run_generation()` and the
+`admin_diagnostic` assignment scope unchanged — it does not add a second
+runtime, a second model loader, or any path to public-chat activation.
+See [rag_architecture.md](rag_architecture.md).

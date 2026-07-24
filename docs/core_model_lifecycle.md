@@ -117,3 +117,16 @@ a release whose evaluation status is `evaluation_blocked` or whose
 deployment eligibility is `not_deployable`. See
 [inference_runtime_architecture.md](inference_runtime_architecture.md)
 and [model_assignment_lifecycle.md](model_assignment_lifecycle.md).
+
+## Phase 16 RAG (no new lineage row, no new inference runtime)
+
+Phase 16 never rewrites a `core_model_versions` row and never loads a
+model directly. `RagGenerationService` re-derives the same live
+registry-fixture and evaluation-blocked checks Phase 15 already
+performs (via `InferenceRuntimeService.gather_release_facts()`) before
+every grounded-answer or RAG Chat Lab call, and delegates the actual
+load/generate step to `ModelAssignmentService.ensure_instance_loaded()`
+and `InferenceRuntimeService.run_generation()` unchanged. RAG generation
+reuses the existing `admin_diagnostic` assignment scope rather than
+adding a new one — see [database_schema_v16.md](database_schema_v16.md)
+and [rag_architecture.md](rag_architecture.md).

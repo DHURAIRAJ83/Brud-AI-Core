@@ -48,3 +48,17 @@ The same release can be assigned to multiple scopes simultaneously
 rows — scope eligibility, evaluation-readiness policy, and registry-
 fixture rejection are all evaluated independently per assignment, never
 cached on the release itself.
+
+## Phase 16 reuses `admin_diagnostic`, does not add `admin_rag_lab`
+
+RAG grounded generation and the RAG Chat Lab both require an
+`admin_diagnostic`-scope assignment — no new scope value was added to
+`inference_assignment_scopes.scope_key`'s CHECK constraint, because
+SQLite's `foreign_keys` pragma cannot be toggled mid-transaction and
+`initialize_database()` applies every migration inside one shared
+transaction, making a table rebuild to widen the CHECK constraint unsafe
+inside `_apply_v16`. All RAG-specific eligibility requirements (active
+knowledge space, active indexes, active retrieval profile) are enforced
+entirely inside `RagGenerationService`, layered on top of the same
+registry-fixture and evaluation-blocked checks this scope already
+enforces. See [database_schema_v16.md](database_schema_v16.md).

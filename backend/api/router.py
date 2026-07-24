@@ -17,6 +17,7 @@ from backend.api.routes import (
     model_evaluation,
     model_release,
     pretraining,
+    rag,
     system,
     tokenizers,
     training_reliability,
@@ -40,3 +41,4 @@ api_router.include_router(instruction_tuning.router)
 api_router.include_router(model_evaluation.router)
 api_router.include_router(model_release.router)
 api_router.include_router(inference_runtime.router)
+api_router.include_router(rag.router)

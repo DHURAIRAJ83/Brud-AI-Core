@@ -11,6 +11,7 @@ import ModelEvaluationPage from './pages/ModelEvaluationPage.jsx'
 import ModelRegistryPage from './pages/ModelRegistryPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
+import RagPage from './pages/RagPage.jsx'
 import SystemPage from './pages/SystemPage.jsx'
 import TokenizerPage from './pages/TokenizerPage.jsx'
 import TrainingPage from './pages/TrainingPage.jsx'
@@ -39,5 +40,6 @@ export default function App() {
   if (active === 'Evaluation') page = <ModelEvaluationPage />
   if (active === 'Model Registry') page = <ModelRegistryPage />
   if (active === 'Inference Runtime') page = <InferenceRuntimePage />
+  if (active === 'Knowledge & RAG') page = <RagPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

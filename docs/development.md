@@ -169,6 +169,23 @@ From the repository root, run `./scripts/setup.sh`. It verifies Python 3.11+, No
 | `BRUD_EVAL_MIN_UNICODE_INTEGRITY_RATE` | `0.95` | Minimum unicode-integrity rate before a readiness warning |
 | `BRUD_EVAL_MIN_HUMAN_REVIEW_COVERAGE` | `0.5` | Minimum required-review coverage ratio before a readiness warning |
 | `BRUD_EVAL_MAX_HUMAN_REVIEW_DISAGREEMENT` | `0.5` | Maximum tolerated human-review disagreement rate before a readiness warning |
+| `BRUD_RELEASE_ARTIFACT_DIR` | `data/release_artifacts` | Server-controlled directory for materialized release artifacts (config/manifest/model-card/licence snapshots) |
+| `BRUD_RELEASE_BUNDLE_DIR` | `data/release_bundles` | Server-controlled directory for built release-bundle archives |
+| `BRUD_RELEASE_REQUIRE_EVALUATION` | `true` | Require linked evaluation evidence before a candidate can be eligible |
+| `BRUD_RELEASE_ALLOW_WARNING_ELIGIBILITY` | `true` | Allow `eligible_with_warnings` as a non-blocked outcome |
+| `BRUD_RELEASE_REQUIRED_APPROVAL_ROLES` | `release` | Comma-separated roles that must all approve before a release can be created |
+| `BRUD_RELEASE_ALLOW_SELF_APPROVAL` | `true` | Allow the candidate's creator to also approve it (local-development default) |
+| `BRUD_RELEASE_REQUIRE_ROLLBACK_TARGET` | `false` | Require a valid rollback target to exist before a candidate is eligible |
+| `BRUD_RELEASE_MAX_ARTIFACT_SIZE_BYTES` | `2000000000` | Maximum size for any single collected artifact |
+| `BRUD_RELEASE_MAX_BUNDLE_SIZE_BYTES` | `2000000000` | Maximum size for a built release bundle archive |
+| `BRUD_RELEASE_ALLOWED_ARTIFACT_ROOTS` | `core_models/pretraining,tokenizers,release_artifacts` | Approved root directories artifact storage keys may resolve into |
+| `BRUD_RELEASE_ALLOWED_BUNDLE_FORMATS` | `zip` | Accepted bundle archive formats |
+| `BRUD_RELEASE_REQUIRE_LICENCE` | `true` | Require a verified licence-notice artifact before a candidate can be eligible |
+| `BRUD_RELEASE_REQUIRE_MODEL_CARD` | `true` | Require a valid model card before a candidate can be eligible |
+| `BRUD_RELEASE_REQUIRE_EVALUATION_MANIFEST` | `true` | Require a verified evaluation-manifest artifact before eligibility |
+| `BRUD_RELEASE_REQUIRE_INSTRUCTION_MANIFEST` | `true` | Require a verified instruction-tuning-manifest artifact for instruction-tuned candidates |
+| `BRUD_RELEASE_REQUIRE_BASE_TRAINING_MANIFEST` | `true` | Require a verified base-training-manifest artifact before eligibility |
+| `BRUD_RELEASE_CHECKSUM_ALGORITHM` | `sha256` | Checksum algorithm used for all release artifacts (only `sha256` is currently supported) |
 
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 

@@ -7,6 +7,7 @@ import CoreModelPage from './pages/CoreModelPage.jsx'
 import InstructionTuningPage from './pages/InstructionTuningPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ModelEvaluationPage from './pages/ModelEvaluationPage.jsx'
+import ModelRegistryPage from './pages/ModelRegistryPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
 import SystemPage from './pages/SystemPage.jsx'
@@ -35,5 +36,6 @@ export default function App() {
   if (active === 'Base Training') page = <BaseTrainingPage />
   if (active === 'Instruction Tuning') page = <InstructionTuningPage />
   if (active === 'Evaluation') page = <ModelEvaluationPage />
+  if (active === 'Model Registry') page = <ModelRegistryPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

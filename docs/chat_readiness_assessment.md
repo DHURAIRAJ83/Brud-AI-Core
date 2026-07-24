@@ -60,3 +60,14 @@ Every call to `assess_readiness()` appends a new row to
 dimension scores, blocking/warning counts, and the full rationale
 (`{"blocking_reasons": [...], "warnings": [...]}`) — a complete,
 re-inspectable record of *why* the gate decided what it decided.
+
+## Consumed, never re-derived, by Phase 14
+
+`ModelReleaseService.assess_eligibility()` reads the *latest*
+`model_chat_readiness_assessments.status` for a release candidate's
+linked evaluation run (via `model_evaluation_runs`) as one of its 14
+eligibility dimensions. It never recomputes or overrides this status —
+a candidate whose linked run has `status = "evaluation_blocked"` always
+produces the `evaluation_blocked` blocking reason at the release-
+eligibility layer too, with no path for an approval to override it. See
+[model_release_eligibility.md](model_release_eligibility.md).

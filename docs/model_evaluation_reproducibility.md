@@ -71,3 +71,15 @@ Phase 13 calls: no sampling, no temperature, no KV-cache, a hard
 model's context limit. `validate_generation_policy()` rejects any suite
 that tries to configure otherwise — reproducibility requires that the
 same fixture against the same checkpoint always produces the same output.
+
+## Reused by Phase 14's release manifest, not duplicated
+
+Phase 14's `model_release_manifests` includes the evaluation manifest's
+own checksum (`evaluation_manifest_checksum_sha256`) and the linked
+evaluation run's readiness status verbatim — it never re-runs evaluation
+or recomputes a evaluation checksum itself. The same immutability,
+tamper-detection (append new row, recompute, compare), and
+no-secrets/no-paths discipline documented above for
+`model_evaluation_manifests` is followed identically by
+`core_model.release.manifest` for release manifests. See
+[model_release_manifests.md](model_release_manifests.md).

@@ -565,6 +565,58 @@ class Settings(BaseSettings):
     eval_max_human_review_disagreement: float = Field(
         default=0.5, ge=0, le=1, validation_alias="BRUD_EVAL_MAX_HUMAN_REVIEW_DISAGREEMENT"
     )
+    release_artifact_dir: Path = Field(
+        default=Path("data/release_artifacts"), validation_alias="BRUD_RELEASE_ARTIFACT_DIR"
+    )
+    release_bundle_dir: Path = Field(
+        default=Path("data/release_bundles"), validation_alias="BRUD_RELEASE_BUNDLE_DIR"
+    )
+    release_require_evaluation: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_REQUIRE_EVALUATION"
+    )
+    release_allow_warning_eligibility: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_ALLOW_WARNING_ELIGIBILITY"
+    )
+    release_required_approval_roles: str = Field(
+        default="release", validation_alias="BRUD_RELEASE_REQUIRED_APPROVAL_ROLES"
+    )
+    release_allow_self_approval: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_ALLOW_SELF_APPROVAL"
+    )
+    release_require_rollback_target: bool = Field(
+        default=False, validation_alias="BRUD_RELEASE_REQUIRE_ROLLBACK_TARGET"
+    )
+    release_max_artifact_size_bytes: int = Field(
+        default=2_000_000_000, ge=1, validation_alias="BRUD_RELEASE_MAX_ARTIFACT_SIZE_BYTES"
+    )
+    release_max_bundle_size_bytes: int = Field(
+        default=2_000_000_000, ge=1, validation_alias="BRUD_RELEASE_MAX_BUNDLE_SIZE_BYTES"
+    )
+    release_allowed_artifact_roots: str = Field(
+        default="core_models/pretraining,tokenizers,release_artifacts",
+        validation_alias="BRUD_RELEASE_ALLOWED_ARTIFACT_ROOTS",
+    )
+    release_allowed_bundle_formats: str = Field(
+        default="zip", validation_alias="BRUD_RELEASE_ALLOWED_BUNDLE_FORMATS"
+    )
+    release_require_licence: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_REQUIRE_LICENCE"
+    )
+    release_require_model_card: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_REQUIRE_MODEL_CARD"
+    )
+    release_require_evaluation_manifest: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_REQUIRE_EVALUATION_MANIFEST"
+    )
+    release_require_instruction_manifest: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_REQUIRE_INSTRUCTION_MANIFEST"
+    )
+    release_require_base_training_manifest: bool = Field(
+        default=True, validation_alias="BRUD_RELEASE_REQUIRE_BASE_TRAINING_MANIFEST"
+    )
+    release_checksum_algorithm: str = Field(
+        default="sha256", validation_alias="BRUD_RELEASE_CHECKSUM_ALGORITHM"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -602,6 +654,8 @@ class Settings(BaseSettings):
             "core_model_dir",
             "core_checkpoint_dir",
             "pretraining_dir",
+            "release_artifact_dir",
+            "release_bundle_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -620,6 +674,8 @@ class Settings(BaseSettings):
                 "core_model_dir",
                 "core_checkpoint_dir",
                 "pretraining_dir",
+                "release_artifact_dir",
+                "release_bundle_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
@@ -650,6 +706,13 @@ class Settings(BaseSettings):
             raise ValueError("Phase 8 supports only cpu as the default core model device")
         if self.pretraining_min_checkpoint_interval > self.pretraining_max_steps:
             raise ValueError("pretraining checkpoint interval must not exceed max steps")
+        if self.release_checksum_algorithm not in {"sha256"}:
+            raise ValueError("Phase 14 supports only the sha256 checksum algorithm")
+        allowed_formats = {
+            item.strip() for item in self.release_allowed_bundle_formats.split(",") if item.strip()
+        }
+        if not allowed_formats or not allowed_formats <= {"zip", "tar_gz"}:
+            raise ValueError("BRUD_RELEASE_ALLOWED_BUNDLE_FORMATS supports only zip and tar_gz")
         return self
 
     @field_validator("ocr_languages")
@@ -749,6 +812,28 @@ class Settings(BaseSettings):
     @property
     def resolved_pretraining_dir(self) -> Path:
         return self._resolve_path(self.pretraining_dir)
+
+    @property
+    def resolved_release_artifact_dir(self) -> Path:
+        return self._resolve_path(self.release_artifact_dir)
+
+    @property
+    def resolved_release_bundle_dir(self) -> Path:
+        return self._resolve_path(self.release_bundle_dir)
+
+    @property
+    def release_required_approval_roles_list(self) -> tuple[str, ...]:
+        return tuple(
+            role.strip() for role in self.release_required_approval_roles.split(",") if role.strip()
+        )
+
+    @property
+    def release_allowed_artifact_roots_list(self) -> tuple[str, ...]:
+        return tuple(
+            root.strip()
+            for root in self.release_allowed_artifact_roots.split(",")
+            if root.strip()
+        )
 
     @property
     def allowed_import_extensions(self) -> set[str]:

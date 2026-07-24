@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -1966,5 +1966,258 @@ CREATE TRIGGER IF NOT EXISTS model_chat_readiness_assessments_immutable_update B
 CREATE TRIGGER IF NOT EXISTS model_chat_readiness_assessments_immutable_delete BEFORE DELETE ON model_chat_readiness_assessments BEGIN SELECT RAISE(ABORT, 'chat readiness assessments are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS model_evaluation_manifests_immutable_update BEFORE UPDATE ON model_evaluation_manifests BEGIN SELECT RAISE(ABORT, 'evaluation manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS model_evaluation_manifests_immutable_delete BEFORE DELETE ON model_evaluation_manifests BEGIN SELECT RAISE(ABORT, 'evaluation manifests are append-only'); END;
+"""
+
+MIGRATION_014_NAME = "014_phase14_model_release_registry"
+
+PHASE14_SCHEMA = """
+CREATE TABLE IF NOT EXISTS model_release_families (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    intended_use TEXT NOT NULL DEFAULT '',
+    supported_languages_json TEXT NOT NULL DEFAULT '["ta","en","tgl","mixed"]',
+    compatibility_policy_json TEXT NOT NULL DEFAULT '{}',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN ('draft','active','deprecated','archived')),
+    current_release_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT
+);
+CREATE TABLE IF NOT EXISTS model_release_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_family_id INTEGER NOT NULL,
+    core_model_version_id INTEGER NOT NULL,
+    checkpoint_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    dataset_version_id INTEGER,
+    instruction_tuning_candidate_id INTEGER,
+    model_evaluation_run_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','collecting_artifacts','validating','eligible','eligible_with_warnings',
+        'blocked','approved','released','rejected','superseded','archived'
+    )),
+    label TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    latest_eligibility_status TEXT NOT NULL DEFAULT 'not_assessed',
+    latest_eligibility_public_id TEXT,
+    latest_model_card_public_id TEXT,
+    latest_manifest_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_family_id) REFERENCES model_release_families(id) ON DELETE RESTRICT,
+    FOREIGN KEY (core_model_version_id) REFERENCES core_model_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (checkpoint_id) REFERENCES pretraining_checkpoints(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (instruction_tuning_candidate_id) REFERENCES instruction_tuning_candidates(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_evaluation_run_id) REFERENCES model_evaluation_runs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS model_release_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_candidate_id INTEGER NOT NULL,
+    artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+        'model_checkpoint','model_config','tokenizer_model','tokenizer_vocab',
+        'tokenizer_manifest','dataset_manifest','base_training_manifest',
+        'instruction_tuning_manifest','evaluation_manifest','model_card',
+        'release_manifest','licence_notice'
+    )),
+    source_entity_public_id TEXT,
+    logical_name TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    checksum_algorithm TEXT NOT NULL DEFAULT 'sha256',
+    checksum TEXT,
+    verification_status TEXT NOT NULL DEFAULT 'pending' CHECK (verification_status IN (
+        'pending','verified','missing','checksum_mismatch','invalid','not_applicable'
+    )),
+    required INTEGER NOT NULL DEFAULT 1 CHECK (required IN (0,1)),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    verified_at TEXT,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_candidate_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_model_cards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_candidate_id INTEGER NOT NULL,
+    card_markdown TEXT NOT NULL,
+    card_checksum_sha256 TEXT NOT NULL,
+    validation_status TEXT NOT NULL DEFAULT 'not_validated' CHECK (validation_status IN ('not_validated','valid','invalid')),
+    validation_issues_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_eligibility_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_candidate_id INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('eligible','eligible_with_warnings','blocked','not_assessed')),
+    dimension_scores_json TEXT NOT NULL DEFAULT '{}',
+    blocking_issue_count INTEGER NOT NULL DEFAULT 0,
+    warning_issue_count INTEGER NOT NULL DEFAULT 0,
+    rationale_json TEXT NOT NULL DEFAULT '{}',
+    eligibility_checksum_sha256 TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_candidate_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL CHECK (issue_code IN (
+        'artifact_missing','artifact_checksum_mismatch','artifact_path_invalid',
+        'checkpoint_corrupt','model_config_mismatch','tokenizer_missing',
+        'tokenizer_vocab_mismatch','special_token_mismatch','dataset_lineage_missing',
+        'training_manifest_missing','instruction_manifest_missing',
+        'evaluation_manifest_missing','evaluation_blocked','evaluation_warning',
+        'safety_blocking_issue','licence_missing','licence_unsupported',
+        'model_card_incomplete','model_card_misleading','release_manifest_mismatch',
+        'approval_missing','approval_stale','version_conflict',
+        'resource_requirement_unknown','rollback_target_missing',
+        'rollback_target_ineligible','bundle_generation_failed','bundle_checksum_mismatch'
+    )),
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','error','blocking')),
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_candidate_id INTEGER NOT NULL,
+    admin_public_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('technical','evaluation','security','release')),
+    decision TEXT NOT NULL CHECK (decision IN ('approve','approve_with_warning','reject','request_changes')),
+    comment TEXT NOT NULL DEFAULT '',
+    eligibility_checksum_sha256 TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_releases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_family_id INTEGER NOT NULL,
+    model_release_candidate_id INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    prerelease_label TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','released','deprecated','retired','rolled_back','archived')),
+    deployment_eligibility TEXT NOT NULL DEFAULT 'not_deployable' CHECK (deployment_eligibility IN ('deployable','deployable_with_warnings','not_deployable')),
+    release_manifest_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    released_at TEXT,
+    deprecated_at TEXT,
+    retired_at TEXT,
+    FOREIGN KEY (model_release_family_id) REFERENCES model_release_families(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id) ON DELETE RESTRICT,
+    UNIQUE(model_release_family_id, version)
+);
+CREATE TABLE IF NOT EXISTS model_release_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    left_release_id INTEGER NOT NULL,
+    right_release_id INTEGER NOT NULL,
+    compatibility TEXT NOT NULL CHECK (compatibility IN ('compatible','partially_compatible','incompatible')),
+    ranked INTEGER NOT NULL DEFAULT 0 CHECK (ranked IN (0,1)),
+    fields_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (left_release_id) REFERENCES model_releases(id) ON DELETE CASCADE,
+    FOREIGN KEY (right_release_id) REFERENCES model_releases(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_rollback_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_release_id INTEGER NOT NULL,
+    target_release_id INTEGER NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','approved','executed','rejected','cancelled')),
+    compatibility_result_json TEXT NOT NULL DEFAULT '{}',
+    target_verification_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    validated_at TEXT,
+    approved_at TEXT,
+    executed_at TEXT,
+    FOREIGN KEY (source_release_id) REFERENCES model_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY (target_release_id) REFERENCES model_releases(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS model_release_rollback_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_rollback_plan_id INTEGER NOT NULL,
+    previous_release_public_id TEXT NOT NULL,
+    new_release_public_id TEXT NOT NULL,
+    approval_evidence_json TEXT NOT NULL DEFAULT '{}',
+    executed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_rollback_plan_id) REFERENCES model_release_rollback_plans(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_release_bundles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_release_id INTEGER NOT NULL,
+    bundle_format TEXT NOT NULL DEFAULT 'zip' CHECK (bundle_format IN ('zip','tar_gz')),
+    inventory_json TEXT NOT NULL DEFAULT '[]',
+    bundle_checksum_sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    storage_key TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_release_id) REFERENCES model_releases(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_model_release_families_status ON model_release_families(lifecycle_status);
+CREATE INDEX IF NOT EXISTS ix_model_release_candidates_family ON model_release_candidates(model_release_family_id,status);
+CREATE INDEX IF NOT EXISTS ix_model_release_candidates_core_model ON model_release_candidates(core_model_version_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_artifacts_candidate ON model_release_artifacts(model_release_candidate_id,artifact_type);
+CREATE INDEX IF NOT EXISTS ix_model_release_manifests_candidate ON model_release_manifests(model_release_candidate_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_model_cards_candidate ON model_release_model_cards(model_release_candidate_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_eligibility_candidate ON model_release_eligibility_assessments(model_release_candidate_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_issues_candidate ON model_release_issues(model_release_candidate_id,severity);
+CREATE INDEX IF NOT EXISTS ix_model_release_approvals_candidate ON model_release_approvals(model_release_candidate_id,role);
+CREATE INDEX IF NOT EXISTS ix_model_releases_family ON model_releases(model_release_family_id,status);
+CREATE INDEX IF NOT EXISTS ix_model_release_comparisons_releases ON model_release_comparisons(left_release_id,right_release_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_rollback_plans_releases ON model_release_rollback_plans(source_release_id,target_release_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_rollback_events_plan ON model_release_rollback_events(model_release_rollback_plan_id);
+CREATE INDEX IF NOT EXISTS ix_model_release_bundles_release ON model_release_bundles(model_release_id);
+CREATE TRIGGER IF NOT EXISTS model_release_artifacts_immutable_update BEFORE UPDATE ON model_release_artifacts BEGIN SELECT RAISE(ABORT, 'release artifacts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_artifacts_immutable_delete BEFORE DELETE ON model_release_artifacts BEGIN SELECT RAISE(ABORT, 'release artifacts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_manifests_immutable_update BEFORE UPDATE ON model_release_manifests BEGIN SELECT RAISE(ABORT, 'release manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_manifests_immutable_delete BEFORE DELETE ON model_release_manifests BEGIN SELECT RAISE(ABORT, 'release manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_model_cards_immutable_update BEFORE UPDATE ON model_release_model_cards BEGIN SELECT RAISE(ABORT, 'release model cards are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_model_cards_immutable_delete BEFORE DELETE ON model_release_model_cards BEGIN SELECT RAISE(ABORT, 'release model cards are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_eligibility_immutable_update BEFORE UPDATE ON model_release_eligibility_assessments BEGIN SELECT RAISE(ABORT, 'release eligibility assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_eligibility_immutable_delete BEFORE DELETE ON model_release_eligibility_assessments BEGIN SELECT RAISE(ABORT, 'release eligibility assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_issues_immutable_update BEFORE UPDATE ON model_release_issues BEGIN SELECT RAISE(ABORT, 'release issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_issues_immutable_delete BEFORE DELETE ON model_release_issues BEGIN SELECT RAISE(ABORT, 'release issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_approvals_immutable_update BEFORE UPDATE ON model_release_approvals BEGIN SELECT RAISE(ABORT, 'release approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_approvals_immutable_delete BEFORE DELETE ON model_release_approvals BEGIN SELECT RAISE(ABORT, 'release approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_comparisons_immutable_update BEFORE UPDATE ON model_release_comparisons BEGIN SELECT RAISE(ABORT, 'release comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_comparisons_immutable_delete BEFORE DELETE ON model_release_comparisons BEGIN SELECT RAISE(ABORT, 'release comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_rollback_events_immutable_update BEFORE UPDATE ON model_release_rollback_events BEGIN SELECT RAISE(ABORT, 'release rollback events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_rollback_events_immutable_delete BEFORE DELETE ON model_release_rollback_events BEGIN SELECT RAISE(ABORT, 'release rollback events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_bundles_immutable_update BEFORE UPDATE ON model_release_bundles BEGIN SELECT RAISE(ABORT, 'release bundles are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_release_bundles_immutable_delete BEFORE DELETE ON model_release_bundles BEGIN SELECT RAISE(ABORT, 'release bundles are append-only'); END;
 """
 

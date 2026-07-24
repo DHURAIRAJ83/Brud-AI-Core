@@ -74,3 +74,26 @@ is recorded as a separate, append-only assessment — never as a lifecycle
 transition. No phase up to and including Phase 13 assigns any model
 version to the `public_chat` assignment key. See
 [chat_readiness_assessment.md](chat_readiness_assessment.md).
+
+## Phase 14 release registry (also no new lineage row)
+
+Phase 14 likewise never rewrites a `core_model_versions` row or its
+lifecycle status. A release candidate references an existing core model
+version, its resolved checkpoint, and (when relevant) its instruction-
+tuning candidate and evaluation run entirely by foreign key — release-
+candidate status (`draft`/`.../blocked`/`approved`/`released`/...) and
+release status (`draft`/`released`/`deprecated`/`retired`/`rolled_back`/
+`archived`) live on the new `model_release_candidates`/`model_releases`
+tables, completely separate from `core_model_versions.lifecycle_status`,
+`instruction_tuning_candidates.status`, and
+`model_chat_readiness_assessments.status`. A core model version with
+`lifecycle_status` of `retired`, `archived`, or `failed` is rejected
+outright at candidate-creation time — it can never become a release
+candidate regardless of its evaluation history. Deployment eligibility
+(`deployable`/`deployable_with_warnings`/`not_deployable`) is yet another
+separate field, on `model_releases`, and is never conflated with release
+status or evaluation status. No phase up to and including Phase 14
+assigns any model version to the `public_chat` assignment key, and no
+release is ever created for a candidate whose evaluation status is
+`evaluation_blocked`. See
+[model_release_eligibility.md](model_release_eligibility.md).

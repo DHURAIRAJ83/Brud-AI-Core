@@ -262,9 +262,64 @@ phase; every candidate remains `not_public_chat_ready` regardless of the
 readiness-gate outcome, and the public chatbot remains the unchanged
 placeholder.
 
+Phase 14 answers the next question: not "how well does this candidate
+behave" (Phase 13), but "is this already-evaluated candidate safe and
+complete enough to become a governed release" — never "should it be
+deployed":
+
+```text
+Verified core model version (base_pretrained, instruction_tuned, or
+evaluated) + its checkpoint
+      → release candidate (checkpoint resolved automatically from the
+        registry — direct FK, or checksum match for a promoted
+        instruction-tuned lineage — never a raw path)
+      → artifact collection + verification (path-confined, checksummed,
+        against the checkpoint/tokenizer/config/dataset/manifest lineage)
+      → release eligibility (14 deterministic dimensions; any blocking
+        condition — missing/corrupt checkpoint, vocabulary mismatch,
+        evaluation_blocked, missing manifest, unresolved safety issue —
+        is never overridable by approval)
+      → model card (generated from registered data only; a card
+        describing a blocked model as capable/production-ready fails
+        validation) + immutable release manifest (scanned for secrets/
+        paths before being persisted)
+      → configurable, role-based, append-only approvals (stale the
+        moment the candidate's evidence changes)
+      → release (semantic-style version, unique per family;
+        deployment_eligibility kept separate from release status)
+      → comparison / safe export bundle (excludes the database, .env,
+        sessions, and raw datasets by construction) / metadata-only
+        rollback (changes only a family's current-release pointer —
+        never a file on disk, never public-chat assignment)
+```
+
+`ModelReleaseService` (`backend/services/model_release_service.py`)
+composes the existing core-model, checkpoint, tokenizer, dataset,
+instruction-tuning, and evaluation registries rather than building a
+second one of any of them. The new pure-function modules live under
+`core_model/release/`: `artifact_inventory.py`, `compatibility.py`,
+`eligibility.py`, `model_card.py`, `manifest.py`, `approval_policy.py`,
+`rollback.py`, `comparison.py`, and `release_bundle.py`. See
+[database_schema_v14.md](database_schema_v14.md),
+[model_release_registry.md](model_release_registry.md),
+[model_release_artifacts.md](model_release_artifacts.md),
+[model_release_eligibility.md](model_release_eligibility.md),
+[model_cards.md](model_cards.md),
+[model_release_manifests.md](model_release_manifests.md),
+[model_release_approvals.md](model_release_approvals.md),
+[model_release_bundles.md](model_release_bundles.md),
+[model_release_rollback.md](model_release_rollback.md), and
+[model_release_comparison.md](model_release_comparison.md). No public
+chatbot model assignment, production model serving, container
+deployment, RAG, RLHF, DPO, reward modeling, quantization, GGUF export,
+external model providers, or automatic deployment/rollback of running
+infrastructure were added in this phase; a registered release is never
+automatically deployable or available to the public chatbot, which
+remains the unchanged placeholder.
+
 ## Database
 
-SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md); schema v11 (migration `011_phase11_base_pretraining_evaluation`, independent of migration 010) adds base-training experiments, experiment runs, dataset profiles, language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining/checkpoint tables rather than duplicating them — see [database_schema_v11.md](database_schema_v11.md); schema v12 (migration `012_phase12_instruction_tuning`, independent of migration 011) adds instruction-tuning experiments, runs, dataset profiles, instruction templates, per-step metrics, evaluations/evaluation results, learning checks, candidate selections, and reproducibility manifests, again referencing existing tables rather than duplicating them — see [database_schema_v12.md](database_schema_v12.md).
+SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md); schema v11 (migration `011_phase11_base_pretraining_evaluation`, independent of migration 010) adds base-training experiments, experiment runs, dataset profiles, language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining/checkpoint tables rather than duplicating them — see [database_schema_v11.md](database_schema_v11.md); schema v12 (migration `012_phase12_instruction_tuning`, independent of migration 011) adds instruction-tuning experiments, runs, dataset profiles, instruction templates, per-step metrics, evaluations/evaluation results, learning checks, candidate selections, and reproducibility manifests, again referencing existing tables rather than duplicating them — see [database_schema_v12.md](database_schema_v12.md); schema v13 (migration `013_phase13_multilingual_evaluation`, independent of migration 012) adds evaluation suites, fixture sets, fixtures, evaluation runs, outputs, metrics, issues, human reviews, comparisons, chat-readiness assessments, and reproducibility manifests — see [database_schema_v13.md](database_schema_v13.md); schema v14 (migration `014_phase14_model_release_registry`, independent of migration 013) adds release families, release candidates, artifacts, manifests, model cards, eligibility assessments, issues, approvals, releases, comparisons, rollback plans/events, and bundles, all referencing existing candidate/checkpoint/tokenizer/dataset/evaluation tables rather than duplicating them — see [database_schema_v14.md](database_schema_v14.md).
 
 Repositories own parameterized SQL, transaction boundaries, public-ID lookup, pagination, JSON encoding, and lifecycle validation. Numeric database IDs never cross the public API boundary. Dataset versions marked ready and audit events are protected from content mutation at both repository and database-trigger levels.
 
@@ -281,9 +336,16 @@ Core Model Training
       ↓
 Evaluation
       ↓
-Model Registry
-      ↓
+Model Registry            ← implemented in Phase 14 (release governance,
+      ↓                      not deployment — see the Phase 14 section above)
 Chatbot Testing
 ```
 
-Future phases should require approved, versioned datasets before training; immutable evaluation evidence before registry promotion; and an explicitly active model before chatbot inference. Audit events should accompany administrative mutations.
+Phase 14 implements the Model Registry stage of this workflow: approved,
+versioned datasets and immutable evaluation evidence are now required
+before a candidate can become a governed release (registry/release
+eligibility, never registry *promotion to production*). "Chatbot
+Testing" — actually assigning a release to the public chatbot — remains
+unimplemented and out of scope; audit events already accompany every
+administrative mutation from Phase 3 onward, including every Phase 14
+mutation.

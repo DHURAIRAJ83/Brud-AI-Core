@@ -88,3 +88,15 @@ method; `core_model/inference/__init__.py` remains the Phase 1
 This output is evaluation evidence only. It is never called production
 inference, and `/api/chat` is verified (directly, by test) to remain the
 unchanged placeholder after a full candidate promotion.
+
+## Handoff to Phase 13
+
+A candidate selected here as `instruction_tuned_candidate` or
+`instruction_tuned_with_warnings` is exactly the row Phase 13's
+`ModelEvaluationService._eligible_candidate()` looks for
+(`base_pretrained`/`instruction_tuned`/`evaluation_required` all `true`).
+Phase 13 never re-selects or re-promotes anything here — it only reads
+this candidate and its checkpoint, and its own chat-readiness verdict is
+recorded as a separate assessment, never a change to this candidate's
+lifecycle status or flags. See
+[chat_readiness_assessment.md](chat_readiness_assessment.md).

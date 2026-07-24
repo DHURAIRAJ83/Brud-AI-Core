@@ -56,3 +56,21 @@ status is `instruction_tuned_candidate` or `instruction_tuned_with_warnings`
 (never a plain "selected"), or `rejected`. No phase up to and including
 Phase 12 assigns any model version to the `public_chat` assignment key. See
 [instruction_candidate_selection.md](instruction_candidate_selection.md).
+
+## Phase 13 evaluation (no new lineage row)
+
+Phase 13 does not promote a new `core_model_versions` row and does not
+change lifecycle status. It reads an existing Phase-12-promoted row
+directly — eligibility is `lifecycle_status IN ('staging','active')` and
+`architecture_summary_json.base_pretrained`, `.instruction_tuned`, and
+`.evaluation_required` all `true`, with a verified checkpoint (matched by
+`model_checksum_sha256` against the candidate's own
+`weights_checksum_sha256`) — and records its findings entirely in the new
+`model_evaluation_*` tables. The candidate's `architecture_summary_json`
+is never rewritten by Phase 13, so `not_public_chat_ready` stays exactly
+as Phase 12 set it, and the readiness gate's outcome
+(`evaluation_passed_with_limits`/`evaluation_warning`/`evaluation_blocked`)
+is recorded as a separate, append-only assessment — never as a lifecycle
+transition. No phase up to and including Phase 13 assigns any model
+version to the `public_chat` assignment key. See
+[chat_readiness_assessment.md](chat_readiness_assessment.md).

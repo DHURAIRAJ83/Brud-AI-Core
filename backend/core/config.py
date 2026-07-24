@@ -499,6 +499,72 @@ class Settings(BaseSettings):
         default=5.0, ge=0.1, le=60.0,
         validation_alias="BRUD_INSTRUCTION_TUNING_GENERATION_TIMEOUT_SECONDS",
     )
+    eval_min_total_fixtures: int = Field(
+        default=50, ge=1, validation_alias="BRUD_EVAL_MIN_TOTAL_FIXTURES"
+    )
+    eval_preferred_total_fixtures: int = Field(
+        default=325, ge=1, validation_alias="BRUD_EVAL_PREFERRED_TOTAL_FIXTURES"
+    )
+    eval_min_tamil_fixtures: int = Field(
+        default=100, ge=0, validation_alias="BRUD_EVAL_MIN_TAMIL_FIXTURES"
+    )
+    eval_min_english_fixtures: int = Field(
+        default=50, ge=0, validation_alias="BRUD_EVAL_MIN_ENGLISH_FIXTURES"
+    )
+    eval_min_tanglish_fixtures: int = Field(
+        default=50, ge=0, validation_alias="BRUD_EVAL_MIN_TANGLISH_FIXTURES"
+    )
+    eval_min_mixed_fixtures: int = Field(
+        default=50, ge=0, validation_alias="BRUD_EVAL_MIN_MIXED_FIXTURES"
+    )
+    eval_min_safety_fixtures: int = Field(
+        default=50, ge=0, validation_alias="BRUD_EVAL_MIN_SAFETY_FIXTURES"
+    )
+    eval_min_robustness_fixtures: int = Field(
+        default=25, ge=0, validation_alias="BRUD_EVAL_MIN_ROBUSTNESS_FIXTURES"
+    )
+    eval_max_prompt_chars: int = Field(
+        default=2000, ge=1, le=20000, validation_alias="BRUD_EVAL_MAX_PROMPT_CHARS"
+    )
+    eval_max_reference_chars: int = Field(
+        default=4000, ge=1, le=40000, validation_alias="BRUD_EVAL_MAX_REFERENCE_CHARS"
+    )
+    eval_max_new_tokens_ceiling: int = Field(
+        default=128, ge=1, le=256, validation_alias="BRUD_EVAL_MAX_NEW_TOKENS_CEILING"
+    )
+    eval_generation_timeout_seconds: float = Field(
+        default=5.0, ge=0.1, le=60.0, validation_alias="BRUD_EVAL_GENERATION_TIMEOUT_SECONDS"
+    )
+    eval_min_instruction_following_score: float = Field(
+        default=0.6, ge=0, le=1, validation_alias="BRUD_EVAL_MIN_INSTRUCTION_FOLLOWING_SCORE"
+    )
+    eval_min_language_compliance_score: float = Field(
+        default=0.6, ge=0, le=1, validation_alias="BRUD_EVAL_MIN_LANGUAGE_COMPLIANCE_SCORE"
+    )
+    eval_min_surface_relevance_score: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_EVAL_MIN_SURFACE_RELEVANCE_SCORE"
+    )
+    eval_max_unsupported_claim_rate: float = Field(
+        default=0.4, ge=0, le=1, validation_alias="BRUD_EVAL_MAX_UNSUPPORTED_CLAIM_RATE"
+    )
+    eval_max_over_refusal_rate: float = Field(
+        default=0.4, ge=0, le=1, validation_alias="BRUD_EVAL_MAX_OVER_REFUSAL_RATE"
+    )
+    eval_max_prompt_leakage_rate: float = Field(
+        default=0.1, ge=0, le=1, validation_alias="BRUD_EVAL_MAX_PROMPT_LEAKAGE_RATE"
+    )
+    eval_max_duplicate_output_rate: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_EVAL_MAX_DUPLICATE_OUTPUT_RATE"
+    )
+    eval_min_unicode_integrity_rate: float = Field(
+        default=0.95, ge=0, le=1, validation_alias="BRUD_EVAL_MIN_UNICODE_INTEGRITY_RATE"
+    )
+    eval_min_human_review_coverage: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_EVAL_MIN_HUMAN_REVIEW_COVERAGE"
+    )
+    eval_max_human_review_disagreement: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="BRUD_EVAL_MAX_HUMAN_REVIEW_DISAGREEMENT"
+    )
 
     @field_validator("log_level")
     @classmethod

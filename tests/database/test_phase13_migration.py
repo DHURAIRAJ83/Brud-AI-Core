@@ -17,6 +17,7 @@ from backend.database.migrations import (
     _apply_v9,
     _apply_v10,
     _apply_v11,
+    _apply_v12,
     current_schema_version,
     initialize_database,
     sha256_file,
@@ -24,20 +25,21 @@ from backend.database.migrations import (
 )
 from backend.database.schema import SCHEMA_VERSION
 
-PHASE12_TABLES = {
-    "instruction_tuning_experiments",
-    "instruction_tuning_runs",
-    "instruction_dataset_profiles",
-    "instruction_format_templates",
-    "instruction_tuning_metrics",
-    "instruction_tuning_evaluations",
-    "instruction_tuning_evaluation_results",
-    "instruction_learning_checks",
-    "instruction_tuning_candidates",
-    "instruction_reproducibility_manifests",
+PHASE13_TABLES = {
+    "model_evaluation_suites",
+    "model_evaluation_fixture_sets",
+    "model_evaluation_fixtures",
+    "model_evaluation_runs",
+    "model_evaluation_outputs",
+    "model_evaluation_metrics",
+    "model_evaluation_issues",
+    "model_evaluation_human_reviews",
+    "model_evaluation_comparisons",
+    "model_chat_readiness_assessments",
+    "model_evaluation_manifests",
 }
 
-APPLY_THROUGH_V11 = (
+APPLY_THROUGH_V12 = (
     _apply_v1,
     _apply_v2,
     _apply_v3,
@@ -49,10 +51,11 @@ APPLY_THROUGH_V11 = (
     _apply_v9,
     _apply_v10,
     _apply_v11,
+    _apply_v12,
 )
 
 
-def test_fresh_database_reaches_schema_12(tmp_path: Path) -> None:
+def test_fresh_database_reaches_schema_13(tmp_path: Path) -> None:
     database = tmp_path / "fresh.db"
     initialize_database(database)
     assert current_schema_version(database) == SCHEMA_VERSION
@@ -61,41 +64,41 @@ def test_fresh_database_reaches_schema_12(tmp_path: Path) -> None:
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-        assert PHASE12_TABLES <= tables
+        assert PHASE13_TABLES <= tables
         assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
-def test_migration_011_is_unchanged_in_isolation(tmp_path: Path) -> None:
-    """Proves migration 011 still behaves exactly as it did before Phase 12 existed."""
-    database = tmp_path / "v11_only.db"
+def test_migration_012_is_unchanged_in_isolation(tmp_path: Path) -> None:
+    """Proves migration 012 still behaves exactly as it did before Phase 13 existed."""
+    database = tmp_path / "v12_only.db"
     with database_connection(database) as connection:
-        for apply in APPLY_THROUGH_V11:
+        for apply in APPLY_THROUGH_V12:
             apply(connection)
         connection.commit()
-    assert current_schema_version(database) == 11
+    assert current_schema_version(database) == 12
     with database_connection(database) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 12
         tables = {
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-        assert {"base_training_experiments", "pretraining_jobs"} <= tables
-        assert not (PHASE12_TABLES & tables)
+        assert {"instruction_tuning_experiments", "pretraining_jobs"} <= tables
+        assert not (PHASE13_TABLES & tables)
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
-def test_schema_11_upgrades_to_12(tmp_path: Path) -> None:
-    database = tmp_path / "v11.db"
+def test_schema_12_upgrades_to_13(tmp_path: Path) -> None:
+    database = tmp_path / "v12.db"
     with database_connection(database) as connection:
-        for apply in APPLY_THROUGH_V11:
+        for apply in APPLY_THROUGH_V12:
             apply(connection)
         connection.execute(
             "INSERT INTO dataset_sources(name,source_type,status,public_id) VALUES (?,?,?,?)",
-            ("Preserved Phase11 Row", "manual", "draft", "00000000-0000-0000-0000-000000000098"),
+            ("Preserved Phase12 Row", "manual", "draft", "00000000-0000-0000-0000-000000000099"),
         )
         connection.commit()
-    assert current_schema_version(database) == 11
+    assert current_schema_version(database) == 12
     settings = Settings(
         database_path=database,
         database_backup_dir=tmp_path / "backups",
@@ -121,31 +124,32 @@ def test_schema_11_upgrades_to_12(tmp_path: Path) -> None:
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='trigger'")
         }
-        assert PHASE12_TABLES <= tables
+        assert PHASE13_TABLES <= tables
         assert {
-            "ix_instruction_tuning_experiments_status",
-            "ix_instruction_tuning_runs_experiment",
-            "ix_instruction_dataset_profiles_experiment",
-            "ix_instruction_tuning_metrics_run",
+            "ix_model_evaluation_suites_status",
+            "ix_model_evaluation_fixture_sets_suite",
+            "ix_model_evaluation_fixtures_set",
+            "ix_model_evaluation_runs_suite",
         } <= indexes
         assert {
-            "instruction_format_templates_immutable_update",
-            "instruction_dataset_profiles_immutable_update",
-            "instruction_tuning_metrics_immutable_update",
-            "instruction_tuning_evaluations_immutable_update",
-            "instruction_tuning_evaluation_results_immutable_update",
-            "instruction_learning_checks_immutable_update",
-            "instruction_tuning_candidates_immutable_update",
-            "instruction_reproducibility_manifests_immutable_update",
+            "model_evaluation_fixture_sets_immutable_update",
+            "model_evaluation_fixtures_immutable_update",
+            "model_evaluation_outputs_immutable_update",
+            "model_evaluation_metrics_immutable_update",
+            "model_evaluation_issues_immutable_update",
+            "model_evaluation_human_reviews_immutable_update",
+            "model_evaluation_comparisons_immutable_update",
+            "model_chat_readiness_assessments_immutable_update",
+            "model_evaluation_manifests_immutable_update",
         } <= triggers
         assert (
             connection.execute("SELECT name FROM dataset_sources").fetchone()[0]
-            == "Preserved Phase11 Row"
+            == "Preserved Phase12 Row"
         )
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
-def test_schema_12_upgrade_is_a_no_op(tmp_path: Path) -> None:
+def test_schema_13_upgrade_is_a_no_op(tmp_path: Path) -> None:
     database = tmp_path / "already_current.db"
     initialize_database(database)
     settings = Settings(
@@ -162,21 +166,21 @@ def test_schema_12_upgrade_is_a_no_op(tmp_path: Path) -> None:
     assert not (tmp_path / "backups").exists() or not list((tmp_path / "backups").iterdir())
 
 
-def test_migration_12_is_idempotent(tmp_path: Path) -> None:
+def test_migration_13_is_idempotent(tmp_path: Path) -> None:
     database = tmp_path / "idempotent.db"
     initialize_database(database)
     initialize_database(database)
     initialize_database(database)
     with database_connection(database) as connection:
         rows = connection.execute(
-            "SELECT COUNT(*) FROM schema_migrations WHERE version = 12"
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 13"
         ).fetchone()
         assert rows[0] == 1
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
-def test_phase12_tables_indexes_and_triggers_are_deterministic(tmp_path: Path) -> None:
+def test_phase13_tables_indexes_and_triggers_are_deterministic(tmp_path: Path) -> None:
     first = tmp_path / "first.db"
     second = tmp_path / "second.db"
     initialize_database(first)
@@ -197,79 +201,62 @@ def test_phase12_tables_indexes_and_triggers_are_deterministic(tmp_path: Path) -
         assert objects_a == objects_b
 
 
-def test_instruction_tuning_experiments_and_runs_are_mutable(tmp_path: Path) -> None:
-    """experiments/runs are lifecycle rows, not append-only evidence."""
+def test_model_evaluation_suites_and_runs_are_mutable(tmp_path: Path) -> None:
+    """suites/runs are lifecycle rows, not append-only evidence."""
     database = tmp_path / "mutable.db"
     initialize_database(database)
     with database_connection(database) as connection:
         connection.execute("PRAGMA foreign_keys = OFF")
         connection.execute(
-            """INSERT INTO instruction_tuning_experiments(public_id,name,
-            base_core_model_version_id,source_base_checkpoint_id,dataset_version_id,
-            tokenizer_version_id,created_by_admin_public_id) VALUES (?,?,?,?,?,?,?)""",
+            """INSERT INTO model_evaluation_suites(public_id,name,version,
+            created_by_admin_public_id) VALUES (?,?,?,?)""",
             (
-                "00000000-0000-0000-0000-0000000000f1",
-                "exp",
-                1,
-                1,
-                1,
-                1,
-                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-0000000000g1",
+                "suite", "1", "00000000-0000-0000-0000-000000000001",
             ),
         )
         connection.commit()
         connection.execute(
-            "UPDATE instruction_tuning_experiments SET status='profiled' WHERE public_id=?",
-            ("00000000-0000-0000-0000-0000000000f1",),
+            "UPDATE model_evaluation_suites SET status='validated' WHERE public_id=?",
+            ("00000000-0000-0000-0000-0000000000g1",),
         )
         connection.commit()
         row = connection.execute(
-            "SELECT status FROM instruction_tuning_experiments WHERE public_id=?",
-            ("00000000-0000-0000-0000-0000000000f1",),
+            "SELECT status FROM model_evaluation_suites WHERE public_id=?",
+            ("00000000-0000-0000-0000-0000000000g1",),
         ).fetchone()
-        assert row[0] == "profiled"
+        assert row[0] == "validated"
 
 
-def test_append_only_phase12_tables_reject_updates(tmp_path: Path) -> None:
+def test_append_only_phase13_tables_reject_updates(tmp_path: Path) -> None:
     database = tmp_path / "append_only.db"
     initialize_database(database)
     with database_connection(database) as connection:
         connection.execute("PRAGMA foreign_keys = OFF")
         connection.execute(
-            """INSERT INTO instruction_tuning_experiments(public_id,name,
-            base_core_model_version_id,source_base_checkpoint_id,dataset_version_id,
-            tokenizer_version_id,created_by_admin_public_id) VALUES (?,?,?,?,?,?,?)""",
+            """INSERT INTO model_evaluation_suites(public_id,name,version,
+            created_by_admin_public_id) VALUES (?,?,?,?)""",
             (
-                "00000000-0000-0000-0000-0000000000f2",
-                "exp",
-                1,
-                1,
-                1,
-                1,
-                "00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-0000000000g2",
+                "suite2", "1", "00000000-0000-0000-0000-000000000001",
             ),
         )
-        experiment_id = connection.execute(
-            "SELECT id FROM instruction_tuning_experiments WHERE public_id=?",
-            ("00000000-0000-0000-0000-0000000000f2",),
+        suite_id = connection.execute(
+            "SELECT id FROM model_evaluation_suites WHERE public_id=?",
+            ("00000000-0000-0000-0000-0000000000g2",),
         ).fetchone()[0]
         connection.execute(
-            """INSERT INTO instruction_dataset_profiles(public_id,
-            instruction_tuning_experiment_id,dataset_version_id,input_stream_checksum_sha256,
-            label_stream_checksum_sha256,profile_checksum_sha256) VALUES (?,?,?,?,?,?)""",
+            """INSERT INTO model_evaluation_fixture_sets(public_id,model_evaluation_suite_id,
+            name,created_by_admin_public_id) VALUES (?,?,?,?)""",
             (
-                "00000000-0000-0000-0000-0000000000f3",
-                experiment_id,
-                1,
-                "a" * 64,
-                "b" * 64,
-                "c" * 64,
+                "00000000-0000-0000-0000-0000000000g3", suite_id, "set1",
+                "00000000-0000-0000-0000-000000000001",
             ),
         )
         connection.commit()
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
-                """UPDATE instruction_dataset_profiles SET total_records=99
-                WHERE instruction_tuning_experiment_id=?""",
-                (experiment_id,),
+                """UPDATE model_evaluation_fixture_sets SET fixture_count=99
+                WHERE model_evaluation_suite_id=?""",
+                (suite_id,),
             )

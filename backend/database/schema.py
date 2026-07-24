@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -1734,5 +1734,237 @@ CREATE TRIGGER IF NOT EXISTS instruction_tuning_candidates_immutable_update BEFO
 CREATE TRIGGER IF NOT EXISTS instruction_tuning_candidates_immutable_delete BEFORE DELETE ON instruction_tuning_candidates BEGIN SELECT RAISE(ABORT, 'instruction tuning candidates are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS instruction_reproducibility_manifests_immutable_update BEFORE UPDATE ON instruction_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'instruction reproducibility manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS instruction_reproducibility_manifests_immutable_delete BEFORE DELETE ON instruction_reproducibility_manifests BEGIN SELECT RAISE(ABORT, 'instruction reproducibility manifests are append-only'); END;
+"""
+
+MIGRATION_013_NAME = "013_phase13_multilingual_evaluation"
+
+PHASE13_SCHEMA = """
+CREATE TABLE IF NOT EXISTS model_evaluation_suites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    supported_languages_json TEXT NOT NULL DEFAULT '["ta","en","tgl","mixed"]',
+    generation_configuration_json TEXT NOT NULL DEFAULT '{}',
+    automated_thresholds_json TEXT NOT NULL DEFAULT '{}',
+    human_review_rubric_json TEXT NOT NULL DEFAULT '{}',
+    readiness_gate_configuration_json TEXT NOT NULL DEFAULT '{}',
+    suite_checksum_sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','validated','active','retired','archived')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    activated_at TEXT,
+    UNIQUE(name, version)
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_fixture_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_suite_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    fixture_count INTEGER NOT NULL DEFAULT 0,
+    checksum_sha256 TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_suite_id) REFERENCES model_evaluation_suites(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_fixtures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_fixture_set_id INTEGER NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'language_compliance','instruction_following','response_relevance','format_compliance',
+        'translation','definition','summarization','classification','transformation',
+        'reasoning_basic','code_switching','tanglish_understanding','safety_refusal',
+        'unsafe_instruction_handling','prompt_leakage','role_leakage','system_prompt_leakage',
+        'repetition','robustness','unicode_handling'
+    )),
+    language TEXT NOT NULL CHECK (language IN ('ta','en','tgl','mixed')),
+    prompt TEXT NOT NULL,
+    system_prompt TEXT,
+    expected_response_language TEXT,
+    expected_format TEXT,
+    expected_keywords_json TEXT NOT NULL DEFAULT '[]',
+    forbidden_keywords_json TEXT NOT NULL DEFAULT '[]',
+    reference_answer TEXT,
+    reference_facts_json TEXT NOT NULL DEFAULT '[]',
+    refusal_expected INTEGER NOT NULL DEFAULT 0 CHECK (refusal_expected IN (0,1)),
+    max_new_tokens INTEGER NOT NULL DEFAULT 32,
+    timeout_seconds REAL NOT NULL DEFAULT 5.0,
+    severity TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('low','medium','high','critical')),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_fixture_set_id) REFERENCES model_evaluation_fixture_sets(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_suite_id INTEGER NOT NULL,
+    candidate_core_model_version_id INTEGER NOT NULL,
+    checkpoint_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    generation_configuration_json TEXT NOT NULL DEFAULT '{}',
+    generation_config_checksum_sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validated','queued','running','completed','completed_with_warnings',
+        'failed','cancelled','archived'
+    )),
+    fixture_count INTEGER NOT NULL DEFAULT 0,
+    completed_fixture_count INTEGER NOT NULL DEFAULT 0,
+    failed_fixture_count INTEGER NOT NULL DEFAULT 0,
+    runtime_seconds REAL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    queued_at TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    FOREIGN KEY (model_evaluation_suite_id) REFERENCES model_evaluation_suites(id) ON DELETE RESTRICT,
+    FOREIGN KEY (candidate_core_model_version_id) REFERENCES core_model_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (checkpoint_id) REFERENCES pretraining_checkpoints(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_outputs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_run_id INTEGER NOT NULL,
+    model_evaluation_fixture_id INTEGER NOT NULL,
+    generated_text TEXT NOT NULL DEFAULT '',
+    prompt_token_count INTEGER NOT NULL DEFAULT 0,
+    generated_token_count INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT NOT NULL DEFAULT 'unknown',
+    runtime_ms INTEGER NOT NULL DEFAULT 0,
+    output_checksum_sha256 TEXT NOT NULL,
+    error_status TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_evaluation_fixture_id) REFERENCES model_evaluation_fixtures(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_run_id INTEGER NOT NULL,
+    language TEXT CHECK (language IS NULL OR language IN ('ta','en','tgl','mixed','overall')),
+    category TEXT,
+    severity TEXT,
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_run_id INTEGER NOT NULL,
+    model_evaluation_output_id INTEGER,
+    issue_code TEXT NOT NULL CHECK (issue_code IN (
+        'missing_language_coverage','tiny_fixture_set','evaluation_timeout','generation_failed',
+        'empty_response','wrong_response_language','format_noncompliance','surface_relevance_low',
+        'unsupported_claim','contradictory_claim','fabricated_citation','fabricated_url',
+        'unsafe_compliance','incorrect_refusal','over_refusal','prompt_leakage',
+        'role_token_leakage','system_prompt_leakage','internal_metadata_leakage',
+        'high_duplicate_output_rate','token_loop_detected','phrase_loop_detected',
+        'generic_response_collapse','unicode_invalid','tamil_combining_mark_issue',
+        'eos_termination_failure','human_review_failed','human_review_disagreement',
+        'insufficient_human_review'
+    )),
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','error','blocking')),
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (model_evaluation_output_id) REFERENCES model_evaluation_outputs(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_human_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_output_id INTEGER NOT NULL,
+    reviewer_admin_public_id TEXT NOT NULL,
+    rubric_version TEXT NOT NULL DEFAULT '1',
+    language TEXT NOT NULL CHECK (language IN ('ta','en','tgl','mixed')),
+    category TEXT NOT NULL,
+    relevance_score INTEGER NOT NULL CHECK (relevance_score BETWEEN 1 AND 5),
+    correctness_score INTEGER CHECK (correctness_score IS NULL OR correctness_score BETWEEN 1 AND 5),
+    instruction_following_score INTEGER NOT NULL CHECK (instruction_following_score BETWEEN 1 AND 5),
+    language_quality_score INTEGER NOT NULL CHECK (language_quality_score BETWEEN 1 AND 5),
+    safety_score INTEGER NOT NULL CHECK (safety_score BETWEEN 1 AND 5),
+    overall_score INTEGER NOT NULL CHECK (overall_score BETWEEN 1 AND 5),
+    verdict TEXT NOT NULL CHECK (verdict IN ('pass','pass_with_warning','fail','needs_second_review')),
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_output_id) REFERENCES model_evaluation_outputs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    left_run_id INTEGER NOT NULL,
+    right_run_id INTEGER NOT NULL,
+    compatibility TEXT NOT NULL CHECK (compatibility IN ('compatible','partially_compatible','incompatible')),
+    ranked INTEGER NOT NULL DEFAULT 0 CHECK (ranked IN (0,1)),
+    fields_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (left_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (right_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_chat_readiness_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_run_id INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN (
+        'evaluation_passed_with_limits','evaluation_warning','evaluation_blocked','not_assessed'
+    )),
+    dimension_scores_json TEXT NOT NULL DEFAULT '{}',
+    blocking_issue_count INTEGER NOT NULL DEFAULT 0,
+    warning_issue_count INTEGER NOT NULL DEFAULT 0,
+    rationale_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS model_evaluation_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_evaluation_run_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_evaluation_run_id) REFERENCES model_evaluation_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_suites_status ON model_evaluation_suites(status,created_at);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_fixture_sets_suite ON model_evaluation_fixture_sets(model_evaluation_suite_id);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_fixtures_set ON model_evaluation_fixtures(model_evaluation_fixture_set_id,category,language);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_runs_suite ON model_evaluation_runs(model_evaluation_suite_id,status);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_runs_candidate ON model_evaluation_runs(candidate_core_model_version_id);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_outputs_run ON model_evaluation_outputs(model_evaluation_run_id,model_evaluation_fixture_id);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_metrics_run ON model_evaluation_metrics(model_evaluation_run_id,language,category);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_issues_run ON model_evaluation_issues(model_evaluation_run_id,severity);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_human_reviews_output ON model_evaluation_human_reviews(model_evaluation_output_id);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_comparisons_runs ON model_evaluation_comparisons(left_run_id,right_run_id);
+CREATE INDEX IF NOT EXISTS ix_model_chat_readiness_assessments_run ON model_chat_readiness_assessments(model_evaluation_run_id);
+CREATE INDEX IF NOT EXISTS ix_model_evaluation_manifests_run ON model_evaluation_manifests(model_evaluation_run_id);
+CREATE TRIGGER IF NOT EXISTS model_evaluation_fixture_sets_immutable_update BEFORE UPDATE ON model_evaluation_fixture_sets BEGIN SELECT RAISE(ABORT, 'evaluation fixture sets are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_fixture_sets_immutable_delete BEFORE DELETE ON model_evaluation_fixture_sets BEGIN SELECT RAISE(ABORT, 'evaluation fixture sets are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_fixtures_immutable_update BEFORE UPDATE ON model_evaluation_fixtures BEGIN SELECT RAISE(ABORT, 'evaluation fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_fixtures_immutable_delete BEFORE DELETE ON model_evaluation_fixtures BEGIN SELECT RAISE(ABORT, 'evaluation fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_outputs_immutable_update BEFORE UPDATE ON model_evaluation_outputs BEGIN SELECT RAISE(ABORT, 'evaluation outputs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_outputs_immutable_delete BEFORE DELETE ON model_evaluation_outputs BEGIN SELECT RAISE(ABORT, 'evaluation outputs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_metrics_immutable_update BEFORE UPDATE ON model_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_metrics_immutable_delete BEFORE DELETE ON model_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_issues_immutable_update BEFORE UPDATE ON model_evaluation_issues BEGIN SELECT RAISE(ABORT, 'evaluation issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_issues_immutable_delete BEFORE DELETE ON model_evaluation_issues BEGIN SELECT RAISE(ABORT, 'evaluation issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_human_reviews_immutable_update BEFORE UPDATE ON model_evaluation_human_reviews BEGIN SELECT RAISE(ABORT, 'human reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_human_reviews_immutable_delete BEFORE DELETE ON model_evaluation_human_reviews BEGIN SELECT RAISE(ABORT, 'human reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_comparisons_immutable_update BEFORE UPDATE ON model_evaluation_comparisons BEGIN SELECT RAISE(ABORT, 'evaluation comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_comparisons_immutable_delete BEFORE DELETE ON model_evaluation_comparisons BEGIN SELECT RAISE(ABORT, 'evaluation comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_chat_readiness_assessments_immutable_update BEFORE UPDATE ON model_chat_readiness_assessments BEGIN SELECT RAISE(ABORT, 'chat readiness assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_chat_readiness_assessments_immutable_delete BEFORE DELETE ON model_chat_readiness_assessments BEGIN SELECT RAISE(ABORT, 'chat readiness assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_manifests_immutable_update BEFORE UPDATE ON model_evaluation_manifests BEGIN SELECT RAISE(ABORT, 'evaluation manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS model_evaluation_manifests_immutable_delete BEFORE DELETE ON model_evaluation_manifests BEGIN SELECT RAISE(ABORT, 'evaluation manifests are append-only'); END;
 """
 

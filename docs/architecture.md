@@ -198,6 +198,70 @@ web search, quantization, GGUF export, or external model providers were
 added in this phase; an instruction-tuned candidate is never assigned to
 the public chatbot, which remains the unchanged placeholder.
 
+Phase 13 answers the next question: not "can it be taught to follow
+instructions" (Phase 12), but "how well does this instruction-tuned
+candidate actually behave across supported languages and safety
+conditions":
+
+```text
+Verified Phase 12 instruction-tuned candidate (base_pretrained +
+instruction_tuned + evaluation_required, staging/active) + its checkpoint
+      → admin-authored, versioned evaluation suite (generation policy,
+        automated thresholds, human-review rubric, readiness-gate config)
+      → admin-authored fixture set (20 categories × ta/en/tgl/mixed,
+        never hardcoded content) → suite activation
+      → evaluation run: bounded greedy generation over every fixture
+        (reusing Phase 12's generate_greedy() and render_example()
+         unchanged, no sampling, no new decoding loop)
+      → per-fixture checks: language compliance, instruction following,
+        surface relevance (not factual correctness), unsupported-claim
+        risk (a bounded heuristic, not hallucination detection), safety/
+        refusal behavior (conservative, keyword-based), leakage,
+        repetition/degeneration, unicode integrity
+      → human review (append-only, multiple reviews per output, visible
+        disagreement, required-review coverage tracking)
+      → run comparison (compatible/partially_compatible/incompatible)
+      → chat-readiness gate: evaluation_passed_with_limits /
+        evaluation_warning / evaluation_blocked — any blocking reason
+        (unsafe compliance, role leakage, unverified checkpoint, zero
+         Tamil coverage, no instruction-following evidence) forces
+         evaluation_blocked regardless of other scores
+      → reproducibility manifest with a SHA-256 checksum
+```
+
+`ModelEvaluationService` (`backend/services/model_evaluation_service.py`)
+composes existing Phase 8/9/12 machinery — `BrudForCausalLM`,
+`TrainingCheckpointManager`, `TokenizerService`, and Phase 12's
+`generate_greedy`/`render_example` — rather than building a new inference
+path. Because evaluation here is a bounded, synchronous admin-triggered
+execution over a fixed fixture set (not an unbounded training loop), it
+needs no worker/queue/lease machinery of its own; `execute_run()` runs
+directly inside the request. The new pure-function modules live under
+`core_model/model_evaluation/` (not `core_model/evaluation/`, which
+already existed from Phase 8 and is unrelated —
+`ModelEvaluationEvaluator`/`architecture_checks.py`, still used by
+`core_model_service.py`): `fixtures.py`, `scoring.py`,
+`language_evaluation.py`, `instruction_following.py`, `relevance_checks.py`,
+`hallucination_checks.py`, `refusal_checks.py`, `safety_checks.py`,
+`degeneration_checks.py`, `robustness_checks.py`, `human_review.py`,
+`readiness_gates.py`, `comparison.py`, and `suite.py`. See
+[database_schema_v13.md](database_schema_v13.md),
+[model_evaluation_suites.md](model_evaluation_suites.md),
+[model_evaluation_fixtures.md](model_evaluation_fixtures.md),
+[multilingual_evaluation.md](multilingual_evaluation.md),
+[instruction_following_evaluation.md](instruction_following_evaluation.md),
+[factual_support_evaluation.md](factual_support_evaluation.md),
+[safety_refusal_evaluation.md](safety_refusal_evaluation.md),
+[evaluation_leakage_repetition.md](evaluation_leakage_repetition.md),
+[human_evaluation.md](human_evaluation.md),
+[chat_readiness_assessment.md](chat_readiness_assessment.md), and
+[model_evaluation_reproducibility.md](model_evaluation_reproducibility.md).
+No RLHF, DPO, reward modeling, RAG, tool calling, web search,
+quantization, GGUF export, or external model providers were added in this
+phase; every candidate remains `not_public_chat_ready` regardless of the
+readiness-gate outcome, and the public chatbot remains the unchanged
+placeholder.
+
 ## Database
 
 SQLite uses a configurable path, foreign-key enforcement, WAL journaling, and a bounded busy timeout. The migration CLI verifies integrity and foreign keys, makes a checksum-verified backup, and then applies additive schema changes. Schema v2 establishes the data control plane; schema v3 adds local admin accounts and revocable sessions; schema v4 adds import jobs, preview rows, and append-only import events; schema v5 adds document extraction; schema v6 adds quality assessments, build jobs, immutable dataset versions, and exports; schema v7 adds tokenizer training, evaluation, assignment, and export tables; schema v8 adds core model architecture, config, checkpoint, check, and assignment tables; schema v9 adds bounded pretraining jobs, metrics, checkpoints, evaluations, events, and worker leases without rebuilding existing tables; schema v10 (migration `010_phase10_training_reliability`, independent of migration 009) adds worker heartbeats, lease-generation fencing columns, recovery attempts, dataset coverage, stream manifests, run summaries, quality assessments/issues, checkpoint/run comparisons, and retention actions — see [database_schema_v10.md](database_schema_v10.md); schema v11 (migration `011_phase11_base_pretraining_evaluation`, independent of migration 010) adds base-training experiments, experiment runs, dataset profiles, language metrics, learning checks, candidate selections, and reproducibility manifests, all referencing existing dataset/tokenizer/core-model/pretraining/checkpoint tables rather than duplicating them — see [database_schema_v11.md](database_schema_v11.md); schema v12 (migration `012_phase12_instruction_tuning`, independent of migration 011) adds instruction-tuning experiments, runs, dataset profiles, instruction templates, per-step metrics, evaluations/evaluation results, learning checks, candidate selections, and reproducibility manifests, again referencing existing tables rather than duplicating them — see [database_schema_v12.md](database_schema_v12.md).

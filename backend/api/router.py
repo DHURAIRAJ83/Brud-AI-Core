@@ -20,6 +20,7 @@ from backend.api.routes import (
     model_evaluation,
     model_release,
     pretraining,
+    pretraining_readiness,
     rag,
     system,
     tokenizers,
@@ -48,3 +49,4 @@ api_router.include_router(rag.router)
 api_router.include_router(conversation_memory.router)
 api_router.include_router(feedback.router)
 api_router.include_router(corpus.router)
+api_router.include_router(pretraining_readiness.router)

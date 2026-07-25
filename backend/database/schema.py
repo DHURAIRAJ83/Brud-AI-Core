@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -5243,5 +5243,242 @@ CREATE TRIGGER IF NOT EXISTS corpus_readiness_dimensions_immutable_update BEFORE
 CREATE TRIGGER IF NOT EXISTS corpus_readiness_dimensions_immutable_delete BEFORE DELETE ON corpus_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS corpus_release_approvals_immutable_update BEFORE UPDATE ON corpus_release_approvals BEGIN SELECT RAISE(ABORT, 'release approvals are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS corpus_release_approvals_immutable_delete BEFORE DELETE ON corpus_release_approvals BEGIN SELECT RAISE(ABORT, 'release approvals are append-only'); END;
+"""
+
+MIGRATION_021_NAME = "021_phase21a_tokenizer_pretraining_readiness"
+
+# Phase 21A is a preparation/safety gate for future base-model
+# pretraining -- it deliberately does not add a parallel training or
+# tokenizer engine. Instead it bridges an approved, exported Phase 20
+# corpus release into the *existing* Phase 6 dataset-version format
+# (`dataset_records`/`dataset_versions`/`dataset_version_items`) so
+# that Phase 7's `TokenizerService` and Phase 9's `PretrainingService`
+# run completely unchanged against real corpus content. Only the
+# genuinely new concepts get new tables: which corpus release fed a
+# tokenizer-training corpus (with sufficiency analysis), how tokenizer
+# candidates compared against each other, the frozen pretraining
+# dataset snapshot's own metadata (checksums/counts/seed, distinct
+# from the underlying dataset_version because a snapshot is Phase
+# 21A's own immutability boundary), a model's resource-estimate audit
+# trail, the smoke-pretraining run's outcome, and a 17-dimension
+# readiness gate mirroring Phase 20's `corpus_readiness_*` pattern.
+PHASE21A_SCHEMA = """
+CREATE TABLE IF NOT EXISTS tokenizer_corpus_builds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    corpus_release_id INTEGER NOT NULL,
+    dataset_version_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','building','completed','failed'
+    )),
+    eligible_segment_count INTEGER NOT NULL DEFAULT 0 CHECK (eligible_segment_count >= 0),
+    excluded_segment_count INTEGER NOT NULL DEFAULT 0 CHECK (excluded_segment_count >= 0),
+    exclusion_reasons_json TEXT NOT NULL DEFAULT '{}',
+    total_records INTEGER NOT NULL DEFAULT 0 CHECK (total_records >= 0),
+    total_characters INTEGER NOT NULL DEFAULT 0 CHECK (total_characters >= 0),
+    total_utf8_bytes INTEGER NOT NULL DEFAULT 0 CHECK (total_utf8_bytes >= 0),
+    total_words INTEGER NOT NULL DEFAULT 0 CHECK (total_words >= 0),
+    unique_character_count INTEGER NOT NULL DEFAULT 0 CHECK (unique_character_count >= 0),
+    tamil_character_count INTEGER NOT NULL DEFAULT 0 CHECK (tamil_character_count >= 0),
+    english_character_count INTEGER NOT NULL DEFAULT 0 CHECK (english_character_count >= 0),
+    digit_count INTEGER NOT NULL DEFAULT 0 CHECK (digit_count >= 0),
+    punctuation_count INTEGER NOT NULL DEFAULT 0 CHECK (punctuation_count >= 0),
+    tamil_only_record_count INTEGER NOT NULL DEFAULT 0 CHECK (tamil_only_record_count >= 0),
+    english_only_record_count INTEGER NOT NULL DEFAULT 0 CHECK (english_only_record_count >= 0),
+    tanglish_record_count INTEGER NOT NULL DEFAULT 0 CHECK (tanglish_record_count >= 0),
+    mixed_record_count INTEGER NOT NULL DEFAULT 0 CHECK (mixed_record_count >= 0),
+    domain_distribution_json TEXT NOT NULL DEFAULT '{}',
+    style_distribution_json TEXT NOT NULL DEFAULT '{}',
+    source_distribution_json TEXT NOT NULL DEFAULT '{}',
+    licence_distribution_json TEXT NOT NULL DEFAULT '{}',
+    duplicate_exclusion_count INTEGER NOT NULL DEFAULT 0 CHECK (duplicate_exclusion_count >= 0),
+    contamination_exclusion_count INTEGER NOT NULL DEFAULT 0
+        CHECK (contamination_exclusion_count >= 0),
+    sufficiency_state TEXT NOT NULL DEFAULT 'insufficient' CHECK (sufficiency_state IN (
+        'insufficient','experimental','candidate','production_candidate'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (corpus_release_id) REFERENCES corpus_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS tokenizer_candidate_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_corpus_build_id INTEGER NOT NULL,
+    candidate_tokenizer_version_ids_json TEXT NOT NULL DEFAULT '[]',
+    recommended_tokenizer_version_id INTEGER,
+    comparison_checksum_sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','completed')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_corpus_build_id) REFERENCES tokenizer_corpus_builds(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (recommended_tokenizer_version_id) REFERENCES tokenizer_versions(id)
+        ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS tokenizer_selection_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_candidate_comparison_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    vocabulary_size INTEGER NOT NULL CHECK (vocabulary_size > 0),
+    dimensions_json TEXT NOT NULL DEFAULT '{}',
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    final_status TEXT NOT NULL DEFAULT 'rejected' CHECK (final_status IN (
+        'rejected','experimental','recommended','production_candidate'
+    )),
+    rationale TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_candidate_comparison_id) REFERENCES tokenizer_candidate_comparisons(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS pretraining_dataset_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    corpus_release_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    tokenizer_version_id INTEGER NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    export_checksums_json TEXT NOT NULL DEFAULT '[]',
+    tokenizer_checksum_sha256 TEXT NOT NULL,
+    train_record_count INTEGER NOT NULL DEFAULT 0 CHECK (train_record_count >= 0),
+    validation_record_count INTEGER NOT NULL DEFAULT 0 CHECK (validation_record_count >= 0),
+    test_record_count INTEGER NOT NULL DEFAULT 0 CHECK (test_record_count >= 0),
+    train_token_count INTEGER NOT NULL DEFAULT 0 CHECK (train_token_count >= 0),
+    validation_token_count INTEGER NOT NULL DEFAULT 0 CHECK (validation_token_count >= 0),
+    test_token_count INTEGER NOT NULL DEFAULT 0 CHECK (test_token_count >= 0),
+    maximum_sequence_length INTEGER NOT NULL CHECK (maximum_sequence_length > 0),
+    partition_algorithm_version TEXT NOT NULL DEFAULT 'v1',
+    deterministic_seed INTEGER NOT NULL DEFAULT 42,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (corpus_release_id) REFERENCES corpus_releases(id) ON DELETE RESTRICT,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS base_model_resource_estimates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    profile_name TEXT NOT NULL CHECK (profile_name IN (
+        'micro_smoke_test','small_experimental','maximum_safe_local'
+    )),
+    vocabulary_size INTEGER NOT NULL CHECK (vocabulary_size > 0),
+    context_length INTEGER NOT NULL CHECK (context_length > 0),
+    hidden_size INTEGER NOT NULL CHECK (hidden_size > 0),
+    num_hidden_layers INTEGER NOT NULL CHECK (num_hidden_layers > 0),
+    num_attention_heads INTEGER NOT NULL CHECK (num_attention_heads > 0),
+    intermediate_size INTEGER NOT NULL CHECK (intermediate_size > 0),
+    parameter_count INTEGER NOT NULL CHECK (parameter_count > 0),
+    parameter_memory_bytes INTEGER NOT NULL CHECK (parameter_memory_bytes >= 0),
+    gradient_memory_bytes INTEGER NOT NULL CHECK (gradient_memory_bytes >= 0),
+    optimizer_state_memory_bytes INTEGER NOT NULL CHECK (optimizer_state_memory_bytes >= 0),
+    activation_memory_bytes INTEGER NOT NULL CHECK (activation_memory_bytes >= 0),
+    estimated_peak_ram_bytes INTEGER NOT NULL CHECK (estimated_peak_ram_bytes >= 0),
+    checkpoint_disk_bytes INTEGER NOT NULL CHECK (checkpoint_disk_bytes >= 0),
+    optimizer_disk_bytes INTEGER NOT NULL CHECK (optimizer_disk_bytes >= 0),
+    estimated_tokens_per_second REAL NOT NULL CHECK (estimated_tokens_per_second >= 0),
+    estimated_training_duration_seconds_min INTEGER NOT NULL
+        CHECK (estimated_training_duration_seconds_min >= 0),
+    estimated_training_duration_seconds_max INTEGER NOT NULL
+        CHECK (estimated_training_duration_seconds_max >= 0),
+    safe_ram_ceiling_bytes INTEGER NOT NULL CHECK (safe_ram_ceiling_bytes > 0),
+    within_safe_limit INTEGER NOT NULL CHECK (within_safe_limit IN (0,1)),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS pretraining_smoke_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_dataset_snapshot_id INTEGER NOT NULL,
+    base_model_resource_estimate_id INTEGER NOT NULL,
+    pretraining_job_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','running','completed','completed_with_warnings','failed'
+    )),
+    total_steps INTEGER NOT NULL DEFAULT 0 CHECK (total_steps >= 0),
+    checkpoint_public_id TEXT,
+    checkpoint_checksum_sha256 TEXT,
+    resume_verified INTEGER NOT NULL DEFAULT 0 CHECK (resume_verified IN (0,1)),
+    initial_training_loss REAL,
+    final_training_loss REAL,
+    validation_loss REAL,
+    maximum_gradient_norm REAL,
+    tokens_processed INTEGER NOT NULL DEFAULT 0 CHECK (tokens_processed >= 0),
+    tokens_per_second REAL,
+    peak_process_memory_bytes INTEGER,
+    degeneration_findings_json TEXT NOT NULL DEFAULT '[]',
+    error_details_json TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (pretraining_dataset_snapshot_id) REFERENCES pretraining_dataset_snapshots(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (base_model_resource_estimate_id) REFERENCES base_model_resource_estimates(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (pretraining_job_id) REFERENCES pretraining_jobs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS base_model_readiness_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pretraining_dataset_snapshot_id INTEGER NOT NULL,
+    tokenizer_candidate_comparison_id INTEGER,
+    base_model_resource_estimate_id INTEGER,
+    pretraining_smoke_run_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','running','completed','failed')),
+    overall_result TEXT NOT NULL DEFAULT 'not_ready' CHECK (overall_result IN (
+        'not_ready','ready_for_experimental_pretraining','ready_for_bounded_pretraining'
+    )),
+    hard_failure_reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pretraining_dataset_snapshot_id) REFERENCES pretraining_dataset_snapshots(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_candidate_comparison_id) REFERENCES tokenizer_candidate_comparisons(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (base_model_resource_estimate_id) REFERENCES base_model_resource_estimates(id)
+        ON DELETE RESTRICT,
+    FOREIGN KEY (pretraining_smoke_run_id) REFERENCES pretraining_smoke_runs(id)
+        ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS base_model_readiness_dimensions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_id INTEGER NOT NULL,
+    dimension TEXT NOT NULL CHECK (dimension IN (
+        'tokenizer_corpus_sufficiency','tokenizer_quality','tokenizer_artifact_integrity',
+        'tokenizer_activation','corpus_release_integrity','dataset_snapshot_integrity',
+        'partition_isolation','tokenization_statistics','model_configuration_safety',
+        'data_loader_reliability','training_configuration_validity',
+        'forward_backward_stability','checkpoint_integrity','resume_integrity',
+        'validation_execution','resource_safety','audit_completeness'
+    )),
+    status TEXT NOT NULL DEFAULT 'not_evaluated' CHECK (status IN (
+        'pass','warning','fail','not_evaluated'
+    )),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_id) REFERENCES base_model_readiness_evaluations(id)
+        ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_corpus_builds_release
+    ON tokenizer_corpus_builds(corpus_release_id);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_candidate_comparisons_build
+    ON tokenizer_candidate_comparisons(tokenizer_corpus_build_id);
+CREATE INDEX IF NOT EXISTS ix_tokenizer_selection_evaluations_comparison
+    ON tokenizer_selection_evaluations(tokenizer_candidate_comparison_id);
+CREATE INDEX IF NOT EXISTS ix_pretraining_dataset_snapshots_release
+    ON pretraining_dataset_snapshots(corpus_release_id);
+CREATE INDEX IF NOT EXISTS ix_pretraining_smoke_runs_snapshot
+    ON pretraining_smoke_runs(pretraining_dataset_snapshot_id);
+CREATE INDEX IF NOT EXISTS ix_base_model_readiness_dimensions_evaluation
+    ON base_model_readiness_dimensions(evaluation_id);
+CREATE TRIGGER IF NOT EXISTS tokenizer_selection_evaluations_immutable_update BEFORE UPDATE ON tokenizer_selection_evaluations BEGIN SELECT RAISE(ABORT, 'tokenizer selection evaluations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS tokenizer_selection_evaluations_immutable_delete BEFORE DELETE ON tokenizer_selection_evaluations BEGIN SELECT RAISE(ABORT, 'tokenizer selection evaluations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS pretraining_dataset_snapshots_immutable_update BEFORE UPDATE ON pretraining_dataset_snapshots BEGIN SELECT RAISE(ABORT, 'pretraining dataset snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS pretraining_dataset_snapshots_immutable_delete BEFORE DELETE ON pretraining_dataset_snapshots BEGIN SELECT RAISE(ABORT, 'pretraining dataset snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS base_model_readiness_dimensions_immutable_update BEFORE UPDATE ON base_model_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS base_model_readiness_dimensions_immutable_delete BEFORE DELETE ON base_model_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
 """
 

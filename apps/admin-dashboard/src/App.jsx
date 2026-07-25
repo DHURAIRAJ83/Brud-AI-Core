@@ -14,6 +14,7 @@ import ModelEvaluationPage from './pages/ModelEvaluationPage.jsx'
 import ModelRegistryPage from './pages/ModelRegistryPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
+import PretrainingReadinessPage from './pages/PretrainingReadinessPage.jsx'
 import RagPage from './pages/RagPage.jsx'
 import SystemPage from './pages/SystemPage.jsx'
 import TokenizerPage from './pages/TokenizerPage.jsx'
@@ -47,5 +48,6 @@ export default function App() {
   if (active === 'Conversation & Memory') page = <ConversationMemoryPage />
   if (active === 'Feedback & Improvement') page = <FeedbackPage />
   if (active === 'Corpus Builder') page = <CorpusPage />
+  if (active === 'Pretraining Readiness') page = <PretrainingReadinessPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

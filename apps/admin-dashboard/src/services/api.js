@@ -634,3 +634,33 @@ export const finalizeCorpusRelease = (id) => request(`${CORPUS}/releases/${id}/f
 export const exportCorpusRelease = (id, body) => request(`${CORPUS}/releases/${id}/export`, { method: 'POST', body: JSON.stringify(body) })
 export const retireCorpusRelease = (id) => request(`${CORPUS}/releases/${id}/retire`, { method: 'POST' })
 export const corpusComparison = (id) => request(`${CORPUS}/comparisons/${id}`)
+
+// --- Phase 21A -----------------------------------------------------
+
+const PR = '/api/admin/pretraining-readiness'
+
+export const tokenizerCorpusBuilds = () => request(`${PR}/tokenizer-corpus-builds`)
+export const createTokenizerCorpusBuild = (body) => request(`${PR}/tokenizer-corpus-builds`, { method: 'POST', body: JSON.stringify(body) })
+export const tokenizerCorpusBuild = (id) => request(`${PR}/tokenizer-corpus-builds/${id}`)
+
+export const createTokenizerCandidateComparison = (body) => request(`${PR}/tokenizer-candidate-comparisons`, { method: 'POST', body: JSON.stringify(body) })
+export const tokenizerCandidateComparison = (id) => request(`${PR}/tokenizer-candidate-comparisons/${id}`)
+export const approveTokenizerCandidate = (id, body) => request(`${PR}/tokenizer-candidate-comparisons/${id}/approve`, { method: 'POST', body: JSON.stringify(body) })
+export const activateTokenizerVersion = (id) => request(`${PR}/tokenizer-versions/${id}/activate`, { method: 'POST' })
+
+export const resourceEstimates = () => request(`${PR}/resource-estimates`)
+export const createResourceEstimate = (body) => request(`${PR}/resource-estimates`, { method: 'POST', body: JSON.stringify(body) })
+export const resourceEstimate = (id) => request(`${PR}/resource-estimates/${id}`)
+
+export const datasetSnapshots = () => request(`${PR}/dataset-snapshots`)
+export const createDatasetSnapshot = (body) => request(`${PR}/dataset-snapshots`, { method: 'POST', body: JSON.stringify(body) })
+export const datasetSnapshot = (id) => request(`${PR}/dataset-snapshots/${id}`)
+
+export const validateTrainingConfig = (body) => request(`${PR}/training-config/validate`, { method: 'POST', body: JSON.stringify(body) })
+export const smokeRuns = () => request(`${PR}/smoke-runs`)
+export const createSmokeRun = (body) => request(`${PR}/smoke-runs`, { method: 'POST', body: JSON.stringify(body) })
+export const smokeRun = (id) => request(`${PR}/smoke-runs/${id}`)
+
+export const baseModelReadinessEvaluations = () => request(`${PR}/readiness-evaluations`)
+export const createBaseModelReadinessEvaluation = (body) => request(`${PR}/readiness-evaluations`, { method: 'POST', body: JSON.stringify(body) })
+export const baseModelReadinessEvaluation = (id) => request(`${PR}/readiness-evaluations/${id}`)

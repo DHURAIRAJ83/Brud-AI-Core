@@ -103,3 +103,12 @@ top of this runtime, reusing `run_generation()` and the
 `admin_diagnostic` assignment scope unchanged — it does not add a second
 runtime, a second model loader, or any path to public-chat activation.
 See [rag_architecture.md](rag_architecture.md).
+
+## Phase 17 addendum
+
+Phase 17 builds admin-only conversation memory and grounded chat
+orchestration on top of this runtime and Phase 16's RAG retrieval
+service, again reusing `run_generation()` and the `admin_diagnostic`
+scope unchanged — no second runtime, no second model loader, no path
+to public-chat activation. See
+[chat_orchestration_architecture.md](chat_orchestration_architecture.md).

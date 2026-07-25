@@ -31,6 +31,7 @@ from backend.database.schema import (
     MIGRATION_014_NAME,
     MIGRATION_015_NAME,
     MIGRATION_016_NAME,
+    MIGRATION_017_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -48,6 +49,7 @@ from backend.database.schema import (
     PHASE14_SCHEMA,
     PHASE15_SCHEMA,
     PHASE16_SCHEMA,
+    PHASE17_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -399,6 +401,16 @@ def _apply_v16(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 16")
 
 
+def _apply_v17(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (17,)).fetchone():
+        return
+    connection.executescript(PHASE17_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (17, MIGRATION_017_NAME)
+    )
+    connection.execute("PRAGMA user_version = 17")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -451,7 +463,8 @@ def initialize_database(
     version = current_schema_version(database_path)
     if version > SCHEMA_VERSION:
         raise MigrationError(f"database schema {version} is newer than supported {SCHEMA_VERSION}")
-    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15} and existed and auto_backup:
+    pre_v17_versions = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+    if version in pre_v17_versions and existed and auto_backup:
         create_verified_backup(database_path, backup_dir or database_path.parent / "backups")
     with database_connection(
         database_path, busy_timeout_ms=busy_timeout_ms, wal_enabled=wal_enabled
@@ -475,6 +488,7 @@ def initialize_database(
             _apply_v14(connection)
             _apply_v15(connection)
             _apply_v16(connection)
+            _apply_v17(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -494,7 +508,7 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
     if version == SCHEMA_VERSION:
         verification = verify_database(path)
         return version, None, verification.integrity_check
-    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}:
         try:
             verify_database(path)
         except Exception as exc:

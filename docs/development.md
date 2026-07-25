@@ -215,6 +215,14 @@ documented separately in [rag_settings.md](rag_settings.md) rather than
 duplicated in this table; all default to conservative, fail-closed
 values.
 
+Phase 17's 21 `BRUD_MEMORY_*` settings (default session mode, session/
+memory/retrieval bounds, consent/confirmation requirements, allowed/
+forbidden category lists) are documented separately in
+[conversation_memory_settings.md](conversation_memory_settings.md);
+`BRUD_MEMORY_DEFAULT_SESSION_MODE` defaults to `private_no_persist`,
+so a freshly configured deployment retains no conversation memory at
+all until a policy and consent are explicitly set up.
+
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
 ## Common commands
@@ -244,6 +252,8 @@ Core model architecture work can be inspected with `python -m backend.core_model
 Bounded pretraining can be inspected with `python -m backend.pretraining_cli capabilities`, `list`, `inspect <job_public_id>`, `preflight <job_public_id>`, `queue <job_public_id>`, `pause <job_public_id>`, `resume <job_public_id>`, `cancel <job_public_id>`, `metrics <job_public_id>`, `list-checkpoints <job_public_id>`, `verify-checkpoint <checkpoint_public_id>`, and `promote <checkpoint_public_id>`. Mutating commands require typed confirmation. Run the local worker separately with `python -m backend.training_worker`; add `--once` for a single claim-and-exit verification run, `--poll-seconds <n>` to override the poll interval, and `--worker-name <name>` to set a stable worker identity across restarts.
 
 Training reliability and recovery can be inspected and controlled with `python -m backend.training_recovery_cli status`, `stale-jobs`, `inspect <job_public_id>`, `verify-resume <job_public_id>` (read-only dry check), and `recover <job_public_id>` (mutating; requires typing `recover` to confirm). Every command operates on public IDs only. See [training_crash_recovery.md](training_crash_recovery.md).
+
+Conversation memory can be inspected and controlled with `python -m backend.conversation_memory_cli policies`, `create-policy`, `create-session`, `inspect-session`, `send-message`, `create-summary`, `grant-consent`, `revoke-consent`, `propose-memory`, `confirm-memory`, `correct-memory`, `delete-memory`, `retrieve-memory`, `evaluate`, and `verify-manifest`. Every command operates on public IDs only; mutating commands require typed confirmation. See [conversation_memory_api_and_cli.md](conversation_memory_api_and_cli.md).
 
 ## Troubleshooting
 

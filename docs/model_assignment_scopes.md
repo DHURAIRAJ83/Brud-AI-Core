@@ -62,3 +62,14 @@ knowledge space, active indexes, active retrieval profile) are enforced
 entirely inside `RagGenerationService`, layered on top of the same
 registry-fixture and evaluation-blocked checks this scope already
 enforces. See [database_schema_v16.md](database_schema_v16.md).
+
+## Phase 17 also reuses `admin_diagnostic`
+
+Chat orchestration sessions likewise require an
+`admin_diagnostic`-scope assignment on the session's
+`model_assignment_id` — no new scope value was added. All
+conversation-memory-specific eligibility (active memory policy, active
+retrieval profile where used, session status) is enforced entirely
+inside `ChatOrchestrationService`, layered on top of the same
+registry-fixture and evaluation-blocked checks this scope already
+enforces. See [database_schema_v17.md](database_schema_v17.md).

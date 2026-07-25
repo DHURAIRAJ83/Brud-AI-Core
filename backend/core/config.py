@@ -758,6 +758,77 @@ class Settings(BaseSettings):
         default="rag_indexes", validation_alias="BRUD_RAG_ALLOWED_INDEX_ROOTS"
     )
 
+    memory_enabled: bool = Field(default=True, validation_alias="BRUD_MEMORY_ENABLED")
+    memory_default_session_mode: str = Field(
+        default="private_no_persist", validation_alias="BRUD_MEMORY_DEFAULT_SESSION_MODE"
+    )
+    memory_max_session_turns: int = Field(
+        default=20, ge=1, validation_alias="BRUD_MEMORY_MAX_SESSION_TURNS"
+    )
+    memory_max_session_age_seconds: int = Field(
+        default=3600, ge=60, validation_alias="BRUD_MEMORY_MAX_SESSION_AGE_SECONDS"
+    )
+    memory_max_turn_characters: int = Field(
+        default=4000, ge=100, validation_alias="BRUD_MEMORY_MAX_TURN_CHARACTERS"
+    )
+    memory_max_short_term_tokens: int = Field(
+        default=800, ge=50, validation_alias="BRUD_MEMORY_MAX_SHORT_TERM_TOKENS"
+    )
+    memory_max_summary_tokens: int = Field(
+        default=200, ge=20, validation_alias="BRUD_MEMORY_MAX_SUMMARY_TOKENS"
+    )
+    memory_max_long_term_items: int = Field(
+        default=50, ge=1, validation_alias="BRUD_MEMORY_MAX_LONG_TERM_ITEMS"
+    )
+    memory_default_ttl_seconds: int = Field(
+        default=7_776_000, ge=60, validation_alias="BRUD_MEMORY_DEFAULT_TTL_SECONDS"
+    )
+    memory_max_retrieval_results: int = Field(
+        default=5, ge=1, validation_alias="BRUD_MEMORY_MAX_RETRIEVAL_RESULTS"
+    )
+    memory_max_context_tokens: int = Field(
+        default=200, ge=20, validation_alias="BRUD_MEMORY_MAX_CONTEXT_TOKENS"
+    )
+    memory_require_explicit_consent: bool = Field(
+        default=True, validation_alias="BRUD_MEMORY_REQUIRE_EXPLICIT_CONSENT"
+    )
+    memory_allow_assistant_proposals: bool = Field(
+        default=True, validation_alias="BRUD_MEMORY_ALLOW_ASSISTANT_PROPOSALS"
+    )
+    memory_auto_activate_user_confirmed: bool = Field(
+        default=False, validation_alias="BRUD_MEMORY_AUTO_ACTIVATE_USER_CONFIRMED"
+    )
+    memory_block_sensitive_content: bool = Field(
+        default=True, validation_alias="BRUD_MEMORY_BLOCK_SENSITIVE_CONTENT"
+    )
+    memory_private_session_retention_seconds: int = Field(
+        default=0, ge=0, validation_alias="BRUD_MEMORY_PRIVATE_SESSION_RETENTION_SECONDS"
+    )
+    memory_max_active_sessions: int = Field(
+        default=5, ge=1, validation_alias="BRUD_MEMORY_MAX_ACTIVE_SESSIONS"
+    )
+    memory_max_active_evaluation_runs: int = Field(
+        default=1, ge=1, validation_alias="BRUD_MEMORY_MAX_ACTIVE_EVALUATION_RUNS"
+    )
+    memory_allowed_categories: str = Field(
+        default=(
+            "language_preference,format_preference,confirmed_name_or_alias,learning_goal,"
+            "course_progress,project_preference,user_confirmed_fact,conversation_follow_up"
+        ),
+        validation_alias="BRUD_MEMORY_ALLOWED_CATEGORIES",
+    )
+    memory_forbidden_categories: str = Field(
+        default=(
+            "password,api_key,access_token,private_key,payment_card,bank_account,"
+            "authentication_cookie,precise_location,medical_diagnosis,political_affiliation,"
+            "religion,sexual_information,criminal_record,biometric_data"
+        ),
+        validation_alias="BRUD_MEMORY_FORBIDDEN_CATEGORIES",
+    )
+    memory_require_deletion_cache_invalidation: bool = Field(
+        default=True, validation_alias="BRUD_MEMORY_REQUIRE_DELETION_CACHE_INVALIDATION"
+    )
+
     @field_validator("log_level")
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
@@ -983,6 +1054,18 @@ class Settings(BaseSettings):
     def rag_allowed_index_roots_list(self) -> tuple[str, ...]:
         return tuple(
             root.strip() for root in self.rag_allowed_index_roots.split(",") if root.strip()
+        )
+
+    @property
+    def memory_allowed_categories_list(self) -> tuple[str, ...]:
+        return tuple(
+            item.strip() for item in self.memory_allowed_categories.split(",") if item.strip()
+        )
+
+    @property
+    def memory_forbidden_categories_list(self) -> tuple[str, ...]:
+        return tuple(
+            item.strip() for item in self.memory_forbidden_categories.split(",") if item.strip()
         )
 
     @property

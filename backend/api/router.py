@@ -7,6 +7,7 @@ from backend.api.routes import (
     auth,
     base_training,
     chat,
+    conversation_memory,
     core_models,
     datasets,
     documents,
@@ -42,3 +43,4 @@ api_router.include_router(model_evaluation.router)
 api_router.include_router(model_release.router)
 api_router.include_router(inference_runtime.router)
 api_router.include_router(rag.router)
+api_router.include_router(conversation_memory.router)

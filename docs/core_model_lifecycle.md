@@ -130,3 +130,19 @@ and `InferenceRuntimeService.run_generation()` unchanged. RAG generation
 reuses the existing `admin_diagnostic` assignment scope rather than
 adding a new one — see [database_schema_v16.md](database_schema_v16.md)
 and [rag_architecture.md](rag_architecture.md).
+
+## Phase 17 conversation memory (no new lineage row, no new inference runtime)
+
+Phase 17 also never rewrites a `core_model_versions` row and never
+loads a model directly. `ChatOrchestrationService` performs the same
+assignment verification pattern as `RagGenerationService`
+(`_verify_assignment()` re-checks scope, status, registry-fixture, and
+evaluation-blocked facts on every message) and calls the identical
+`ModelAssignmentService.ensure_instance_loaded()` /
+`InferenceRuntimeService.run_generation()` pair — no second runtime,
+no second loader, no new assignment scope. Conversation memory itself
+(policies, sessions, consent, memory items) is a layer entirely above
+the model lineage: it governs what context a generation call receives,
+never which model or checkpoint is used. See
+[database_schema_v17.md](database_schema_v17.md) and
+[chat_orchestration_architecture.md](chat_orchestration_architecture.md).

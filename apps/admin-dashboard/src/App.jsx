@@ -3,6 +3,7 @@ import DashboardLayout from './components/DashboardLayout.jsx'
 import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
+import ConversationMemoryPage from './pages/ConversationMemoryPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
 import InferenceRuntimePage from './pages/InferenceRuntimePage.jsx'
 import InstructionTuningPage from './pages/InstructionTuningPage.jsx'
@@ -41,5 +42,6 @@ export default function App() {
   if (active === 'Model Registry') page = <ModelRegistryPage />
   if (active === 'Inference Runtime') page = <InferenceRuntimePage />
   if (active === 'Knowledge & RAG') page = <RagPage />
+  if (active === 'Conversation & Memory') page = <ConversationMemoryPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

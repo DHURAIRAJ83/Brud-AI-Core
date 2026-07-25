@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -3104,5 +3104,549 @@ CREATE TRIGGER IF NOT EXISTS rag_index_comparisons_immutable_update BEFORE UPDAT
 CREATE TRIGGER IF NOT EXISTS rag_index_comparisons_immutable_delete BEFORE DELETE ON rag_index_comparisons BEGIN SELECT RAISE(ABORT, 'index comparisons are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS rag_manifests_immutable_update BEFORE UPDATE ON rag_manifests BEGIN SELECT RAISE(ABORT, 'rag manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS rag_manifests_immutable_delete BEFORE DELETE ON rag_manifests BEGIN SELECT RAISE(ABORT, 'rag manifests are append-only'); END;
+"""
+
+MIGRATION_017_NAME = "017_phase17_conversation_memory"
+
+# Phase 17 stores conversation/memory ownership as a plain
+# `participant_scope_key` TEXT column (e.g. "admin:<admin_public_id>" or
+# "test:<label>") on `conversation_sessions`, `memory_consents`, and
+# `memory_items`, rather than a foreign key to
+# `conversation_session_participants`. A FK-based design would be
+# circular (a session's owning participant row would itself need to
+# reference the session), and the simple string-match boundary is also
+# the safer, more auditable choice for the single security-critical
+# check this phase depends on most: "one participant's memory is never
+# retrieved by another." `conversation_session_participants` is a
+# secondary table for tracking additional/observer participants attached
+# to a session; it is never the source of truth for memory ownership.
+#
+# `memory_evaluation_runs` is classified MUTABLE here, not append-only
+# as a literal reading of the table list might suggest, for the exact
+# same reason already documented for `rag_embedding_runs`/
+# `rag_evaluation_runs` in Phase 16 (see schema v16's note above): the
+# required API surface has an explicit two-phase create-then-execute
+# flow (`POST .../runs` creates a `draft` row, `POST
+# .../runs/{id}/execute` must update it to a terminal status), which is
+# fundamentally incompatible with an append-only trigger. This was
+# learned from Phase 16's `rag_grounded_requests` bug (an append-only
+# table that needed a post-creation status update) and is applied
+# proactively here rather than discovered again the hard way.
+#
+# `chat_orchestration_runs` and `chat_grounded_responses` avoid that
+# same trap differently: both are inserted exactly once, at the very
+# end of `ChatOrchestrationService.send_message()`'s synchronous flow,
+# only after the final status is already known -- never created early
+# with a placeholder status and updated afterward. This keeps them
+# genuinely append-only without needing a second schema-level
+# exception.
+PHASE17_SCHEMA = """
+CREATE TABLE IF NOT EXISTS conversation_memory_policies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    default_session_mode TEXT NOT NULL DEFAULT 'private_no_persist' CHECK (default_session_mode IN (
+        'stateless','session_memory','consented_memory','private_no_persist'
+    )),
+    allow_short_term_context INTEGER NOT NULL DEFAULT 1,
+    allow_session_summary INTEGER NOT NULL DEFAULT 1,
+    allow_long_term_memory INTEGER NOT NULL DEFAULT 0,
+    require_explicit_consent INTEGER NOT NULL DEFAULT 1,
+    maximum_session_turns INTEGER NOT NULL DEFAULT 20,
+    maximum_session_age_seconds INTEGER NOT NULL DEFAULT 3600,
+    maximum_short_term_tokens INTEGER NOT NULL DEFAULT 800,
+    maximum_summary_tokens INTEGER NOT NULL DEFAULT 200,
+    maximum_memory_items INTEGER NOT NULL DEFAULT 50,
+    default_memory_ttl_seconds INTEGER NOT NULL DEFAULT 7776000,
+    allowed_memory_categories_json TEXT NOT NULL DEFAULT '[]',
+    forbidden_content_categories_json TEXT NOT NULL DEFAULT '[]',
+    retrieval_configuration_json TEXT NOT NULL DEFAULT '{}',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','validated','active','deprecated','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS conversation_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_mode TEXT NOT NULL CHECK (session_mode IN (
+        'stateless','session_memory','consented_memory','private_no_persist'
+    )),
+    memory_policy_id INTEGER NOT NULL,
+    participant_scope_key TEXT NOT NULL,
+    language_preference TEXT NOT NULL DEFAULT 'unknown',
+    model_assignment_id INTEGER,
+    rag_retrieval_profile_id INTEGER,
+    turn_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','active','paused','expired','closed','failed','archived'
+    )),
+    failure_code TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    closed_at TEXT,
+    FOREIGN KEY (memory_policy_id) REFERENCES conversation_memory_policies(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT,
+    FOREIGN KEY (rag_retrieval_profile_id) REFERENCES rag_retrieval_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS conversation_session_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    participant_type TEXT NOT NULL CHECK (participant_type IN (
+        'admin','internal_test_user','future_user_reference'
+    )),
+    participant_scope_key TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'primary' CHECK (role IN ('primary','observer')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','removed')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS conversation_turns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('system','user','assistant')),
+    language_category TEXT NOT NULL DEFAULT 'unknown',
+    content_checksum_sha256 TEXT NOT NULL,
+    stored_content TEXT,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'accepted' CHECK (status IN ('accepted','rejected')),
+    redaction_status TEXT NOT NULL DEFAULT 'none' CHECK (redaction_status IN ('none','redacted')),
+    parent_turn_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, sequence_number),
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (parent_turn_id) REFERENCES conversation_turns(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS conversation_turn_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    turn_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (turn_id) REFERENCES conversation_turns(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    current_version_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validated','accepted','rejected','superseded'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (current_version_id) REFERENCES conversation_summary_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS conversation_summary_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    summary_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    source_turn_start_sequence INTEGER NOT NULL,
+    source_turn_end_sequence INTEGER NOT NULL,
+    summary_language TEXT NOT NULL DEFAULT 'unknown',
+    summary_text_checksum_sha256 TEXT NOT NULL,
+    summary_text TEXT,
+    summary_token_count INTEGER NOT NULL DEFAULT 0,
+    generation_method TEXT NOT NULL CHECK (generation_method IN (
+        'deterministic_extract','bounded_model_summary','hybrid'
+    )),
+    validation_status TEXT NOT NULL DEFAULT 'draft' CHECK (validation_status IN (
+        'draft','validated','accepted','rejected','superseded'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(summary_id, version_number),
+    FOREIGN KEY (summary_id) REFERENCES conversation_summaries(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_consents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    participant_scope_key TEXT NOT NULL,
+    memory_policy_id INTEGER NOT NULL,
+    purpose TEXT NOT NULL,
+    allowed_categories_json TEXT NOT NULL DEFAULT '[]',
+    prohibited_categories_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','active','expired','revoked','rejected'
+    )),
+    granted_at TEXT,
+    expires_at TEXT,
+    revoked_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (memory_policy_id) REFERENCES conversation_memory_policies(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    participant_scope_key TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'language_preference','format_preference','confirmed_name_or_alias',
+        'learning_goal','course_progress','project_preference',
+        'user_confirmed_fact','conversation_follow_up'
+    )),
+    purpose TEXT NOT NULL,
+    creation_source TEXT NOT NULL CHECK (creation_source IN (
+        'explicit_user_request','admin_created_for_test','assistant_proposed','system_derived'
+    )),
+    confidence_type TEXT NOT NULL CHECK (confidence_type IN (
+        'user_confirmed','admin_test_fixture','deterministically_extracted','assistant_inferred'
+    )),
+    consent_id INTEGER,
+    source_session_id INTEGER,
+    source_turn_id INTEGER,
+    current_version_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN (
+        'proposed','awaiting_confirmation','active','superseded','expired',
+        'revoked','rejected','deleted','archived'
+    )),
+    valid_from TEXT,
+    expires_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (consent_id) REFERENCES memory_consents(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_session_id) REFERENCES conversation_sessions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_turn_id) REFERENCES conversation_turns(id) ON DELETE RESTRICT,
+    FOREIGN KEY (current_version_id) REFERENCES memory_item_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_item_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    memory_item_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    normalized_value TEXT NOT NULL,
+    display_value TEXT NOT NULL,
+    source_reference TEXT NOT NULL DEFAULT '',
+    change_reason TEXT NOT NULL DEFAULT 'initial_creation',
+    checksum_sha256 TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(memory_item_id, version_number),
+    FOREIGN KEY (memory_item_id) REFERENCES memory_items(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_item_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    memory_item_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (memory_item_id) REFERENCES memory_items(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_embeddings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    memory_item_version_id INTEGER NOT NULL,
+    embedding_model_id INTEGER NOT NULL,
+    content_checksum_sha256 TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    vector_blob BLOB NOT NULL,
+    vector_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (memory_item_version_id) REFERENCES memory_item_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (embedding_model_id) REFERENCES rag_embedding_models(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_retrieval_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    allowed_categories_json TEXT NOT NULL DEFAULT '[]',
+    allowed_purposes_json TEXT NOT NULL DEFAULT '[]',
+    keyword_weight REAL NOT NULL DEFAULT 0.4,
+    vector_weight REAL NOT NULL DEFAULT 0.6,
+    recency_weight REAL NOT NULL DEFAULT 0.1,
+    user_confirmed_boost REAL NOT NULL DEFAULT 0.2,
+    maximum_results INTEGER NOT NULL DEFAULT 5,
+    minimum_score REAL NOT NULL DEFAULT 0.15,
+    maximum_memory_tokens INTEGER NOT NULL DEFAULT 200,
+    conflict_policy TEXT NOT NULL DEFAULT 'prefer_recent' CHECK (conflict_policy IN (
+        'prefer_recent','prefer_user_confirmed','exclude_conflicting'
+    )),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validated','active','deprecated','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS memory_retrieval_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    retrieval_profile_id INTEGER NOT NULL,
+    participant_scope_key TEXT NOT NULL,
+    query_checksum_sha256 TEXT NOT NULL,
+    query_language TEXT NOT NULL DEFAULT 'unknown',
+    total_candidates INTEGER NOT NULL DEFAULT 0,
+    final_result_count INTEGER NOT NULL DEFAULT 0,
+    runtime_milliseconds INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','no_results')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (retrieval_profile_id) REFERENCES memory_retrieval_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_retrieval_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    retrieval_run_id INTEGER NOT NULL,
+    rank INTEGER NOT NULL,
+    memory_item_id INTEGER NOT NULL,
+    keyword_score REAL,
+    vector_score REAL,
+    recency_score REAL,
+    combined_score REAL NOT NULL,
+    conflict_status TEXT NOT NULL DEFAULT 'no_conflict' CHECK (conflict_status IN (
+        'no_conflict','duplicate','supersedes_existing','conflict_requires_confirmation','stale_existing'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (retrieval_run_id) REFERENCES memory_retrieval_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (memory_item_id) REFERENCES memory_items(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS chat_context_assemblies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    maximum_model_context INTEGER NOT NULL,
+    system_tokens INTEGER NOT NULL DEFAULT 0,
+    current_request_tokens INTEGER NOT NULL DEFAULT 0,
+    conversation_tokens INTEGER NOT NULL DEFAULT 0,
+    summary_tokens INTEGER NOT NULL DEFAULT 0,
+    memory_tokens INTEGER NOT NULL DEFAULT 0,
+    rag_tokens INTEGER NOT NULL DEFAULT 0,
+    reserved_output_tokens INTEGER NOT NULL DEFAULT 0,
+    dropped_item_count INTEGER NOT NULL DEFAULT 0,
+    final_context_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS chat_context_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    context_assembly_id INTEGER NOT NULL,
+    item_type TEXT NOT NULL CHECK (item_type IN (
+        'conversation_turn','conversation_summary','memory_item','rag_chunk',
+        'system_instruction','current_request'
+    )),
+    source_public_id TEXT,
+    rank INTEGER NOT NULL,
+    token_count INTEGER NOT NULL DEFAULT 0,
+    included INTEGER NOT NULL DEFAULT 1,
+    exclusion_reason TEXT,
+    content_checksum_sha256 TEXT,
+    access_verified INTEGER NOT NULL DEFAULT 1,
+    injection_status TEXT NOT NULL DEFAULT 'clean' CHECK (injection_status IN (
+        'clean','warning','quarantined','blocked'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (context_assembly_id) REFERENCES chat_context_assemblies(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS chat_orchestration_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    request_turn_id INTEGER NOT NULL,
+    memory_retrieval_run_id INTEGER,
+    rag_retrieval_run_id INTEGER,
+    context_assembly_id INTEGER,
+    status TEXT NOT NULL CHECK (status IN (
+        'completed','completed_with_warning','insufficient_evidence','memory_conflict',
+        'consent_required','retrieval_failed','generation_failed','blocked_context','session_closed'
+    )),
+    language_decision TEXT NOT NULL DEFAULT 'unknown',
+    runtime_milliseconds INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES conversation_sessions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (request_turn_id) REFERENCES conversation_turns(id) ON DELETE RESTRICT,
+    FOREIGN KEY (memory_retrieval_run_id) REFERENCES memory_retrieval_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (rag_retrieval_run_id) REFERENCES rag_retrieval_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (context_assembly_id) REFERENCES chat_context_assemblies(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS chat_grounded_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    orchestration_run_id INTEGER NOT NULL,
+    response_turn_id INTEGER,
+    answer_status TEXT NOT NULL CHECK (answer_status IN (
+        'completed','completed_with_warning','insufficient_evidence','memory_conflict',
+        'consent_required','retrieval_failed','generation_failed','blocked_context','session_closed'
+    )),
+    answer_checksum_sha256 TEXT,
+    answer_language TEXT NOT NULL DEFAULT 'unknown',
+    memory_used INTEGER NOT NULL DEFAULT 0,
+    stop_reason TEXT,
+    runtime_milliseconds INTEGER NOT NULL DEFAULT 0,
+    role_token_leakage INTEGER NOT NULL DEFAULT 0,
+    prompt_leakage INTEGER NOT NULL DEFAULT 0,
+    unicode_valid INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (orchestration_run_id) REFERENCES chat_orchestration_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (response_turn_id) REFERENCES conversation_turns(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS chat_response_citations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    grounded_response_id INTEGER NOT NULL,
+    citation_label TEXT NOT NULL,
+    evidence_type TEXT NOT NULL CHECK (evidence_type IN ('rag_chunk','memory_item')),
+    rag_chunk_id INTEGER,
+    memory_item_id INTEGER,
+    rank INTEGER,
+    content_checksum_sha256 TEXT,
+    validation_status TEXT NOT NULL CHECK (validation_status IN (
+        'valid','valid_with_warning','invalid','not_present'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grounded_response_id) REFERENCES chat_grounded_responses(id) ON DELETE RESTRICT,
+    FOREIGN KEY (rag_chunk_id) REFERENCES rag_chunks(id) ON DELETE RESTRICT,
+    FOREIGN KEY (memory_item_id) REFERENCES memory_items(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS chat_orchestration_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    orchestration_run_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'warning' CHECK (severity IN ('info','warning','error','critical')),
+    message TEXT NOT NULL DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (orchestration_run_id) REFERENCES chat_orchestration_runs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_evaluation_suites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validated','active','retired','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS memory_evaluation_fixtures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_suite_id INTEGER NOT NULL,
+    participant_scope_key TEXT NOT NULL,
+    session_mode TEXT NOT NULL,
+    query TEXT NOT NULL,
+    query_language TEXT NOT NULL DEFAULT 'unknown',
+    expected_retrieved_memory_ids_json TEXT NOT NULL DEFAULT '[]',
+    expected_excluded_memory_ids_json TEXT NOT NULL DEFAULT '[]',
+    expected_language TEXT,
+    expected_rag_use INTEGER NOT NULL DEFAULT 0,
+    expected_no_memory_behavior INTEGER NOT NULL DEFAULT 0,
+    expected_response_status TEXT,
+    injection_test INTEGER NOT NULL DEFAULT 0,
+    severity TEXT NOT NULL DEFAULT 'info',
+    fixture_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_suite_id) REFERENCES memory_evaluation_suites(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_evaluation_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_suite_id INTEGER NOT NULL,
+    retrieval_profile_id INTEGER,
+    total_fixtures INTEGER NOT NULL DEFAULT 0,
+    completed_fixtures INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','running','completed','completed_with_warnings','failed'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (evaluation_suite_id) REFERENCES memory_evaluation_suites(id) ON DELETE RESTRICT,
+    FOREIGN KEY (retrieval_profile_id) REFERENCES memory_retrieval_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS memory_evaluation_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_run_id INTEGER NOT NULL,
+    metric_scope TEXT NOT NULL CHECK (metric_scope IN ('retrieval','orchestration')),
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    sample_size INTEGER NOT NULL DEFAULT 0,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_run_id) REFERENCES memory_evaluation_runs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS conversation_memory_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    memory_policy_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (memory_policy_id) REFERENCES conversation_memory_policies(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_conversation_sessions_participant ON conversation_sessions(participant_scope_key);
+CREATE INDEX IF NOT EXISTS ix_conversation_sessions_status ON conversation_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_conversation_session_participants_session ON conversation_session_participants(session_id);
+CREATE INDEX IF NOT EXISTS ix_conversation_turns_session ON conversation_turns(session_id, sequence_number);
+CREATE INDEX IF NOT EXISTS ix_conversation_turn_events_turn ON conversation_turn_events(turn_id);
+CREATE INDEX IF NOT EXISTS ix_conversation_summaries_session ON conversation_summaries(session_id);
+CREATE INDEX IF NOT EXISTS ix_conversation_summary_versions_summary ON conversation_summary_versions(summary_id);
+CREATE INDEX IF NOT EXISTS ix_memory_consents_participant ON memory_consents(participant_scope_key, status);
+CREATE INDEX IF NOT EXISTS ix_memory_items_participant ON memory_items(participant_scope_key, status);
+CREATE INDEX IF NOT EXISTS ix_memory_items_category ON memory_items(category, purpose);
+CREATE INDEX IF NOT EXISTS ix_memory_item_versions_item ON memory_item_versions(memory_item_id);
+CREATE INDEX IF NOT EXISTS ix_memory_item_events_item ON memory_item_events(memory_item_id);
+CREATE INDEX IF NOT EXISTS ix_memory_embeddings_version ON memory_embeddings(memory_item_version_id);
+CREATE INDEX IF NOT EXISTS ix_memory_retrieval_runs_participant ON memory_retrieval_runs(participant_scope_key);
+CREATE INDEX IF NOT EXISTS ix_memory_retrieval_results_run ON memory_retrieval_results(retrieval_run_id, rank);
+CREATE INDEX IF NOT EXISTS ix_chat_context_items_assembly ON chat_context_items(context_assembly_id, rank);
+CREATE INDEX IF NOT EXISTS ix_chat_orchestration_runs_session ON chat_orchestration_runs(session_id);
+CREATE INDEX IF NOT EXISTS ix_chat_grounded_responses_run ON chat_grounded_responses(orchestration_run_id);
+CREATE INDEX IF NOT EXISTS ix_chat_response_citations_response ON chat_response_citations(grounded_response_id);
+CREATE INDEX IF NOT EXISTS ix_chat_orchestration_issues_run ON chat_orchestration_issues(orchestration_run_id, severity);
+CREATE INDEX IF NOT EXISTS ix_memory_evaluation_fixtures_suite ON memory_evaluation_fixtures(evaluation_suite_id);
+CREATE INDEX IF NOT EXISTS ix_memory_evaluation_runs_suite ON memory_evaluation_runs(evaluation_suite_id, status);
+CREATE INDEX IF NOT EXISTS ix_memory_evaluation_metrics_run ON memory_evaluation_metrics(evaluation_run_id, metric_scope);
+CREATE INDEX IF NOT EXISTS ix_conversation_memory_manifests_policy ON conversation_memory_manifests(memory_policy_id);
+CREATE TRIGGER IF NOT EXISTS conversation_turns_immutable_update BEFORE UPDATE ON conversation_turns BEGIN SELECT RAISE(ABORT, 'conversation turns are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_turns_immutable_delete BEFORE DELETE ON conversation_turns BEGIN SELECT RAISE(ABORT, 'conversation turns are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_turn_events_immutable_update BEFORE UPDATE ON conversation_turn_events BEGIN SELECT RAISE(ABORT, 'conversation turn events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_turn_events_immutable_delete BEFORE DELETE ON conversation_turn_events BEGIN SELECT RAISE(ABORT, 'conversation turn events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_summary_versions_immutable_update BEFORE UPDATE ON conversation_summary_versions BEGIN SELECT RAISE(ABORT, 'summary versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_summary_versions_immutable_delete BEFORE DELETE ON conversation_summary_versions BEGIN SELECT RAISE(ABORT, 'summary versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_item_versions_immutable_update BEFORE UPDATE ON memory_item_versions BEGIN SELECT RAISE(ABORT, 'memory item versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_item_versions_immutable_delete BEFORE DELETE ON memory_item_versions BEGIN SELECT RAISE(ABORT, 'memory item versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_item_events_immutable_update BEFORE UPDATE ON memory_item_events BEGIN SELECT RAISE(ABORT, 'memory item events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_item_events_immutable_delete BEFORE DELETE ON memory_item_events BEGIN SELECT RAISE(ABORT, 'memory item events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_embeddings_immutable_update BEFORE UPDATE ON memory_embeddings BEGIN SELECT RAISE(ABORT, 'memory embeddings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_embeddings_immutable_delete BEFORE DELETE ON memory_embeddings BEGIN SELECT RAISE(ABORT, 'memory embeddings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_retrieval_runs_immutable_update BEFORE UPDATE ON memory_retrieval_runs BEGIN SELECT RAISE(ABORT, 'memory retrieval runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_retrieval_runs_immutable_delete BEFORE DELETE ON memory_retrieval_runs BEGIN SELECT RAISE(ABORT, 'memory retrieval runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_retrieval_results_immutable_update BEFORE UPDATE ON memory_retrieval_results BEGIN SELECT RAISE(ABORT, 'memory retrieval results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_retrieval_results_immutable_delete BEFORE DELETE ON memory_retrieval_results BEGIN SELECT RAISE(ABORT, 'memory retrieval results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_context_assemblies_immutable_update BEFORE UPDATE ON chat_context_assemblies BEGIN SELECT RAISE(ABORT, 'context assemblies are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_context_assemblies_immutable_delete BEFORE DELETE ON chat_context_assemblies BEGIN SELECT RAISE(ABORT, 'context assemblies are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_context_items_immutable_update BEFORE UPDATE ON chat_context_items BEGIN SELECT RAISE(ABORT, 'context items are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_context_items_immutable_delete BEFORE DELETE ON chat_context_items BEGIN SELECT RAISE(ABORT, 'context items are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_orchestration_runs_immutable_update BEFORE UPDATE ON chat_orchestration_runs BEGIN SELECT RAISE(ABORT, 'orchestration runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_orchestration_runs_immutable_delete BEFORE DELETE ON chat_orchestration_runs BEGIN SELECT RAISE(ABORT, 'orchestration runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_grounded_responses_immutable_update BEFORE UPDATE ON chat_grounded_responses BEGIN SELECT RAISE(ABORT, 'grounded responses are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_grounded_responses_immutable_delete BEFORE DELETE ON chat_grounded_responses BEGIN SELECT RAISE(ABORT, 'grounded responses are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_response_citations_immutable_update BEFORE UPDATE ON chat_response_citations BEGIN SELECT RAISE(ABORT, 'response citations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_response_citations_immutable_delete BEFORE DELETE ON chat_response_citations BEGIN SELECT RAISE(ABORT, 'response citations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_orchestration_issues_immutable_update BEFORE UPDATE ON chat_orchestration_issues BEGIN SELECT RAISE(ABORT, 'orchestration issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS chat_orchestration_issues_immutable_delete BEFORE DELETE ON chat_orchestration_issues BEGIN SELECT RAISE(ABORT, 'orchestration issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_evaluation_fixtures_immutable_update BEFORE UPDATE ON memory_evaluation_fixtures BEGIN SELECT RAISE(ABORT, 'evaluation fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_evaluation_fixtures_immutable_delete BEFORE DELETE ON memory_evaluation_fixtures BEGIN SELECT RAISE(ABORT, 'evaluation fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_evaluation_metrics_immutable_update BEFORE UPDATE ON memory_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS memory_evaluation_metrics_immutable_delete BEFORE DELETE ON memory_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_memory_manifests_immutable_update BEFORE UPDATE ON conversation_memory_manifests BEGIN SELECT RAISE(ABORT, 'conversation memory manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS conversation_memory_manifests_immutable_delete BEFORE DELETE ON conversation_memory_manifests BEGIN SELECT RAISE(ABORT, 'conversation memory manifests are append-only'); END;
 """
 

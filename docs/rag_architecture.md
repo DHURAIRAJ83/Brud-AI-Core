@@ -58,3 +58,12 @@ See `docs/database_schema_v16.md` for the schema, and the per-subsystem
 docs (`rag_knowledge_ingestion.md`, `rag_chunking.md`,
 `rag_hybrid_retrieval.md`, `rag_citations_and_grounding.md`,
 `rag_evaluation.md`) for detail.
+
+## Phase 17 addendum
+
+Phase 17's `ChatOrchestrationService` calls
+`RagRetrievalService.retrieve()` unchanged to supply RAG evidence
+alongside conversation memory evidence in one bounded, orchestrated
+context — no second retrieval implementation, no second vector/keyword
+index. See `docs/chat_orchestration_architecture.md` and
+`docs/context_orchestration.md`.

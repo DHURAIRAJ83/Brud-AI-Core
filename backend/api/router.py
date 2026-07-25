@@ -9,6 +9,7 @@ from backend.api.routes import (
     chat,
     conversation_memory,
     core_models,
+    corpus,
     datasets,
     documents,
     feedback,
@@ -46,3 +47,4 @@ api_router.include_router(inference_runtime.router)
 api_router.include_router(rag.router)
 api_router.include_router(conversation_memory.router)
 api_router.include_router(feedback.router)
+api_router.include_router(corpus.router)

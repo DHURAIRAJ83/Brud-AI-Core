@@ -33,6 +33,7 @@ from backend.database.schema import (
     MIGRATION_016_NAME,
     MIGRATION_017_NAME,
     MIGRATION_018_NAME,
+    MIGRATION_019_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -52,6 +53,7 @@ from backend.database.schema import (
     PHASE16_SCHEMA,
     PHASE17_SCHEMA,
     PHASE18_SCHEMA,
+    PHASE19_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -423,6 +425,16 @@ def _apply_v18(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 18")
 
 
+def _apply_v19(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (19,)).fetchone():
+        return
+    connection.executescript(PHASE19_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (19, MIGRATION_019_NAME)
+    )
+    connection.execute("PRAGMA user_version = 19")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -475,8 +487,8 @@ def initialize_database(
     version = current_schema_version(database_path)
     if version > SCHEMA_VERSION:
         raise MigrationError(f"database schema {version} is newer than supported {SCHEMA_VERSION}")
-    pre_v18_versions = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
-    if version in pre_v18_versions and existed and auto_backup:
+    pre_v19_versions = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+    if version in pre_v19_versions and existed and auto_backup:
         create_verified_backup(database_path, backup_dir or database_path.parent / "backups")
     with database_connection(
         database_path, busy_timeout_ms=busy_timeout_ms, wal_enabled=wal_enabled
@@ -502,6 +514,7 @@ def initialize_database(
             _apply_v16(connection)
             _apply_v17(connection)
             _apply_v18(connection)
+            _apply_v19(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -521,7 +534,7 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
     if version == SCHEMA_VERSION:
         verification = verify_database(path)
         return version, None, verification.integrity_check
-    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}:
         try:
             verify_database(path)
         except Exception as exc:

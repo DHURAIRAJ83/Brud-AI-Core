@@ -4,6 +4,7 @@ import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
 import ConversationMemoryPage from './pages/ConversationMemoryPage.jsx'
+import CorpusPage from './pages/CorpusPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
 import FeedbackPage from './pages/FeedbackPage.jsx'
 import InferenceRuntimePage from './pages/InferenceRuntimePage.jsx'
@@ -45,5 +46,6 @@ export default function App() {
   if (active === 'Knowledge & RAG') page = <RagPage />
   if (active === 'Conversation & Memory') page = <ConversationMemoryPage />
   if (active === 'Feedback & Improvement') page = <FeedbackPage />
+  if (active === 'Corpus Builder') page = <CorpusPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

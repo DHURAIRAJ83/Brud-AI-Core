@@ -284,9 +284,7 @@ class Settings(BaseSettings):
     core_max_hidden_size: int = Field(
         default=512, ge=8, le=4096, validation_alias="BRUD_CORE_MAX_HIDDEN_SIZE"
     )
-    core_max_layers: int = Field(
-        default=12, ge=1, le=96, validation_alias="BRUD_CORE_MAX_LAYERS"
-    )
+    core_max_layers: int = Field(default=12, ge=1, le=96, validation_alias="BRUD_CORE_MAX_LAYERS")
     core_max_attention_heads: int = Field(
         default=16, ge=1, le=64, validation_alias="BRUD_CORE_MAX_ATTENTION_HEADS"
     )
@@ -482,7 +480,9 @@ class Settings(BaseSettings):
         default=0.2, ge=0, le=1, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_EXACT_MATCH_RATE"
     )
     instruction_tuning_max_duplicate_output_rate: float = Field(
-        default=0.3, ge=0, le=1,
+        default=0.3,
+        ge=0,
+        le=1,
         validation_alias="BRUD_INSTRUCTION_TUNING_MAX_DUPLICATE_OUTPUT_RATE",
     )
     instruction_tuning_max_longest_span_ratio: float = Field(
@@ -492,11 +492,15 @@ class Settings(BaseSettings):
         default=4.0, ge=0, validation_alias="BRUD_INSTRUCTION_TUNING_MAX_TRAIN_VALIDATION_GAP"
     )
     instruction_tuning_generation_max_new_tokens: int = Field(
-        default=32, ge=1, le=256,
+        default=32,
+        ge=1,
+        le=256,
         validation_alias="BRUD_INSTRUCTION_TUNING_GENERATION_MAX_NEW_TOKENS",
     )
     instruction_tuning_generation_timeout_seconds: float = Field(
-        default=5.0, ge=0.1, le=60.0,
+        default=5.0,
+        ge=0.1,
+        le=60.0,
         validation_alias="BRUD_INSTRUCTION_TUNING_GENERATION_TIMEOUT_SECONDS",
     )
     eval_min_total_fixtures: int = Field(
@@ -730,9 +734,7 @@ class Settings(BaseSettings):
     rag_context_token_budget: int = Field(
         default=800, ge=50, validation_alias="BRUD_RAG_CONTEXT_TOKEN_BUDGET"
     )
-    rag_max_citations: int = Field(
-        default=5, ge=1, validation_alias="BRUD_RAG_MAX_CITATIONS"
-    )
+    rag_max_citations: int = Field(default=5, ge=1, validation_alias="BRUD_RAG_MAX_CITATIONS")
     rag_no_answer_threshold: float = Field(
         default=0.2, ge=0, le=1, validation_alias="BRUD_RAG_NO_ANSWER_THRESHOLD"
     )
@@ -890,6 +892,64 @@ class Settings(BaseSettings):
     feedback_require_current_approval_checksum: bool = Field(
         default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_CURRENT_APPROVAL_CHECKSUM"
     )
+    corpus_upload_dir: Path = Field(
+        default=Path("data/corpus_uploads"), validation_alias="BRUD_CORPUS_UPLOAD_DIR"
+    )
+    corpus_snapshot_dir: Path = Field(
+        default=Path("data/corpus_snapshots"), validation_alias="BRUD_CORPUS_SNAPSHOT_DIR"
+    )
+    corpus_export_dir: Path = Field(
+        default=Path("data/corpus_exports"), validation_alias="BRUD_CORPUS_EXPORT_DIR"
+    )
+    corpus_approved_source_roots: str = Field(
+        default="",
+        validation_alias="BRUD_CORPUS_APPROVED_SOURCE_ROOTS",
+        description="Comma-separated additional absolute roots admins may register as corpus "
+        "sources, on top of the always-approved upload directory.",
+    )
+    corpus_max_source_bytes: int = Field(
+        default=200_000_000, ge=1, validation_alias="BRUD_CORPUS_MAX_SOURCE_BYTES"
+    )
+    corpus_max_document_characters: int = Field(
+        default=2_000_000, ge=1, validation_alias="BRUD_CORPUS_MAX_DOCUMENT_CHARACTERS"
+    )
+    corpus_max_segment_characters: int = Field(
+        default=8000, ge=1, validation_alias="BRUD_CORPUS_MAX_SEGMENT_CHARACTERS"
+    )
+    corpus_min_segment_characters: int = Field(
+        default=100, ge=1, validation_alias="BRUD_CORPUS_MIN_SEGMENT_CHARACTERS"
+    )
+    corpus_require_licence_review: bool = Field(
+        default=True, validation_alias="BRUD_CORPUS_REQUIRE_LICENCE_REVIEW"
+    )
+    corpus_require_privacy_scan: bool = Field(
+        default=True, validation_alias="BRUD_CORPUS_REQUIRE_PRIVACY_SCAN"
+    )
+    corpus_require_safety_scan: bool = Field(
+        default=True, validation_alias="BRUD_CORPUS_REQUIRE_SAFETY_SCAN"
+    )
+    corpus_require_deduplication: bool = Field(
+        default=True, validation_alias="BRUD_CORPUS_REQUIRE_DEDUPLICATION"
+    )
+    corpus_require_contamination_check: bool = Field(
+        default=True, validation_alias="BRUD_CORPUS_REQUIRE_CONTAMINATION_CHECK"
+    )
+    corpus_near_duplicate_threshold: float = Field(
+        default=0.85, ge=0, le=1, validation_alias="BRUD_CORPUS_NEAR_DUPLICATE_THRESHOLD"
+    )
+    corpus_maximum_single_source_share: float = Field(
+        default=0.3, ge=0, le=1, validation_alias="BRUD_CORPUS_MAXIMUM_SINGLE_SOURCE_SHARE"
+    )
+    corpus_allowed_licence_statuses: str = Field(
+        default="approved,approved_with_conditions",
+        validation_alias="BRUD_CORPUS_ALLOWED_LICENCE_STATUSES",
+    )
+    corpus_export_max_shard_bytes: int = Field(
+        default=50_000_000, ge=1, validation_alias="BRUD_CORPUS_EXPORT_MAX_SHARD_BYTES"
+    )
+    corpus_max_active_processing_runs: int = Field(
+        default=3, ge=1, validation_alias="BRUD_CORPUS_MAX_ACTIVE_PROCESSING_RUNS"
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -929,6 +989,9 @@ class Settings(BaseSettings):
             "pretraining_dir",
             "release_artifact_dir",
             "release_bundle_dir",
+            "corpus_upload_dir",
+            "corpus_snapshot_dir",
+            "corpus_export_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -949,6 +1012,9 @@ class Settings(BaseSettings):
                 "pretraining_dir",
                 "release_artifact_dir",
                 "release_bundle_dir",
+                "corpus_upload_dir",
+                "corpus_snapshot_dir",
+                "corpus_export_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
@@ -1107,9 +1173,7 @@ class Settings(BaseSettings):
     @property
     def release_allowed_artifact_roots_list(self) -> tuple[str, ...]:
         return tuple(
-            root.strip()
-            for root in self.release_allowed_artifact_roots.split(",")
-            if root.strip()
+            root.strip() for root in self.release_allowed_artifact_roots.split(",") if root.strip()
         )
 
     @property
@@ -1149,6 +1213,42 @@ class Settings(BaseSettings):
     @property
     def resolved_allowed_export_dir(self) -> Path:
         return self._resolve_path(self.allowed_export_dir)
+
+    @property
+    def resolved_corpus_upload_dir(self) -> Path:
+        return self._resolve_path(self.corpus_upload_dir)
+
+    @property
+    def resolved_corpus_snapshot_dir(self) -> Path:
+        return self._resolve_path(self.corpus_snapshot_dir)
+
+    @property
+    def resolved_corpus_export_dir(self) -> Path:
+        return self._resolve_path(self.corpus_export_dir)
+
+    @property
+    def corpus_approved_roots(self) -> list[Path]:
+        """Every filesystem root a corpus source file may legitimately be
+        read from: the registered-upload directory always, plus any
+        admin-configured additional roots -- never an arbitrary path
+        supplied at request time."""
+
+        roots = [self.resolved_corpus_upload_dir]
+        for entry in self.corpus_approved_source_roots.split(","):
+            stripped = entry.strip()
+            if stripped:
+                roots.append(self._resolve_path(Path(stripped)))
+        return roots
+
+    def corpus_path_is_approved(self, candidate: Path) -> bool:
+        resolved = self._resolve_path(candidate)
+        return any(resolved.is_relative_to(root) for root in self.corpus_approved_roots)
+
+    @property
+    def corpus_allowed_licence_status_list(self) -> set[str]:
+        return {
+            item.strip() for item in self.corpus_allowed_licence_statuses.split(",") if item.strip()
+        }
 
     @property
     def cors_origins(self) -> list[str]:

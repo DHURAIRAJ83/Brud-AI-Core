@@ -231,6 +231,15 @@ default entirely to the safe side — every `require_*` and `block_*`
 flag defaults `true` — and are documented alongside the policy shape
 in [feedback_policies.md](feedback_policies.md).
 
+Phase 19's `BRUD_CORPUS_*` settings (upload/snapshot/export
+directories, an admin-configured comma-separated list of additional
+approved source roots, size/segment bounds, licence-status allowlist,
+near-duplicate threshold, single-source balance cap, and every
+`require_*` scan flag) default entirely to the safe side; no
+filesystem path is ever readable as a corpus source unless it falls
+under the registered upload directory or one of these explicitly
+configured approved roots.
+
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
 ## Common commands

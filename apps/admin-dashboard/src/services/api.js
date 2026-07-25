@@ -519,3 +519,66 @@ export const improvementReport = (id) => request(`${FB}/improvement-reports/${id
 
 export const feedbackManifest = (policyId) => request(`${FB}/policies/${policyId}/manifest`)
 export const verifyFeedbackManifest = (policyId) => request(`${FB}/policies/${policyId}/manifest/verify`, { method: 'POST' })
+
+const CORPUS = '/api/admin/corpus'
+export const corpusPolicies = () => request(`${CORPUS}/policies`)
+export const createCorpusPolicy = (body) => request(`${CORPUS}/policies`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusPolicy = (id) => request(`${CORPUS}/policies/${id}`)
+export const patchCorpusPolicy = (id, body) => request(`${CORPUS}/policies/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+
+export const corpusSources = () => request(`${CORPUS}/sources`)
+export const createCorpusSource = (body) => request(`${CORPUS}/sources`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusSource = (id) => request(`${CORPUS}/sources/${id}`)
+export const patchCorpusSource = (id, body) => request(`${CORPUS}/sources/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+export const transitionCorpusSource = (id, body) => request(`${CORPUS}/sources/${id}/transition`, { method: 'POST', body: JSON.stringify(body) })
+export const verifyCorpusSourceOrigin = (id, body) => request(`${CORPUS}/sources/${id}/verify-origin`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusSourceTrainingEligibility = (id) => request(`${CORPUS}/sources/${id}/training-eligibility`)
+
+export const createCorpusLicence = (sourceId, body) => request(`${CORPUS}/sources/${sourceId}/licences`, { method: 'POST', body: JSON.stringify(body) })
+export const reviewCorpusLicence = (id, body) => request(`${CORPUS}/licences/${id}/review`, { method: 'POST', body: JSON.stringify(body) })
+
+export const createCorpusSnapshot = (sourceId, body) => request(`${CORPUS}/sources/${sourceId}/snapshots`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusSnapshotsForSource = (sourceId) => request(`${CORPUS}/sources/${sourceId}/snapshots`)
+export const corpusSnapshot = (id) => request(`${CORPUS}/snapshots/${id}`)
+
+export const createCorpusExtractionRun = (snapshotId, body) => request(`${CORPUS}/snapshots/${snapshotId}/extraction-runs`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusExtractionRun = (id) => request(`${CORPUS}/extraction-runs/${id}`)
+
+export const createCorpusNormalizationRun = (extractionRunId, body) => request(`${CORPUS}/extraction-runs/${extractionRunId}/normalization-runs`, { method: 'POST', body: JSON.stringify(body || {}) })
+export const corpusNormalizationRun = (id) => request(`${CORPUS}/normalization-runs/${id}`)
+
+export const segmentCorpusDocument = (documentId, body) => request(`${CORPUS}/normalized-documents/${documentId}/segment`, { method: 'POST', body: JSON.stringify(body || {}) })
+
+export const assessCorpusSegment = (id) => request(`${CORPUS}/segments/${id}/assess`, { method: 'POST' })
+
+export const createCorpusDeduplicationRun = (body) => request(`${CORPUS}/deduplication-runs`, { method: 'POST', body: JSON.stringify(body || {}) })
+export const corpusDeduplicationRun = (id) => request(`${CORPUS}/deduplication-runs/${id}`)
+
+export const createCorpusContaminationRun = (body) => request(`${CORPUS}/contamination-runs`, { method: 'POST', body: JSON.stringify(body || {}) })
+export const corpusContaminationRun = (id) => request(`${CORPUS}/contamination-runs/${id}`)
+
+export const corpusCollections = () => request(`${CORPUS}/collections`)
+export const createCorpusCollection = (body) => request(`${CORPUS}/collections`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusCollection = (id) => request(`${CORPUS}/collections/${id}`)
+export const addCorpusCollectionMember = (id, body) => request(`${CORPUS}/collections/${id}/members`, { method: 'POST', body: JSON.stringify(body) })
+
+export const corpusBalancePolicies = () => request(`${CORPUS}/balance-policies`)
+export const createCorpusBalancePolicy = (body) => request(`${CORPUS}/balance-policies`, { method: 'POST', body: JSON.stringify(body) })
+
+export const corpusBuilds = () => request(`${CORPUS}/builds`)
+export const createCorpusBuild = (body) => request(`${CORPUS}/builds`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusBuild = (id) => request(`${CORPUS}/builds/${id}`)
+export const corpusBuildBalanceReport = (id) => request(`${CORPUS}/builds/${id}/balance-report`)
+
+export const corpusVersions = () => request(`${CORPUS}/versions`)
+export const createCorpusVersion = (buildId, body) => request(`${CORPUS}/builds/${buildId}/versions`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusVersion = (id) => request(`${CORPUS}/versions/${id}`)
+
+export const createCorpusExport = (versionId, body) => request(`${CORPUS}/versions/${versionId}/exports`, { method: 'POST', body: JSON.stringify(body || {}) })
+export const corpusExport = (id) => request(`${CORPUS}/exports/${id}`)
+
+export const generateCorpusManifest = (versionId) => request(`${CORPUS}/versions/${versionId}/manifest`, { method: 'POST' })
+export const corpusManifest = (versionId) => request(`${CORPUS}/versions/${versionId}/manifest`)
+
+export const compareCorpusVersions = (body) => request(`${CORPUS}/compare`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusComparison = (id) => request(`${CORPUS}/comparisons/${id}`)

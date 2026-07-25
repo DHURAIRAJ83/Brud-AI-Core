@@ -35,6 +35,16 @@ INTERNAL = {
     "left_version_id",
     "right_version_id",
     "quality_assessment_id",
+    "normalization_profile_id",
+    "segmentation_profile_id",
+    "job_id",
+    "protected_content_set_id",
+    "tokenizer_version_id",
+    "analysis_id",
+    "evaluation_id",
+    "release_id",
+    "readiness_evaluation_id",
+    "tokenizer_analysis_id",
 }
 
 
@@ -580,7 +590,8 @@ class CorpusRepository:
             """INSERT INTO corpus_language_assessments(public_id,segment_id,language_category,
             tamil_script_ratio,latin_script_ratio,digit_ratio,symbol_ratio,tamil_lexical_evidence,
             tanglish_lexical_evidence,mixed_language_evidence,confidence,
-            unsupported_character_ratio) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            unsupported_character_ratio,method,review_status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 public_id,
                 values["segment_id"],
@@ -594,6 +605,8 @@ class CorpusRepository:
                 values.get("mixed_language_evidence", 0),
                 values.get("confidence", 0),
                 values.get("unsupported_character_ratio", 0),
+                values.get("method", "heuristic"),
+                values.get("review_status", "unreviewed"),
             ),
         )
         return public_id
@@ -604,8 +617,8 @@ class CorpusRepository:
         public_id = str(uuid4())
         connection.execute(
             """INSERT INTO corpus_domain_assessments(public_id,segment_id,primary_domain,
-            secondary_domains_json,rule_evidence_json,confidence,classifier_version)
-            VALUES (?,?,?,?,?,?,?)""",
+            secondary_domains_json,rule_evidence_json,confidence,classifier_version,method,
+            review_status) VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 public_id,
                 values["segment_id"],
@@ -614,6 +627,8 @@ class CorpusRepository:
                 values.get("rule_evidence_json", "{}"),
                 values.get("confidence", 0),
                 values.get("classifier_version", "v1"),
+                values.get("method", "heuristic"),
+                values.get("review_status", "unreviewed"),
             ),
         )
         return public_id
@@ -624,13 +639,15 @@ class CorpusRepository:
         public_id = str(uuid4())
         connection.execute(
             """INSERT INTO corpus_style_assessments(public_id,segment_id,style,confidence,
-            classifier_version) VALUES (?,?,?,?,?)""",
+            classifier_version,method,review_status) VALUES (?,?,?,?,?,?,?)""",
             (
                 public_id,
                 values["segment_id"],
                 values["style"],
                 values.get("confidence", 0),
                 values.get("classifier_version", "v1"),
+                values.get("method", "heuristic"),
+                values.get("review_status", "unreviewed"),
             ),
         )
         return public_id
@@ -1322,3 +1339,508 @@ class CorpusRepository:
         if not row:
             raise NotFoundError("corpus comparison not found")
         return row
+
+    # --- Phase 20: normalization profiles -----------------------------------------------------
+
+    def create_normalization_profile(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_normalization_profiles(public_id,name,profile_key,version,
+            operations_json,created_by_admin_public_id) VALUES (?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["name"],
+                values["profile_key"],
+                values.get("version", "v1"),
+                values.get("operations_json", "{}"),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def normalization_profile(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_normalization_profiles WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("normalization profile not found")
+        return row
+
+    def list_normalization_profiles(self, connection: sqlite3.Connection) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_normalization_profiles ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def update_normalization_profile(
+        self, connection: sqlite3.Connection, profile_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_normalization_profiles SET {columns}, "
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (*fields.values(), profile_id),
+        )
+
+    # --- Phase 20: segmentation profiles -----------------------------------------------------
+
+    def create_segmentation_profile(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_segmentation_profiles(public_id,name,content_type,strategy,
+            version,configuration_json,created_by_admin_public_id) VALUES (?,?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["name"],
+                values["content_type"],
+                values["strategy"],
+                values.get("version", "v1"),
+                values.get("configuration_json", "{}"),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def segmentation_profile(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_segmentation_profiles WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("segmentation profile not found")
+        return row
+
+    def list_segmentation_profiles(self, connection: sqlite3.Connection) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_segmentation_profiles ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def update_segmentation_profile(
+        self, connection: sqlite3.Connection, profile_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_segmentation_profiles SET {columns}, "
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (*fields.values(), profile_id),
+        )
+
+    # --- Phase 20: ingestion jobs -----------------------------------------------------
+
+    def create_ingestion_job(self, connection: sqlite3.Connection, values: dict[str, Any]) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_ingestion_jobs(public_id,source_id,format,idempotency_key,
+            normalization_profile_id,segmentation_profile_id,max_retries,
+            created_by_admin_public_id) VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["source_id"],
+                values["format"],
+                values.get("idempotency_key"),
+                values.get("normalization_profile_id"),
+                values.get("segmentation_profile_id"),
+                values.get("max_retries", 3),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def ingestion_job(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_ingestion_jobs WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("ingestion job not found")
+        return row
+
+    def find_ingestion_job_by_idempotency_key(
+        self, connection: sqlite3.Connection, source_id: int, idempotency_key: str
+    ) -> sqlite3.Row | None:
+        return connection.execute(
+            "SELECT * FROM corpus_ingestion_jobs WHERE source_id=? AND idempotency_key=?",
+            (source_id, idempotency_key),
+        ).fetchone()
+
+    def list_ingestion_jobs(
+        self, connection: sqlite3.Connection, *, source_id: int | None = None
+    ) -> list[sqlite3.Row]:
+        if source_id is not None:
+            return connection.execute(
+                "SELECT * FROM corpus_ingestion_jobs WHERE source_id=? "
+                "ORDER BY created_at DESC, id DESC",
+                (source_id,),
+            ).fetchall()
+        return connection.execute(
+            "SELECT * FROM corpus_ingestion_jobs ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def update_ingestion_job(
+        self, connection: sqlite3.Connection, job_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_ingestion_jobs SET {columns}, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (*fields.values(), job_id),
+        )
+
+    def record_ingestion_event(self, connection: sqlite3.Connection, values: dict[str, Any]) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_ingestion_events(public_id,job_id,event_type,stage,message,
+            details_json) VALUES (?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["job_id"],
+                values["event_type"],
+                values.get("stage"),
+                values.get("message", ""),
+                values.get("details_json", "{}"),
+            ),
+        )
+        return public_id
+
+    def ingestion_events_for_job(
+        self, connection: sqlite3.Connection, job_id: int
+    ) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_ingestion_events WHERE job_id=? ORDER BY id", (job_id,)
+        ).fetchall()
+
+    def count_active_ingestion_jobs(self, connection: sqlite3.Connection) -> int:
+        return connection.execute(
+            "SELECT COUNT(*) FROM corpus_ingestion_jobs WHERE status IN ('queued','running')"
+        ).fetchone()[0]
+
+    # --- Phase 20: protected content -----------------------------------------------------
+
+    def create_protected_content_set(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_protected_content_sets(public_id,name,set_type,description,
+            created_by_admin_public_id) VALUES (?,?,?,?,?)""",
+            (
+                public_id,
+                values["name"],
+                values["set_type"],
+                values.get("description", ""),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def protected_content_set(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_protected_content_sets WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("protected content set not found")
+        return row
+
+    def list_protected_content_sets(self, connection: sqlite3.Connection) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_protected_content_sets ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def update_protected_content_set(
+        self, connection: sqlite3.Connection, set_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_protected_content_sets SET {columns}, "
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (*fields.values(), set_id),
+        )
+
+    def create_protected_content_entry(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_protected_content_entries(public_id,protected_content_set_id,
+            raw_checksum_sha256,normalized_checksum_sha256,evidence_reference)
+            VALUES (?,?,?,?,?)""",
+            (
+                public_id,
+                values["protected_content_set_id"],
+                values["raw_checksum_sha256"],
+                values["normalized_checksum_sha256"],
+                values.get("evidence_reference", ""),
+            ),
+        )
+        return public_id
+
+    def entries_for_protected_content_set(
+        self, connection: sqlite3.Connection, set_id: int
+    ) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_protected_content_entries WHERE protected_content_set_id=? "
+            "ORDER BY id",
+            (set_id,),
+        ).fetchall()
+
+    def all_active_protected_normalized_checksums(self, connection: sqlite3.Connection) -> set[str]:
+        rows = connection.execute(
+            """SELECT e.normalized_checksum_sha256 FROM corpus_protected_content_entries e
+            JOIN corpus_protected_content_sets s ON s.id = e.protected_content_set_id
+            WHERE s.lifecycle_status = 'active'"""
+        ).fetchall()
+        return {row["normalized_checksum_sha256"] for row in rows}
+
+    def active_protected_checksums_by_set_type(
+        self, connection: sqlite3.Connection
+    ) -> dict[str, set[str]]:
+        rows = connection.execute(
+            """SELECT s.set_type, e.normalized_checksum_sha256
+            FROM corpus_protected_content_entries e
+            JOIN corpus_protected_content_sets s ON s.id = e.protected_content_set_id
+            WHERE s.lifecycle_status = 'active'"""
+        ).fetchall()
+        result: dict[str, set[str]] = {}
+        for row in rows:
+            result.setdefault(row["set_type"], set()).add(row["normalized_checksum_sha256"])
+        return result
+
+    # --- Phase 20: partition previews -----------------------------------------------------
+
+    def create_partition_preview(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_partition_previews(public_id,collection_id,seed,
+            proportions_json,strict_mode,distribution_json,isolation_report_json,
+            preview_checksum_sha256,created_by_admin_public_id) VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["collection_id"],
+                values.get("seed", 42),
+                values.get("proportions_json", "{}"),
+                1 if values.get("strict_mode", True) else 0,
+                values.get("distribution_json", "{}"),
+                values.get("isolation_report_json", "{}"),
+                values["preview_checksum_sha256"],
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def partition_preview(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_partition_previews WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("partition preview not found")
+        return row
+
+    # --- Phase 20: tokenizer analysis -----------------------------------------------------
+
+    def create_tokenizer_analysis(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_tokenizer_analyses(public_id,tokenizer_version_id,
+            collection_id,build_id,created_by_admin_public_id) VALUES (?,?,?,?,?)""",
+            (
+                public_id,
+                values["tokenizer_version_id"],
+                values.get("collection_id"),
+                values.get("build_id"),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def tokenizer_analysis(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_tokenizer_analyses WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("tokenizer analysis not found")
+        return row
+
+    def update_tokenizer_analysis(
+        self, connection: sqlite3.Connection, analysis_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_tokenizer_analyses SET {columns} WHERE id=?",
+            (*fields.values(), analysis_id),
+        )
+
+    def record_tokenizer_analysis_metric(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_tokenizer_analysis_metrics(public_id,analysis_id,
+            breakdown_type,breakdown_value,total_characters,total_tokens,characters_per_token,
+            unknown_token_rate,long_sequence_rate,truncation_risk_rate)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["analysis_id"],
+                values["breakdown_type"],
+                values["breakdown_value"],
+                values.get("total_characters", 0),
+                values.get("total_tokens", 0),
+                values.get("characters_per_token"),
+                values.get("unknown_token_rate"),
+                values.get("long_sequence_rate"),
+                values.get("truncation_risk_rate"),
+            ),
+        )
+        return public_id
+
+    def metrics_for_tokenizer_analysis(
+        self, connection: sqlite3.Connection, analysis_id: int
+    ) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_tokenizer_analysis_metrics WHERE analysis_id=? ORDER BY id",
+            (analysis_id,),
+        ).fetchall()
+
+    # --- Phase 20: readiness -----------------------------------------------------
+
+    def create_readiness_evaluation(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_readiness_evaluations(public_id,build_id,
+            tokenizer_analysis_id,created_by_admin_public_id) VALUES (?,?,?,?)""",
+            (
+                public_id,
+                values["build_id"],
+                values.get("tokenizer_analysis_id"),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def readiness_evaluation(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_readiness_evaluations WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("readiness evaluation not found")
+        return row
+
+    def update_readiness_evaluation(
+        self, connection: sqlite3.Connection, evaluation_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_readiness_evaluations SET {columns} WHERE id=?",
+            (*fields.values(), evaluation_id),
+        )
+
+    def record_readiness_dimension(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_readiness_dimensions(public_id,evaluation_id,dimension,
+            status,details_json) VALUES (?,?,?,?,?)""",
+            (
+                public_id,
+                values["evaluation_id"],
+                values["dimension"],
+                values["status"],
+                values.get("details_json", "{}"),
+            ),
+        )
+        return public_id
+
+    def dimensions_for_readiness_evaluation(
+        self, connection: sqlite3.Connection, evaluation_id: int
+    ) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_readiness_dimensions WHERE evaluation_id=? ORDER BY id",
+            (evaluation_id,),
+        ).fetchall()
+
+    # --- Phase 20: releases -----------------------------------------------------
+
+    def create_release(self, connection: sqlite3.Connection, values: dict[str, Any]) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_releases(public_id,corpus_version_id,readiness_evaluation_id,
+            semantic_version,release_name,description,created_by_admin_public_id)
+            VALUES (?,?,?,?,?,?,?)""",
+            (
+                public_id,
+                values["corpus_version_id"],
+                values.get("readiness_evaluation_id"),
+                values["semantic_version"],
+                values["release_name"],
+                values.get("description", ""),
+                values["created_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def release(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM corpus_releases WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if not row:
+            raise NotFoundError("corpus release not found")
+        return row
+
+    def list_releases(self, connection: sqlite3.Connection) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_releases ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def update_release(
+        self, connection: sqlite3.Connection, release_id: int, fields: dict[str, Any]
+    ) -> None:
+        if not fields:
+            return
+        columns = ",".join(f"{key}=?" for key in fields)
+        connection.execute(
+            f"UPDATE corpus_releases SET {columns}, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (*fields.values(), release_id),
+        )
+
+    def record_release_approval(
+        self, connection: sqlite3.Connection, values: dict[str, Any]
+    ) -> str:
+        public_id = str(uuid4())
+        connection.execute(
+            """INSERT INTO corpus_release_approvals(public_id,release_id,decision,comment,
+            approved_by_admin_public_id) VALUES (?,?,?,?,?)""",
+            (
+                public_id,
+                values["release_id"],
+                values["decision"],
+                values.get("comment", ""),
+                values["approved_by_admin_public_id"],
+            ),
+        )
+        return public_id
+
+    def approvals_for_release(
+        self, connection: sqlite3.Connection, release_id: int
+    ) -> list[sqlite3.Row]:
+        return connection.execute(
+            "SELECT * FROM corpus_release_approvals WHERE release_id=? ORDER BY id", (release_id,)
+        ).fetchall()

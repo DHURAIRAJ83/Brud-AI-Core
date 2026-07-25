@@ -17,7 +17,13 @@ from backend.core.config import Settings
 from backend.core.json_utils import dumps_json
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.corpus import CorpusRepository, public_row
-from backend.models.corpus import ContaminationRunCreate, DeduplicationRunCreate
+from backend.models.corpus import (
+    ContaminationRunCreate,
+    DeduplicationRunCreate,
+    LabelCorrection,
+    ProtectedContentEntryCreate,
+    ProtectedContentSetCreate,
+)
 from core_model.corpus.contamination import check_contamination
 from core_model.corpus.domain_classification import classify_domain
 from core_model.corpus.exact_deduplication import all_checksums, tamil_safe_normalized_checksum
@@ -106,6 +112,58 @@ class CorpusQualityService:
             (segment_public_id,),
         ).fetchone()
         return row["cluster_type"] if row else "unique"
+
+    # --- Phase 20: human label correction -----------------------------------------------------
+
+    _CORRECTION_TABLES = {
+        "language": ("record_language_assessment", "language_category"),
+        "domain": ("record_domain_assessment", "primary_domain"),
+        "style": ("record_style_assessment", "style"),
+    }
+
+    def correct_label(
+        self, segment_public_id: str, payload: LabelCorrection, admin_id: str
+    ) -> dict[str, Any]:
+        """A human correction is always a brand-new row appended on top
+        of the original heuristic assessment -- the original evidence
+        is never mutated or deleted, only superseded for read purposes
+        by the repository's existing "latest row wins" pattern."""
+
+        if payload.label_type not in self._CORRECTION_TABLES:
+            raise ValidationError(f"unsupported label_type: {payload.label_type}")
+        method_name, value_field = self._CORRECTION_TABLES[payload.label_type]
+        with self.repository.transaction() as connection:
+            segment_row = self.repository.segment(connection, segment_public_id)
+            recorder = getattr(self.repository, method_name)
+            base_values: dict[str, Any] = {
+                "segment_id": segment_row["id"],
+                value_field: payload.value,
+                "method": "human_correction",
+                "review_status": "corrected",
+                "confidence": 1.0,
+            }
+            if payload.label_type == "language":
+                base_values.setdefault("tamil_script_ratio", 0)
+                base_values.setdefault("latin_script_ratio", 0)
+            recorder(connection, base_values)
+            self._audit(
+                connection, "corpus_label_corrected", admin_id, segment_public_id,
+                label_type=payload.label_type, value=payload.value,
+            )
+            result = self.repository.assessments_for_segment(connection, segment_row["id"])
+            return {
+                key: public_row(value) if value is not None else None
+                for key, value in result.items()
+            }
+
+    def assessments_for_segment(self, segment_public_id: str) -> dict[str, Any]:
+        with self.repository.transaction() as connection:
+            segment_row = self.repository.segment(connection, segment_public_id)
+            result = self.repository.assessments_for_segment(connection, segment_row["id"])
+            return {
+                key: public_row(value) if value is not None else None
+                for key, value in result.items()
+            }
 
     # --- assessment -----------------------------------------------------
 
@@ -487,6 +545,22 @@ class CorpusQualityService:
         )
 
         with self.repository.transaction() as connection:
+            registry = self.repository.active_protected_checksums_by_set_type(connection)
+            # Phase 20's persistent protected-content registry always
+            # augments whatever ad-hoc fixture texts the caller passed
+            # -- a production build's contamination run is never
+            # limited to only what one caller happened to supply.
+            test_checksums |= registry.get("test_dataset", frozenset())
+            validation_checksums |= registry.get("validation_dataset", frozenset())
+            evaluation_fixture_checksums |= registry.get(
+                "benchmark_answers", frozenset()
+            ) | registry.get("human_evaluation_sets", frozenset()) | registry.get(
+                "safety_test_sets", frozenset()
+            )
+            regression_fixture_checksums |= registry.get("regression_fixtures", frozenset())
+            holdout_checksums |= registry.get("release_acceptance_sets", frozenset())
+            hidden_prompt_checksums |= registry.get("benchmark_prompts", frozenset())
+
             values = {
                 "scope_description": payload.scope_description,
                 "created_by_admin_public_id": admin_id,
@@ -548,6 +622,80 @@ class CorpusQualityService:
                 public_row(finding)
                 for finding in self.repository.findings_for_contamination_run(connection, row["id"])
             ]
+            return result
+
+    # --- Phase 20: protected content registry -----------------------------------------------------
+
+    def create_protected_content_set(
+        self, payload: ProtectedContentSetCreate, admin_id: str
+    ) -> dict[str, Any]:
+        values = {
+            "name": payload.name,
+            "set_type": payload.set_type,
+            "description": payload.description,
+            "created_by_admin_public_id": admin_id,
+        }
+        with self.repository.transaction() as connection:
+            public_id = self.repository.create_protected_content_set(connection, values)
+            self._audit(connection, "corpus_protected_content_set_created", admin_id, public_id)
+            return public_row(self.repository.protected_content_set(connection, public_id))
+
+    def list_protected_content_sets(self) -> dict[str, Any]:
+        with self.repository.transaction() as connection:
+            return {
+                "items": [
+                    public_row(row)
+                    for row in self.repository.list_protected_content_sets(connection)
+                ]
+            }
+
+    def activate_protected_content_set(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        with self.repository.transaction() as connection:
+            row = self.repository.protected_content_set(connection, public_id)
+            self.repository.update_protected_content_set(
+                connection, row["id"], {"lifecycle_status": "active"}
+            )
+            self._audit(connection, "corpus_protected_content_set_activated", admin_id, public_id)
+            return public_row(self.repository.protected_content_set(connection, public_id))
+
+    def add_protected_content_entries(
+        self, set_public_id: str, payload: ProtectedContentEntryCreate, admin_id: str
+    ) -> dict[str, Any]:
+        """Stores only checksums, never the raw protected text itself --
+        the registry proves overlap without ever re-exposing validation/
+        test/benchmark content through this API."""
+
+        with self.repository.transaction() as connection:
+            set_row = self.repository.protected_content_set(connection, set_public_id)
+            entry_ids = []
+            for text in payload.texts:
+                entry_id = self.repository.create_protected_content_entry(
+                    connection,
+                    {
+                        "protected_content_set_id": set_row["id"],
+                        "raw_checksum_sha256": all_checksums(text)["raw"],
+                        "normalized_checksum_sha256": tamil_safe_normalized_checksum(text),
+                        "evidence_reference": payload.evidence_reference,
+                    },
+                )
+                entry_ids.append(entry_id)
+            self._audit(
+                connection, "corpus_protected_content_entries_added", admin_id, set_public_id,
+                entry_count=len(entry_ids),
+            )
+            return {
+                "protected_content_set_public_id": set_public_id,
+                "entry_public_ids": entry_ids,
+                "entry_count": len(entry_ids),
+            }
+
+    def get_protected_content_set(self, public_id: str) -> dict[str, Any]:
+        with self.repository.transaction() as connection:
+            row = self.repository.protected_content_set(connection, public_id)
+            result = public_row(row)
+            result["entry_count"] = len(
+                self.repository.entries_for_protected_content_set(connection, row["id"])
+            )
             return result
 
     # --- audit -----------------------------------------------------

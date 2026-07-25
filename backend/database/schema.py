@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -4895,5 +4895,353 @@ CREATE TRIGGER IF NOT EXISTS corpus_manifests_immutable_update BEFORE UPDATE ON 
 CREATE TRIGGER IF NOT EXISTS corpus_manifests_immutable_delete BEFORE DELETE ON corpus_manifests BEGIN SELECT RAISE(ABORT, 'corpus manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS corpus_comparisons_immutable_update BEFORE UPDATE ON corpus_comparisons BEGIN SELECT RAISE(ABORT, 'comparisons are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS corpus_comparisons_immutable_delete BEFORE DELETE ON corpus_comparisons BEGIN SELECT RAISE(ABORT, 'comparisons are append-only'); END;
+"""
+
+MIGRATION_020_NAME = "020_phase20_production_corpus_expansion"
+
+# Phase 20 extends Phase 19's corpus builder toward production scale:
+# multi-format ingestion jobs, versioned normalization/segmentation
+# profiles, a persistent protected-content contamination registry,
+# tokenizer compatibility analysis (reusing Phase 7's
+# `TokenizerService.processor_for_version`), a formal pretraining-
+# readiness gate, and an immutable release lifecycle wrapping a
+# `corpus_versions` row. No new quality/privacy/safety/deduplication/
+# contamination/balancing/partitioning/collection/build/version/
+# export/manifest table is created here -- Phase 19's tables and pure
+# functions are reused unchanged; Phase 20 only adds what Phase 19
+# genuinely lacked (job orchestration, profile versioning, a real
+# protected-content registry, tokenizer analysis, a formal readiness
+# gate, and a release approval workflow).
+#
+# `corpus_source_registries.status` (Phase 19's CHECK'd lifecycle:
+# draft/origin_review/licence_review/approved/approved_with_restrictions/
+# rejected/quarantined/disputed/archived) is never altered -- SQLite
+# cannot modify a CHECK constraint without a full table rebuild, and
+# this table is referenced by five other Phase 19 tables. Phase 20's
+# required production lifecycle
+# (draft -> provenance_verified -> licence_reviewed -> approved ->
+# ingested -> retired) is layered on top as a new, additive
+# `production_lifecycle_status` column rather than replacing the
+# existing one; `provenance_verified` maps to the existing
+# `origin_verified` flag being true, and `licence_reviewed` maps to
+# the source's latest licence review_status no longer being
+# 'unknown'. Both lifecycles coexist deliberately.
+#
+# Labelling's "method"/"review_status" fields (Section 9) are added as
+# new columns directly on the existing, already-append-only
+# `corpus_language_assessments`/`corpus_domain_assessments`/
+# `corpus_style_assessments` tables rather than a new
+# `corpus_label_assignments` table -- a human correction is simply a
+# new row with `method='human_correction'`, appended on top of the
+# original heuristic row, which the repository's existing
+# "latest row wins" read pattern already surfaces first. This satisfies
+# "human correction without mutating original evidence" without a
+# fifth table duplicating what append-only assessment tables already do.
+PHASE20_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "corpus_source_registries": [
+        ("production_lifecycle_status", "TEXT NOT NULL DEFAULT 'draft'"),
+        ("original_url", "TEXT"),
+        ("acquisition_date", "TEXT"),
+        ("reviewed_by_admin_public_id", "TEXT"),
+        ("reviewed_at", "TEXT"),
+    ],
+    "corpus_language_assessments": [
+        ("method", "TEXT NOT NULL DEFAULT 'heuristic'"),
+        ("review_status", "TEXT NOT NULL DEFAULT 'unreviewed'"),
+    ],
+    "corpus_domain_assessments": [
+        ("method", "TEXT NOT NULL DEFAULT 'heuristic'"),
+        ("review_status", "TEXT NOT NULL DEFAULT 'unreviewed'"),
+    ],
+    "corpus_style_assessments": [
+        ("method", "TEXT NOT NULL DEFAULT 'heuristic'"),
+        ("review_status", "TEXT NOT NULL DEFAULT 'unreviewed'"),
+    ],
+}
+
+PHASE20_SCHEMA = """
+CREATE TABLE IF NOT EXISTS corpus_normalization_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    profile_key TEXT NOT NULL CHECK (profile_key IN (
+        'tamil_conservative','tamil_ocr_cleanup','tamil_education_text','tamil_web_text',
+        'tamil_mixed_tanglish'
+    )),
+    version TEXT NOT NULL DEFAULT 'v1',
+    operations_json TEXT NOT NULL DEFAULT '{}',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','active','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(profile_key, version)
+);
+CREATE TABLE IF NOT EXISTS corpus_segmentation_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    content_type TEXT NOT NULL CHECK (content_type IN (
+        'books','school_textbooks','articles','government_documents','agriculture_content',
+        'literature','conversational_text','faq_instructional','mixed_tamil_english'
+    )),
+    strategy TEXT NOT NULL CHECK (strategy IN (
+        'heading_section','paragraph','sentence_window','token_window','document_preserving'
+    )),
+    version TEXT NOT NULL DEFAULT 'v1',
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','active','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(content_type, version)
+);
+CREATE TABLE IF NOT EXISTS corpus_ingestion_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_id INTEGER NOT NULL,
+    snapshot_id INTEGER,
+    extraction_run_id INTEGER,
+    normalization_run_id INTEGER,
+    normalization_profile_id INTEGER,
+    segmentation_profile_id INTEGER,
+    format TEXT NOT NULL CHECK (format IN (
+        'pdf','txt','json','jsonl','csv','docx','html','markdown'
+    )),
+    idempotency_key TEXT,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN (
+        'queued','running','paused','completed','completed_with_warnings','failed','cancelled'
+    )),
+    current_stage TEXT NOT NULL DEFAULT 'queued' CHECK (current_stage IN (
+        'queued','inspecting','snapshotting','extracting','normalizing','segmenting',
+        'completed','failed'
+    )),
+    files_processed INTEGER NOT NULL DEFAULT 0 CHECK (files_processed >= 0),
+    documents_created INTEGER NOT NULL DEFAULT 0 CHECK (documents_created >= 0),
+    bytes_processed INTEGER NOT NULL DEFAULT 0 CHECK (bytes_processed >= 0),
+    characters_extracted INTEGER NOT NULL DEFAULT 0 CHECK (characters_extracted >= 0),
+    pages_processed INTEGER NOT NULL DEFAULT 0 CHECK (pages_processed >= 0),
+    warnings_count INTEGER NOT NULL DEFAULT 0 CHECK (warnings_count >= 0),
+    errors_count INTEGER NOT NULL DEFAULT 0 CHECK (errors_count >= 0),
+    retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+    max_retries INTEGER NOT NULL DEFAULT 3 CHECK (max_retries >= 0),
+    worker_id TEXT,
+    last_heartbeat_at TEXT,
+    output_manifest_checksum_sha256 TEXT,
+    error_details_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_id, idempotency_key),
+    FOREIGN KEY (source_id) REFERENCES corpus_source_registries(id) ON DELETE RESTRICT,
+    FOREIGN KEY (snapshot_id) REFERENCES corpus_source_snapshots(id) ON DELETE RESTRICT,
+    FOREIGN KEY (extraction_run_id) REFERENCES corpus_extraction_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (normalization_run_id) REFERENCES corpus_normalization_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (normalization_profile_id)
+        REFERENCES corpus_normalization_profiles(id) ON DELETE RESTRICT,
+    FOREIGN KEY (segmentation_profile_id)
+        REFERENCES corpus_segmentation_profiles(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_ingestion_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'queued','started','stage_changed','progress','warning','error','retried',
+        'cancelled','completed'
+    )),
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES corpus_ingestion_jobs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_protected_content_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    set_type TEXT NOT NULL CHECK (set_type IN (
+        'validation_dataset','test_dataset','benchmark_prompts','benchmark_answers',
+        'regression_fixtures','safety_test_sets','human_evaluation_sets',
+        'release_acceptance_sets'
+    )),
+    description TEXT NOT NULL DEFAULT '',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','active','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS corpus_protected_content_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    protected_content_set_id INTEGER NOT NULL,
+    raw_checksum_sha256 TEXT NOT NULL,
+    normalized_checksum_sha256 TEXT NOT NULL,
+    evidence_reference TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (protected_content_set_id)
+        REFERENCES corpus_protected_content_sets(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_partition_previews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    collection_id INTEGER NOT NULL,
+    seed INTEGER NOT NULL DEFAULT 42,
+    proportions_json TEXT NOT NULL DEFAULT '{}',
+    strict_mode INTEGER NOT NULL DEFAULT 1 CHECK (strict_mode IN (0,1)),
+    distribution_json TEXT NOT NULL DEFAULT '{}',
+    isolation_report_json TEXT NOT NULL DEFAULT '{}',
+    preview_checksum_sha256 TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (collection_id) REFERENCES corpus_collections(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_tokenizer_analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    tokenizer_version_id INTEGER NOT NULL,
+    collection_id INTEGER,
+    build_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','running','completed','completed_with_warnings','failed','cancelled'
+    )),
+    total_characters INTEGER NOT NULL DEFAULT 0 CHECK (total_characters >= 0),
+    total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
+    total_segments INTEGER NOT NULL DEFAULT 0 CHECK (total_segments >= 0),
+    characters_per_token REAL,
+    unknown_token_rate REAL,
+    long_sequence_rate REAL,
+    round_trip_integrity_rate REAL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (collection_id) REFERENCES corpus_collections(id) ON DELETE RESTRICT,
+    FOREIGN KEY (build_id) REFERENCES corpus_builds(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_tokenizer_analysis_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    analysis_id INTEGER NOT NULL,
+    breakdown_type TEXT NOT NULL CHECK (breakdown_type IN (
+        'language','domain','style','source','split','overall'
+    )),
+    breakdown_value TEXT NOT NULL,
+    total_characters INTEGER NOT NULL DEFAULT 0 CHECK (total_characters >= 0),
+    total_tokens INTEGER NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
+    characters_per_token REAL,
+    unknown_token_rate REAL,
+    long_sequence_rate REAL,
+    truncation_risk_rate REAL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (analysis_id) REFERENCES corpus_tokenizer_analyses(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_readiness_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    build_id INTEGER NOT NULL,
+    tokenizer_analysis_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','running','completed','failed'
+    )),
+    overall_result TEXT NOT NULL DEFAULT 'not_ready' CHECK (overall_result IN (
+        'not_ready','ready_with_warnings','ready'
+    )),
+    hard_failure_reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_id) REFERENCES corpus_builds(id) ON DELETE RESTRICT,
+    FOREIGN KEY (tokenizer_analysis_id)
+        REFERENCES corpus_tokenizer_analyses(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_readiness_dimensions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_id INTEGER NOT NULL,
+    dimension TEXT NOT NULL CHECK (dimension IN (
+        'source_governance','licence_compliance','provenance_completeness','privacy_safety',
+        'content_safety','extraction_quality','normalization_integrity','segment_quality',
+        'deduplication_completion','contamination_completion','balance_adequacy',
+        'partition_integrity','tokenizer_compatibility','manifest_integrity','export_integrity'
+    )),
+    status TEXT NOT NULL DEFAULT 'not_evaluated' CHECK (status IN (
+        'pass','warning','fail','not_evaluated'
+    )),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_id) REFERENCES corpus_readiness_evaluations(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_releases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    corpus_version_id INTEGER NOT NULL,
+    readiness_evaluation_id INTEGER,
+    export_id INTEGER,
+    semantic_version TEXT NOT NULL,
+    release_name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validated','approved','finalized','exported','retired'
+    )),
+    manifest_checksum_sha256 TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    approved_by_admin_public_id TEXT,
+    finalized_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(semantic_version),
+    FOREIGN KEY (corpus_version_id) REFERENCES corpus_versions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (readiness_evaluation_id)
+        REFERENCES corpus_readiness_evaluations(id) ON DELETE RESTRICT,
+    FOREIGN KEY (export_id) REFERENCES corpus_exports(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS corpus_release_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_id INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('approve','reject')),
+    comment TEXT NOT NULL DEFAULT '',
+    approved_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_id) REFERENCES corpus_releases(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_corpus_ingestion_jobs_source ON corpus_ingestion_jobs(source_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_ingestion_jobs_status ON corpus_ingestion_jobs(status);
+CREATE INDEX IF NOT EXISTS ix_corpus_ingestion_events_job ON corpus_ingestion_events(job_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_protected_content_entries_set
+    ON corpus_protected_content_entries(protected_content_set_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_protected_content_entries_checksum
+    ON corpus_protected_content_entries(normalized_checksum_sha256);
+CREATE INDEX IF NOT EXISTS ix_corpus_partition_previews_collection
+    ON corpus_partition_previews(collection_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_tokenizer_analyses_tokenizer
+    ON corpus_tokenizer_analyses(tokenizer_version_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_tokenizer_analysis_metrics_analysis
+    ON corpus_tokenizer_analysis_metrics(analysis_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_readiness_evaluations_build
+    ON corpus_readiness_evaluations(build_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_readiness_dimensions_evaluation
+    ON corpus_readiness_dimensions(evaluation_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_releases_version ON corpus_releases(corpus_version_id);
+CREATE INDEX IF NOT EXISTS ix_corpus_release_approvals_release
+    ON corpus_release_approvals(release_id);
+CREATE TRIGGER IF NOT EXISTS corpus_ingestion_events_immutable_update BEFORE UPDATE ON corpus_ingestion_events BEGIN SELECT RAISE(ABORT, 'ingestion events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_ingestion_events_immutable_delete BEFORE DELETE ON corpus_ingestion_events BEGIN SELECT RAISE(ABORT, 'ingestion events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_protected_content_entries_immutable_update BEFORE UPDATE ON corpus_protected_content_entries BEGIN SELECT RAISE(ABORT, 'protected content entries are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_protected_content_entries_immutable_delete BEFORE DELETE ON corpus_protected_content_entries BEGIN SELECT RAISE(ABORT, 'protected content entries are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_partition_previews_immutable_update BEFORE UPDATE ON corpus_partition_previews BEGIN SELECT RAISE(ABORT, 'partition previews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_partition_previews_immutable_delete BEFORE DELETE ON corpus_partition_previews BEGIN SELECT RAISE(ABORT, 'partition previews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_tokenizer_analysis_metrics_immutable_update BEFORE UPDATE ON corpus_tokenizer_analysis_metrics BEGIN SELECT RAISE(ABORT, 'tokenizer analysis metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_tokenizer_analysis_metrics_immutable_delete BEFORE DELETE ON corpus_tokenizer_analysis_metrics BEGIN SELECT RAISE(ABORT, 'tokenizer analysis metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_readiness_dimensions_immutable_update BEFORE UPDATE ON corpus_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_readiness_dimensions_immutable_delete BEFORE DELETE ON corpus_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_release_approvals_immutable_update BEFORE UPDATE ON corpus_release_approvals BEGIN SELECT RAISE(ABORT, 'release approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS corpus_release_approvals_immutable_delete BEFORE DELETE ON corpus_release_approvals BEGIN SELECT RAISE(ABORT, 'release approvals are append-only'); END;
 """
 

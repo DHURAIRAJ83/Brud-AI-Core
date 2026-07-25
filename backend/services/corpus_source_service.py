@@ -27,6 +27,7 @@ from backend.models.corpus import (
     SourceLicenceCreate,
     SourceRegistryCreate,
     SourceRegistryPatch,
+    SourceReviewUpdate,
 )
 from core_model.corpus.licence_policy import (
     assess_training_export_eligibility,
@@ -52,6 +53,25 @@ _MIME_BY_EXTENSION = {
     ".html": "text/html",
     ".htm": "text/html",
 }
+
+# Phase 20's required production lifecycle
+# (draft -> provenance_verified -> licence_reviewed -> approved ->
+# ingested -> retired, with rejection allowed from any review stage)
+# layered on top of Phase 19's own `status` CHECK -- see the design
+# comment in `schema.py` for why the two lifecycles are never merged.
+_PRODUCTION_LIFECYCLE_TRANSITIONS: dict[str, set[str]] = {
+    "draft": {"provenance_verified", "rejected"},
+    "provenance_verified": {"licence_reviewed", "rejected"},
+    "licence_reviewed": {"approved", "rejected"},
+    "approved": {"ingested", "retired"},
+    "ingested": {"retired"},
+}
+
+
+def _now_sql() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class CorpusSourceService:
@@ -184,8 +204,6 @@ class CorpusSourceService:
             if target_status not in allowed_transitions.get(current, set()):
                 raise ValidationError(f"cannot transition source from {current} to {target_status}")
             fields: dict[str, Any] = {"status": target_status}
-            if target_status == "origin_review":
-                fields["origin_verified"] = 0
             self.repository.update_source(connection, row["id"], fields)
             self._audit(
                 connection,
@@ -277,6 +295,81 @@ class CorpusSourceService:
                 licence_family=licence_row["licence_family"],
                 expires_at_is_past=expired,
             )
+
+    # --- Phase 20: production governance lifecycle -----------------------------
+
+    def set_review_metadata(
+        self, source_public_id: str, payload: SourceReviewUpdate, admin_id: str
+    ) -> dict[str, Any]:
+        fields = {k: v for k, v in payload.model_dump(mode="json").items() if v is not None}
+        with self.repository.transaction() as connection:
+            row = self.repository.source(connection, source_public_id)
+            self.repository.update_source(connection, row["id"], fields)
+            self._audit(connection, "corpus_source_review_metadata_set", admin_id, source_public_id)
+            return public_row(self.repository.source(connection, source_public_id))
+
+    def advance_production_lifecycle(
+        self, source_public_id: str, target_status: str, admin_id: str, *, reason: str = ""
+    ) -> dict[str, Any]:
+        """Layered on top of Phase 19's own `status` column -- see the
+        design comment in `schema.py` for why these two lifecycles
+        coexist. Every transition re-validates its real prerequisite
+        (verified origin, a reviewed licence, full training
+        eligibility, an actually-completed ingestion job) rather than
+        trusting the caller's word for it."""
+
+        with self.repository.transaction() as connection:
+            row = self.repository.source(connection, source_public_id)
+            current = row["production_lifecycle_status"]
+            allowed = _PRODUCTION_LIFECYCLE_TRANSITIONS.get(current, set())
+            if target_status not in allowed:
+                raise ValidationError(
+                    f"cannot transition production lifecycle from {current} to {target_status}"
+                )
+
+            if target_status == "provenance_verified" and not row["origin_verified"]:
+                raise ValidationError("origin must be verified before provenance_verified")
+
+            if target_status == "licence_reviewed":
+                licence_row = self.repository.latest_licence_for_source(connection, row["id"])
+                if licence_row is None or licence_row["review_status"] == "unknown":
+                    raise ValidationError(
+                        "licence must have a non-unknown review_status before licence_reviewed"
+                    )
+
+            if target_status == "approved":
+                eligibility = self.training_eligibility(source_public_id)
+                if not eligibility["eligible"]:
+                    raise ValidationError(
+                        f"source is not training-eligible: {eligibility['blocking_reasons']}"
+                    )
+
+            if target_status == "ingested":
+                completed = connection.execute(
+                    """SELECT COUNT(*) FROM corpus_ingestion_jobs
+                    WHERE source_id=? AND status IN ('completed','completed_with_warnings')""",
+                    (row["id"],),
+                ).fetchone()[0]
+                if completed == 0:
+                    raise ValidationError(
+                        "source has no completed ingestion job; cannot mark ingested"
+                    )
+
+            self.repository.update_source(
+                connection,
+                row["id"],
+                {
+                    "production_lifecycle_status": target_status,
+                    "reviewed_by_admin_public_id": admin_id,
+                    "reviewed_at": _now_sql(),
+                },
+            )
+            self._audit(
+                connection, "corpus_source_production_lifecycle_advanced", admin_id,
+                source_public_id, previous_status=current, target_status=target_status,
+                reason=reason,
+            )
+            return public_row(self.repository.source(connection, source_public_id))
 
     # --- approved-path resolution -----------------------------------------------------
 

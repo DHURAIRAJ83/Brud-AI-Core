@@ -45,6 +45,44 @@ import {
   transitionCorpusSource,
   validateCorpusPolicy,
   verifyCorpusSourceOrigin,
+  activateCorpusNormalizationProfile,
+  activateCorpusProtectedContentSet,
+  activateCorpusSegmentationProfile,
+  addCorpusProtectedContentEntries,
+  advanceCorpusSourceProductionLifecycle,
+  approveCorpusRelease,
+  archiveCorpusNormalizationProfile,
+  archiveCorpusSegmentationProfile,
+  cancelCorpusIngestionJob,
+  correctCorpusSegmentLabel,
+  corpusIngestionJob,
+  corpusIngestionJobs,
+  corpusNormalizationProfiles,
+  corpusProtectedContentSet,
+  corpusProtectedContentSets,
+  corpusReadinessEvaluation,
+  corpusRelease,
+  corpusReleases,
+  corpusSegmentAssessments,
+  corpusSegmentationProfiles,
+  corpusTokenizerAnalysis,
+  createCorpusIngestionJob,
+  createCorpusNormalizationProfile,
+  createCorpusProtectedContentSet,
+  createCorpusReadinessEvaluation,
+  createCorpusRelease,
+  createCorpusSegmentationProfile,
+  createCorpusTokenizerAnalysis,
+  exportCorpusRelease,
+  finalizeCorpusRelease,
+  inspectCorpusSourceFile,
+  previewCorpusBalance,
+  previewCorpusPartitions,
+  retireCorpusRelease,
+  retryCorpusIngestionJob,
+  runCorpusIngestionJob,
+  setCorpusSourceReviewMetadata,
+  validateCorpusRelease,
 } from '../services/api.js'
 
 const NO_AUTO_TRAINING_NOTICE =
@@ -54,6 +92,8 @@ const TABS = [
   'Overview', 'Policies', 'Sources & Licences', 'Snapshots & Extraction',
   'Normalization & Segmentation', 'Quality & Safety', 'Deduplication & Contamination',
   'Collections & Balance', 'Builds & Partitions', 'Versions, Export & Manifest', 'Compare',
+  'Governance & Ingestion', 'Profiles', 'Label Correction', 'Protected Content',
+  'Balance/Partition Preview', 'Tokenizer & Readiness', 'Releases',
 ]
 
 export default function CorpusPage() {
@@ -124,6 +164,53 @@ export default function CorpusPage() {
   const [compareRight, setCompareRight] = useState('')
   const [comparisonResult, setComparisonResult] = useState(null)
 
+  // --- Phase 20 -----------------------------------------------------
+
+  const [reviewMetaForm, setReviewMetaForm] = useState({ original_url: '', acquisition_date: '' })
+  const [lifecycleTarget, setLifecycleTarget] = useState('provenance_verified')
+  const [ingestionJobs, setIngestionJobs] = useState({ items: [] })
+  const [ingestionJobForm, setIngestionJobForm] = useState({ format: 'txt', relative_path: '' })
+  const [selectedJobId, setSelectedJobId] = useState('')
+  const [jobDetail, setJobDetail] = useState(null)
+  const [inspectForm, setInspectForm] = useState({ relative_path: '', declared_format: 'txt' })
+  const [inspectResult, setInspectResult] = useState(null)
+
+  const [normProfiles, setNormProfiles] = useState({ items: [] })
+  const [normProfileForm, setNormProfileForm] = useState({ name: '', profile_key: 'tamil_conservative' })
+  const [segProfiles, setSegProfiles] = useState({ items: [] })
+  const [segProfileForm, setSegProfileForm] = useState({ name: '', content_type: 'general', strategy: 'heading_section' })
+
+  const [labelSegmentId, setLabelSegmentId] = useState('')
+  const [labelAssessments, setLabelAssessments] = useState(null)
+  const [labelForm, setLabelForm] = useState({ label_type: 'domain', value: '' })
+
+  const [protectedSets, setProtectedSets] = useState({ items: [] })
+  const [protectedSetForm, setProtectedSetForm] = useState({ name: '', set_type: 'validation_dataset' })
+  const [selectedProtectedSetId, setSelectedProtectedSetId] = useState('')
+  const [protectedSetDetail, setProtectedSetDetail] = useState(null)
+  const [protectedTexts, setProtectedTexts] = useState('')
+
+  const [previewCollectionId, setPreviewCollectionId] = useState('')
+  const [previewBalancePolicyId, setPreviewBalancePolicyId] = useState('')
+  const [balancePreviewResult, setBalancePreviewResult] = useState(null)
+  const [partitionPreviewResult, setPartitionPreviewResult] = useState(null)
+
+  const [tokenizerVersionId, setTokenizerVersionId] = useState('')
+  const [tokenizerAnalysisId, setTokenizerAnalysisId] = useState('')
+  const [tokenizerAnalysisResult, setTokenizerAnalysisResult] = useState(null)
+  const [readinessBuildId, setReadinessBuildId] = useState('')
+  const [readinessEvaluationId, setReadinessEvaluationId] = useState('')
+  const [readinessResult, setReadinessResult] = useState(null)
+
+  const [releases, setReleases] = useState({ items: [] })
+  const [releaseForm, setReleaseForm] = useState({
+    version: '', readiness_evaluation: '', semantic_version: '', release_name: '',
+  })
+  const [selectedReleaseId, setSelectedReleaseId] = useState('')
+  const [releaseDetail, setReleaseDetail] = useState(null)
+  const [releaseApprovalComment, setReleaseApprovalComment] = useState('')
+  const [releaseExportId, setReleaseExportId] = useState('')
+
   async function load() {
     setState((old) => ({ ...old, loading: true, error: '' }))
     try {
@@ -147,6 +234,13 @@ export default function CorpusPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  useEffect(() => {
+    if (tab === 'Profiles') void loadProfiles()
+    if (tab === 'Protected Content') void loadProtectedSets()
+    if (tab === 'Releases') void loadReleases()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab])
 
   async function submitPolicy(event) {
     event.preventDefault()
@@ -462,6 +556,286 @@ export default function CorpusPage() {
 
   async function loadComparison(id) {
     setComparisonResult(await corpusComparison(id).catch(() => null))
+  }
+
+  // --- Phase 20 handlers -----------------------------------------------------
+
+  async function submitReviewMetadata(event) {
+    event.preventDefault()
+    try {
+      await setCorpusSourceReviewMetadata(selectedSourceId, reviewMetaForm)
+      setPanelError('')
+      await loadSourceDetail(selectedSourceId)
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runAdvanceLifecycle() {
+    try {
+      await advanceCorpusSourceProductionLifecycle(selectedSourceId, { target_status: lifecycleTarget })
+      setPanelError('')
+      await loadSourceDetail(selectedSourceId)
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadIngestionJobs() {
+    setIngestionJobs(await corpusIngestionJobs(selectedSourceId).catch(() => ({ items: [] })))
+  }
+
+  async function runInspectFile(event) {
+    event.preventDefault()
+    try {
+      setInspectResult(await inspectCorpusSourceFile(selectedSourceId, inspectForm))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function submitIngestionJob(event) {
+    event.preventDefault()
+    try {
+      await createCorpusIngestionJob(selectedSourceId, {
+        format: ingestionJobForm.format, relative_paths: [ingestionJobForm.relative_path],
+      })
+      setPanelError('')
+      await loadIngestionJobs()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadJobDetail(jobId) {
+    setSelectedJobId(jobId)
+    setJobDetail(await corpusIngestionJob(jobId).catch(() => null))
+  }
+
+  async function runIngestionJob() {
+    try {
+      const detail = await runCorpusIngestionJob(selectedJobId, {
+        relative_paths: [ingestionJobForm.relative_path],
+      })
+      setJobDetail(detail)
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runCancelJob() {
+    setJobDetail(await cancelCorpusIngestionJob(selectedJobId).catch((error) => { setPanelError(error.message); return jobDetail }))
+  }
+
+  async function runRetryJob() {
+    setJobDetail(await retryCorpusIngestionJob(selectedJobId).catch((error) => { setPanelError(error.message); return jobDetail }))
+  }
+
+  async function loadProfiles() {
+    setNormProfiles(await corpusNormalizationProfiles().catch(() => ({ items: [] })))
+    setSegProfiles(await corpusSegmentationProfiles().catch(() => ({ items: [] })))
+  }
+
+  async function submitNormProfile(event) {
+    event.preventDefault()
+    try {
+      await createCorpusNormalizationProfile(normProfileForm)
+      setPanelError('')
+      await loadProfiles()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function submitSegProfile(event) {
+    event.preventDefault()
+    try {
+      await createCorpusSegmentationProfile(segProfileForm)
+      setPanelError('')
+      await loadProfiles()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadLabelAssessments() {
+    try {
+      setLabelAssessments(await corpusSegmentAssessments(labelSegmentId))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function submitLabelCorrection(event) {
+    event.preventDefault()
+    try {
+      await correctCorpusSegmentLabel(labelSegmentId, labelForm)
+      setPanelError('')
+      await loadLabelAssessments()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadProtectedSets() {
+    setProtectedSets(await corpusProtectedContentSets().catch(() => ({ items: [] })))
+  }
+
+  async function submitProtectedSet(event) {
+    event.preventDefault()
+    try {
+      await createCorpusProtectedContentSet(protectedSetForm)
+      setPanelError('')
+      await loadProtectedSets()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadProtectedSetDetail(setId) {
+    setSelectedProtectedSetId(setId)
+    setProtectedSetDetail(await corpusProtectedContentSet(setId).catch(() => null))
+  }
+
+  async function runActivateProtectedSet() {
+    await activateCorpusProtectedContentSet(selectedProtectedSetId).catch((error) => setPanelError(error.message))
+    await loadProtectedSetDetail(selectedProtectedSetId)
+  }
+
+  async function submitProtectedEntries(event) {
+    event.preventDefault()
+    try {
+      const texts = protectedTexts.split('\n').map((line) => line.trim()).filter(Boolean)
+      await addCorpusProtectedContentEntries(selectedProtectedSetId, { texts })
+      setProtectedTexts('')
+      setPanelError('')
+      await loadProtectedSetDetail(selectedProtectedSetId)
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runPreviewBalance() {
+    try {
+      setBalancePreviewResult(
+        await previewCorpusBalance(previewCollectionId, { balance_policy_public_id: previewBalancePolicyId }),
+      )
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runPreviewPartitions() {
+    try {
+      setPartitionPreviewResult(await previewCorpusPartitions(previewCollectionId, {}))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runCreateTokenizerAnalysis() {
+    try {
+      const created = await createCorpusTokenizerAnalysis({ tokenizer_version_public_id: tokenizerVersionId })
+      setTokenizerAnalysisId(created.public_id)
+      setTokenizerAnalysisResult(created)
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadTokenizerAnalysis() {
+    setTokenizerAnalysisResult(await corpusTokenizerAnalysis(tokenizerAnalysisId).catch(() => null))
+  }
+
+  async function runCreateReadinessEvaluation() {
+    try {
+      const created = await createCorpusReadinessEvaluation({ build_public_id: readinessBuildId })
+      setReadinessEvaluationId(created.public_id)
+      setReadinessResult(created)
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadReadinessEvaluation() {
+    setReadinessResult(await corpusReadinessEvaluation(readinessEvaluationId).catch(() => null))
+  }
+
+  async function loadReleases() {
+    setReleases(await corpusReleases().catch(() => ({ items: [] })))
+  }
+
+  async function submitRelease(event) {
+    event.preventDefault()
+    try {
+      await createCorpusRelease({
+        corpus_version_public_id: releaseForm.version,
+        readiness_evaluation_public_id: releaseForm.readiness_evaluation || null,
+        semantic_version: releaseForm.semantic_version,
+        release_name: releaseForm.release_name,
+      })
+      setPanelError('')
+      await loadReleases()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function loadReleaseDetail(releaseId) {
+    setSelectedReleaseId(releaseId)
+    setReleaseDetail(await corpusRelease(releaseId).catch(() => null))
+  }
+
+  async function runValidateRelease() {
+    try {
+      setReleaseDetail(await validateCorpusRelease(selectedReleaseId))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runApproveRelease(decision) {
+    try {
+      setReleaseDetail(await approveCorpusRelease(selectedReleaseId, { decision, comment: releaseApprovalComment }))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runFinalizeRelease() {
+    try {
+      setReleaseDetail(await finalizeCorpusRelease(selectedReleaseId))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runExportRelease() {
+    try {
+      setReleaseDetail(await exportCorpusRelease(selectedReleaseId, { export_public_id: releaseExportId }))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runRetireRelease() {
+    try {
+      setReleaseDetail(await retireCorpusRelease(selectedReleaseId))
+      setPanelError('')
+    } catch (error) {
+      setPanelError(error.message)
+    }
   }
 
   if (state.loading) return <section className="notice">Loading corpus builder…</section>
@@ -887,6 +1261,330 @@ export default function CorpusPage() {
                 <article>
                   <div>Compatibility: {comparisonResult.compatibility}</div>
                   <pre>{JSON.stringify(comparisonResult.comparison, null, 2)}</pre>
+                </article>
+              )}
+            </>
+          )}
+
+          {tab === 'Governance & Ingestion' && (
+            <>
+              <h3>Production Lifecycle (selected source)</h3>
+              <p className="notice">
+                draft → provenance_verified → licence_reviewed → approved → ingested → retired
+                (rejection allowed from any review stage).
+              </p>
+              {sourceDetail ? (
+                <>
+                  <div>
+                    Current: {sourceDetail.production_lifecycle_status ?? 'draft'}
+                  </div>
+                  <form className="inline-form" onSubmit={submitReviewMetadata}>
+                    <input placeholder="Original URL" value={reviewMetaForm.original_url}
+                      onChange={(event) => setReviewMetaForm({ ...reviewMetaForm, original_url: event.target.value })} />
+                    <input placeholder="Acquisition date (YYYY-MM-DD)" value={reviewMetaForm.acquisition_date}
+                      onChange={(event) => setReviewMetaForm({ ...reviewMetaForm, acquisition_date: event.target.value })} />
+                    <button type="submit">Save review metadata</button>
+                  </form>
+                  <div className="inline-form">
+                    <select value={lifecycleTarget} onChange={(event) => setLifecycleTarget(event.target.value)}>
+                      <option value="provenance_verified">provenance_verified</option>
+                      <option value="licence_reviewed">licence_reviewed</option>
+                      <option value="approved">approved</option>
+                      <option value="ingested">ingested</option>
+                      <option value="rejected">rejected</option>
+                      <option value="retired">retired</option>
+                    </select>
+                    <button onClick={runAdvanceLifecycle}>Advance lifecycle</button>
+                  </div>
+
+                  <h4>Inspect Approved File</h4>
+                  <form className="inline-form" onSubmit={runInspectFile}>
+                    <input placeholder="Relative path under approved root" value={inspectForm.relative_path}
+                      onChange={(event) => setInspectForm({ ...inspectForm, relative_path: event.target.value })} required />
+                    <select value={inspectForm.declared_format}
+                      onChange={(event) => setInspectForm({ ...inspectForm, declared_format: event.target.value })}>
+                      {['pdf', 'txt', 'json', 'jsonl', 'csv', 'docx', 'html', 'markdown'].map((fmt) => (
+                        <option key={fmt} value={fmt}>{fmt}</option>
+                      ))}
+                    </select>
+                    <button type="submit">Inspect</button>
+                  </form>
+                  {inspectResult && <pre>{JSON.stringify(inspectResult, null, 2)}</pre>}
+
+                  <h4>Ingestion Jobs</h4>
+                  <form className="inline-form" onSubmit={submitIngestionJob}>
+                    <select value={ingestionJobForm.format}
+                      onChange={(event) => setIngestionJobForm({ ...ingestionJobForm, format: event.target.value })}>
+                      {['pdf', 'txt', 'json', 'jsonl', 'csv', 'docx', 'html', 'markdown'].map((fmt) => (
+                        <option key={fmt} value={fmt}>{fmt}</option>
+                      ))}
+                    </select>
+                    <input placeholder="Relative path" value={ingestionJobForm.relative_path}
+                      onChange={(event) => setIngestionJobForm({ ...ingestionJobForm, relative_path: event.target.value })} required />
+                    <button type="submit">Create job</button>
+                    <button type="button" onClick={loadIngestionJobs}>Refresh jobs</button>
+                  </form>
+                  {(ingestionJobs.items ?? []).map((job) => (
+                    <button key={job.public_id} className="training-job-row" onClick={() => loadJobDetail(job.public_id)}>
+                      <strong>{job.format}</strong>
+                      <span>{job.status} — stage {job.current_stage}</span>
+                    </button>
+                  ))}
+                  {jobDetail && (
+                    <article>
+                      <div>Status: {jobDetail.status} ({jobDetail.current_stage})</div>
+                      <div>Documents created: {jobDetail.documents_created}, retries: {jobDetail.retry_count}/{jobDetail.max_retries}</div>
+                      <div className="inline-form">
+                        <button onClick={runIngestionJob}>Run/Resume</button>
+                        <button onClick={runCancelJob}>Cancel</button>
+                        <button onClick={runRetryJob}>Retry</button>
+                      </div>
+                      <pre>{JSON.stringify(jobDetail.events, null, 2)}</pre>
+                    </article>
+                  )}
+                </>
+              ) : (
+                <p className="notice">Select a source from the list to manage its governance and ingestion.</p>
+              )}
+            </>
+          )}
+
+          {tab === 'Profiles' && (
+            <>
+              <h3>Normalization Profiles</h3>
+              <form className="inline-form" onSubmit={submitNormProfile}>
+                <input placeholder="Name" value={normProfileForm.name}
+                  onChange={(event) => setNormProfileForm({ ...normProfileForm, name: event.target.value })} required />
+                <select value={normProfileForm.profile_key}
+                  onChange={(event) => setNormProfileForm({ ...normProfileForm, profile_key: event.target.value })}>
+                  <option value="tamil_conservative">tamil_conservative</option>
+                  <option value="tamil_ocr_cleanup">tamil_ocr_cleanup</option>
+                  <option value="tamil_education_text">tamil_education_text</option>
+                  <option value="tamil_web_text">tamil_web_text</option>
+                  <option value="tamil_mixed_tanglish">tamil_mixed_tanglish</option>
+                </select>
+                <button type="submit">Create profile</button>
+              </form>
+              {(normProfiles.items ?? []).map((profile) => (
+                <article key={profile.public_id}>
+                  <strong>{profile.name}</strong> ({profile.profile_key}) — {profile.lifecycle_status}
+                  <div className="inline-form">
+                    <button onClick={() => activateCorpusNormalizationProfile(profile.public_id).then(loadProfiles)}>Activate</button>
+                    <button onClick={() => archiveCorpusNormalizationProfile(profile.public_id).then(loadProfiles)}>Archive</button>
+                  </div>
+                </article>
+              ))}
+
+              <h3>Segmentation Profiles</h3>
+              <form className="inline-form" onSubmit={submitSegProfile}>
+                <input placeholder="Name" value={segProfileForm.name}
+                  onChange={(event) => setSegProfileForm({ ...segProfileForm, name: event.target.value })} required />
+                <select value={segProfileForm.content_type}
+                  onChange={(event) => setSegProfileForm({ ...segProfileForm, content_type: event.target.value })}>
+                  {['general', 'books', 'school_textbooks', 'articles', 'government_documents',
+                    'agriculture_content', 'literature', 'conversational_text', 'faq_instructional'].map((ct) => (
+                    <option key={ct} value={ct}>{ct}</option>
+                  ))}
+                </select>
+                <select value={segProfileForm.strategy}
+                  onChange={(event) => setSegProfileForm({ ...segProfileForm, strategy: event.target.value })}>
+                  <option value="heading_section">heading_section</option>
+                  <option value="paragraph">paragraph</option>
+                  <option value="sentence_window">sentence_window</option>
+                  <option value="token_window">token_window</option>
+                  <option value="document_preserving">document_preserving</option>
+                </select>
+                <button type="submit">Create profile</button>
+              </form>
+              {(segProfiles.items ?? []).map((profile) => (
+                <article key={profile.public_id}>
+                  <strong>{profile.name}</strong> ({profile.content_type} / {profile.strategy}) — {profile.lifecycle_status}
+                  <div className="inline-form">
+                    <button onClick={() => activateCorpusSegmentationProfile(profile.public_id).then(loadProfiles)}>Activate</button>
+                    <button onClick={() => archiveCorpusSegmentationProfile(profile.public_id).then(loadProfiles)}>Archive</button>
+                  </div>
+                </article>
+              ))}
+            </>
+          )}
+
+          {tab === 'Label Correction' && (
+            <>
+              <h3>Segment Assessments &amp; Human Correction</h3>
+              <p className="notice">
+                A correction is always appended as a new row on top of the original heuristic
+                assessment — the original evidence is never mutated or deleted.
+              </p>
+              <div className="inline-form">
+                <input placeholder="Segment public ID" value={labelSegmentId}
+                  onChange={(event) => setLabelSegmentId(event.target.value)} />
+                <button onClick={loadLabelAssessments}>Load assessments</button>
+              </div>
+              {labelAssessments && <pre>{JSON.stringify(labelAssessments, null, 2)}</pre>}
+              <form className="inline-form" onSubmit={submitLabelCorrection}>
+                <select value={labelForm.label_type}
+                  onChange={(event) => setLabelForm({ ...labelForm, label_type: event.target.value })}>
+                  <option value="language">language</option>
+                  <option value="domain">domain</option>
+                  <option value="style">style</option>
+                </select>
+                <input placeholder="Corrected value" value={labelForm.value}
+                  onChange={(event) => setLabelForm({ ...labelForm, value: event.target.value })} required />
+                <button type="submit">Submit correction</button>
+              </form>
+            </>
+          )}
+
+          {tab === 'Protected Content' && (
+            <>
+              <h3>Protected Content Registry</h3>
+              <p className="notice">
+                Only checksums of validation/test/benchmark/regression content are stored here —
+                never the raw protected text.
+              </p>
+              <form className="inline-form" onSubmit={submitProtectedSet}>
+                <input placeholder="Name" value={protectedSetForm.name}
+                  onChange={(event) => setProtectedSetForm({ ...protectedSetForm, name: event.target.value })} required />
+                <select value={protectedSetForm.set_type}
+                  onChange={(event) => setProtectedSetForm({ ...protectedSetForm, set_type: event.target.value })}>
+                  {['validation_dataset', 'test_dataset', 'benchmark_prompts', 'benchmark_answers',
+                    'regression_fixtures', 'safety_test_sets', 'human_evaluation_sets',
+                    'release_acceptance_sets'].map((st) => <option key={st} value={st}>{st}</option>)}
+                </select>
+                <button type="submit">Create set</button>
+              </form>
+              {(protectedSets.items ?? []).map((set) => (
+                <button key={set.public_id} className="training-job-row" onClick={() => loadProtectedSetDetail(set.public_id)}>
+                  <strong>{set.name}</strong>
+                  <span>{set.set_type} — {set.lifecycle_status}</span>
+                </button>
+              ))}
+              {protectedSetDetail && (
+                <>
+                  <div className="inline-form">
+                    <button onClick={runActivateProtectedSet}>Activate set</button>
+                    <span>Entries: {protectedSetDetail.entry_count}</span>
+                  </div>
+                  <form className="inline-form" onSubmit={submitProtectedEntries}>
+                    <textarea placeholder="One protected text per line" value={protectedTexts}
+                      onChange={(event) => setProtectedTexts(event.target.value)} required />
+                    <button type="submit">Add entries (stores checksums only)</button>
+                  </form>
+                </>
+              )}
+            </>
+          )}
+
+          {tab === 'Balance/Partition Preview' && (
+            <>
+              <h3>Dry-Run Balance &amp; Partition Preview</h3>
+              <p className="notice">
+                Read-only — never selects, excludes, or assigns a single segment; use this to
+                tune a balance policy or seed before committing to a real build.
+              </p>
+              <div className="inline-form">
+                <input placeholder="Collection public ID" value={previewCollectionId}
+                  onChange={(event) => setPreviewCollectionId(event.target.value)} />
+                <input placeholder="Balance policy public ID" value={previewBalancePolicyId}
+                  onChange={(event) => setPreviewBalancePolicyId(event.target.value)} />
+                <button onClick={runPreviewBalance}>Preview balance</button>
+                <button onClick={runPreviewPartitions}>Preview partitions</button>
+              </div>
+              {balancePreviewResult && <pre>{JSON.stringify(balancePreviewResult, null, 2)}</pre>}
+              {partitionPreviewResult && <pre>{JSON.stringify(partitionPreviewResult, null, 2)}</pre>}
+            </>
+          )}
+
+          {tab === 'Tokenizer & Readiness' && (
+            <>
+              <h3>Tokenizer Compatibility Analysis</h3>
+              <p className="notice">Analyzes an existing, registered tokenizer — never trains one.</p>
+              <div className="inline-form">
+                <input placeholder="Tokenizer version public ID" value={tokenizerVersionId}
+                  onChange={(event) => setTokenizerVersionId(event.target.value)} />
+                <button onClick={runCreateTokenizerAnalysis}>Run analysis</button>
+                <input placeholder="Existing analysis public ID" value={tokenizerAnalysisId}
+                  onChange={(event) => setTokenizerAnalysisId(event.target.value)} />
+                <button onClick={loadTokenizerAnalysis}>Load</button>
+              </div>
+              {tokenizerAnalysisResult && (
+                <article>
+                  <div>Status: {tokenizerAnalysisResult.status}</div>
+                  <div>Chars/token: {tokenizerAnalysisResult.characters_per_token}</div>
+                  <div>Unknown token rate: {tokenizerAnalysisResult.unknown_token_rate}</div>
+                  <div>Long sequence rate: {tokenizerAnalysisResult.long_sequence_rate}</div>
+                </article>
+              )}
+
+              <h3>Pretraining Readiness Gate</h3>
+              <div className="inline-form">
+                <input placeholder="Build public ID" value={readinessBuildId}
+                  onChange={(event) => setReadinessBuildId(event.target.value)} />
+                <button onClick={runCreateReadinessEvaluation}>Evaluate readiness</button>
+                <input placeholder="Existing evaluation public ID" value={readinessEvaluationId}
+                  onChange={(event) => setReadinessEvaluationId(event.target.value)} />
+                <button onClick={loadReadinessEvaluation}>Load</button>
+              </div>
+              {readinessResult && (
+                <article>
+                  <div><strong>Overall: {readinessResult.overall_result}</strong></div>
+                  {(readinessResult.dimensions ?? []).map((dim) => (
+                    <div key={dim.public_id}>{dim.dimension}: {dim.status}</div>
+                  ))}
+                  {readinessResult.hard_failure_reasons?.length > 0 && (
+                    <div className="notice error-notice">
+                      Hard failures: {readinessResult.hard_failure_reasons.join(', ')}
+                    </div>
+                  )}
+                </article>
+              )}
+            </>
+          )}
+
+          {tab === 'Releases' && (
+            <>
+              <h3>Corpus Releases</h3>
+              <p className="notice">
+                draft → validated → approved → finalized → exported → retired. Finalized is
+                immutable; new content always requires a brand new corpus version and release.
+              </p>
+              <form className="inline-form" onSubmit={submitRelease}>
+                <input placeholder="Corpus version public ID" value={releaseForm.version}
+                  onChange={(event) => setReleaseForm({ ...releaseForm, version: event.target.value })} required />
+                <input placeholder="Readiness evaluation public ID (optional)" value={releaseForm.readiness_evaluation}
+                  onChange={(event) => setReleaseForm({ ...releaseForm, readiness_evaluation: event.target.value })} />
+                <input placeholder="Semantic version" value={releaseForm.semantic_version}
+                  onChange={(event) => setReleaseForm({ ...releaseForm, semantic_version: event.target.value })} required />
+                <input placeholder="Release name" value={releaseForm.release_name}
+                  onChange={(event) => setReleaseForm({ ...releaseForm, release_name: event.target.value })} required />
+                <button type="submit">Create release</button>
+              </form>
+              {(releases.items ?? []).map((release) => (
+                <button key={release.public_id} className="training-job-row" onClick={() => loadReleaseDetail(release.public_id)}>
+                  <strong>{release.release_name}</strong>
+                  <span>{release.semantic_version} — {release.status}</span>
+                </button>
+              ))}
+              {releaseDetail && (
+                <article>
+                  <div>Status: {releaseDetail.status}</div>
+                  <div>Manifest checksum: {releaseDetail.manifest_checksum_sha256 ?? 'not finalized'}</div>
+                  <div className="inline-form">
+                    <button onClick={runValidateRelease} disabled={releaseDetail.status !== 'draft'}>Validate</button>
+                    <input placeholder="Approval comment" value={releaseApprovalComment}
+                      onChange={(event) => setReleaseApprovalComment(event.target.value)} />
+                    <button onClick={() => runApproveRelease('approve')} disabled={releaseDetail.status !== 'validated'}>Approve</button>
+                    <button onClick={() => runApproveRelease('reject')} disabled={releaseDetail.status !== 'validated'}>Reject</button>
+                    <button onClick={runFinalizeRelease} disabled={releaseDetail.status !== 'approved'}>Finalize</button>
+                  </div>
+                  <div className="inline-form">
+                    <input placeholder="Export public ID" value={releaseExportId}
+                      onChange={(event) => setReleaseExportId(event.target.value)} />
+                    <button onClick={runExportRelease} disabled={releaseDetail.status !== 'finalized'}>Mark exported</button>
+                    <button onClick={runRetireRelease} disabled={releaseDetail.status !== 'exported'}>Retire</button>
+                  </div>
+                  <h4>Approvals</h4>
+                  <pre>{JSON.stringify(releaseDetail.approvals, null, 2)}</pre>
                 </article>
               )}
             </>

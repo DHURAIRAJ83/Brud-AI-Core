@@ -19,6 +19,7 @@ from backend.database.repositories.base import RepositoryError
 from backend.database.repositories.corpus import CorpusRepository
 from backend.models.corpus import (
     BalancePolicyCreate,
+    BalancePreviewRequest,
     BuildCreate,
     CollectionCreate,
     ContaminationRunCreate,
@@ -27,19 +28,36 @@ from backend.models.corpus import (
     DeduplicationRunCreate,
     ExportCreate,
     ExtractionRunCreate,
+    IngestionJobCreate,
+    LabelCorrection,
     LicenceReviewDecision,
+    NormalizationProfileCreate,
     NormalizationRunCreate,
+    PartitionPreviewRequest,
+    ProtectedContentEntryCreate,
+    ProtectedContentSetCreate,
+    ReadinessEvaluationCreate,
+    ReleaseApprovalCreate,
+    ReleaseCreate,
+    SegmentationProfileCreate,
     SegmentationRequest,
     SnapshotCreate,
     SourceLicenceCreate,
     SourceRegistryCreate,
+    SourceReviewUpdate,
+    TokenizerAnalysisCreate,
     VersionCreate,
 )
 from backend.services.corpus_build_service import CorpusBuildService
 from backend.services.corpus_export_service import CorpusExportService
+from backend.services.corpus_ingestion_service import CorpusIngestionService
 from backend.services.corpus_processing_service import CorpusProcessingService
+from backend.services.corpus_profile_service import CorpusProfileService
 from backend.services.corpus_quality_service import CorpusQualityService
+from backend.services.corpus_readiness_service import CorpusReadinessService
+from backend.services.corpus_release_service import CorpusReleaseService
 from backend.services.corpus_source_service import CorpusSourceService
+from backend.services.corpus_tokenizer_analysis_service import CorpusTokenizerAnalysisService
 
 CLI_ADMIN_ID = "00000000-0000-0000-0000-0000000000fa"
 
@@ -154,6 +172,124 @@ def main(argv: list[str] | None = None) -> int:
     compare_parser.add_argument("left_version_public_id")
     compare_parser.add_argument("right_version_public_id")
 
+    # --- Phase 20 -----------------------------------------------------
+
+    review_meta_parser = subparsers.add_parser("set-review-metadata")
+    review_meta_parser.add_argument("source_public_id")
+    review_meta_parser.add_argument("--original-url")
+    review_meta_parser.add_argument("--acquisition-date")
+
+    lifecycle_parser = subparsers.add_parser("advance-production-lifecycle")
+    lifecycle_parser.add_argument("source_public_id")
+    lifecycle_parser.add_argument("target_status")
+    lifecycle_parser.add_argument("--reason", default="")
+
+    subparsers.add_parser("normalization-profiles")
+    create_norm_profile_parser = subparsers.add_parser("create-normalization-profile")
+    create_norm_profile_parser.add_argument("--name", required=True)
+    create_norm_profile_parser.add_argument("--profile-key", required=True)
+    activate_norm_profile_parser = subparsers.add_parser("activate-normalization-profile")
+    activate_norm_profile_parser.add_argument("profile_public_id")
+    archive_norm_profile_parser = subparsers.add_parser("archive-normalization-profile")
+    archive_norm_profile_parser.add_argument("profile_public_id")
+
+    subparsers.add_parser("segmentation-profiles")
+    create_seg_profile_parser = subparsers.add_parser("create-segmentation-profile")
+    create_seg_profile_parser.add_argument("--name", required=True)
+    create_seg_profile_parser.add_argument("--content-type", required=True)
+    create_seg_profile_parser.add_argument("--strategy", required=True)
+    activate_seg_profile_parser = subparsers.add_parser("activate-segmentation-profile")
+    activate_seg_profile_parser.add_argument("profile_public_id")
+    archive_seg_profile_parser = subparsers.add_parser("archive-segmentation-profile")
+    archive_seg_profile_parser.add_argument("profile_public_id")
+
+    inspect_file_parser = subparsers.add_parser("inspect-file")
+    inspect_file_parser.add_argument("--relative-path", required=True)
+    inspect_file_parser.add_argument("--declared-format", required=True)
+
+    create_job_parser = subparsers.add_parser("create-ingestion-job")
+    create_job_parser.add_argument("source_public_id")
+    create_job_parser.add_argument("--format", required=True)
+    create_job_parser.add_argument("--relative-path", action="append", required=True)
+    create_job_parser.add_argument("--idempotency-key")
+
+    ingestion_jobs_parser = subparsers.add_parser("ingestion-jobs")
+    ingestion_jobs_parser.add_argument("source_public_id")
+    get_job_parser = subparsers.add_parser("get-ingestion-job")
+    get_job_parser.add_argument("job_public_id")
+
+    run_job_parser = subparsers.add_parser("run-ingestion-job")
+    run_job_parser.add_argument("job_public_id")
+    run_job_parser.add_argument("--relative-path", action="append", required=True)
+
+    cancel_job_parser = subparsers.add_parser("cancel-ingestion-job")
+    cancel_job_parser.add_argument("job_public_id")
+    retry_job_parser = subparsers.add_parser("retry-ingestion-job")
+    retry_job_parser.add_argument("job_public_id")
+
+    segment_assessments_parser = subparsers.add_parser("segment-assessments")
+    segment_assessments_parser.add_argument("segment_public_id")
+
+    correct_label_parser = subparsers.add_parser("correct-label")
+    correct_label_parser.add_argument("segment_public_id")
+    correct_label_parser.add_argument("--label-type", required=True)
+    correct_label_parser.add_argument("--value", required=True)
+
+    subparsers.add_parser("protected-content-sets")
+    create_pcs_parser = subparsers.add_parser("create-protected-content-set")
+    create_pcs_parser.add_argument("--name", required=True)
+    create_pcs_parser.add_argument("--set-type", required=True)
+    get_pcs_parser = subparsers.add_parser("get-protected-content-set")
+    get_pcs_parser.add_argument("set_public_id")
+    activate_pcs_parser = subparsers.add_parser("activate-protected-content-set")
+    activate_pcs_parser.add_argument("set_public_id")
+    add_pcs_entries_parser = subparsers.add_parser("add-protected-content-entries")
+    add_pcs_entries_parser.add_argument("set_public_id")
+    add_pcs_entries_parser.add_argument("--text", action="append", required=True)
+
+    preview_balance_parser = subparsers.add_parser("preview-balance")
+    preview_balance_parser.add_argument("collection_public_id")
+    preview_balance_parser.add_argument("--balance-policy", required=True)
+
+    preview_partitions_parser = subparsers.add_parser("preview-partitions")
+    preview_partitions_parser.add_argument("collection_public_id")
+    preview_partitions_parser.add_argument("--seed", type=int, default=42)
+
+    create_tok_analysis_parser = subparsers.add_parser("create-tokenizer-analysis")
+    create_tok_analysis_parser.add_argument("--tokenizer-version", required=True)
+    create_tok_analysis_parser.add_argument("--collection")
+    create_tok_analysis_parser.add_argument("--build")
+    get_tok_analysis_parser = subparsers.add_parser("get-tokenizer-analysis")
+    get_tok_analysis_parser.add_argument("analysis_public_id")
+
+    create_readiness_parser = subparsers.add_parser("create-readiness-evaluation")
+    create_readiness_parser.add_argument("build_public_id")
+    create_readiness_parser.add_argument("--tokenizer-analysis")
+    get_readiness_parser = subparsers.add_parser("get-readiness-evaluation")
+    get_readiness_parser.add_argument("evaluation_public_id")
+
+    subparsers.add_parser("releases")
+    create_release_parser = subparsers.add_parser("create-release")
+    create_release_parser.add_argument("--version", required=True)
+    create_release_parser.add_argument("--readiness-evaluation")
+    create_release_parser.add_argument("--semantic-version", required=True)
+    create_release_parser.add_argument("--release-name", required=True)
+    get_release_parser = subparsers.add_parser("get-release")
+    get_release_parser.add_argument("release_public_id")
+    validate_release_parser = subparsers.add_parser("validate-release")
+    validate_release_parser.add_argument("release_public_id")
+    approve_release_parser = subparsers.add_parser("approve-release")
+    approve_release_parser.add_argument("release_public_id")
+    approve_release_parser.add_argument("--decision", required=True, choices=["approve", "reject"])
+    approve_release_parser.add_argument("--comment", default="")
+    finalize_release_parser = subparsers.add_parser("finalize-release")
+    finalize_release_parser.add_argument("release_public_id")
+    export_release_parser = subparsers.add_parser("export-release")
+    export_release_parser.add_argument("release_public_id")
+    export_release_parser.add_argument("--export", required=True)
+    retire_release_parser = subparsers.add_parser("retire-release")
+    retire_release_parser.add_argument("release_public_id")
+
     args = parser.parse_args(argv)
 
     settings = _settings()
@@ -163,6 +299,11 @@ def main(argv: list[str] | None = None) -> int:
     quality_svc = CorpusQualityService(repo, settings)
     build_svc = CorpusBuildService(repo, settings)
     export_svc = CorpusExportService(repo, settings)
+    profile_svc = CorpusProfileService(repo, settings)
+    ingestion_svc = CorpusIngestionService(repo, settings)
+    tokenizer_analysis_svc = CorpusTokenizerAnalysisService(repo, settings)
+    readiness_svc = CorpusReadinessService(repo, settings)
+    release_svc = CorpusReleaseService(repo, settings)
 
     try:
         if args.command == "policies":
@@ -348,6 +489,207 @@ def main(argv: list[str] | None = None) -> int:
                     CLI_ADMIN_ID,
                 )
             )
+        elif args.command == "set-review-metadata":
+            _print(
+                source_svc.set_review_metadata(
+                    args.source_public_id,
+                    SourceReviewUpdate(
+                        original_url=args.original_url, acquisition_date=args.acquisition_date
+                    ),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "advance-production-lifecycle":
+            _print(
+                source_svc.advance_production_lifecycle(
+                    args.source_public_id, args.target_status, CLI_ADMIN_ID, reason=args.reason
+                )
+            )
+        elif args.command == "normalization-profiles":
+            _print(profile_svc.list_normalization_profiles())
+        elif args.command == "create-normalization-profile":
+            _print(
+                profile_svc.create_normalization_profile(
+                    NormalizationProfileCreate(name=args.name, profile_key=args.profile_key),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "activate-normalization-profile":
+            _print(
+                profile_svc.activate_normalization_profile(args.profile_public_id, CLI_ADMIN_ID)
+            )
+        elif args.command == "archive-normalization-profile":
+            _print(
+                profile_svc.archive_normalization_profile(args.profile_public_id, CLI_ADMIN_ID)
+            )
+        elif args.command == "segmentation-profiles":
+            _print(profile_svc.list_segmentation_profiles())
+        elif args.command == "create-segmentation-profile":
+            _print(
+                profile_svc.create_segmentation_profile(
+                    SegmentationProfileCreate(
+                        name=args.name, content_type=args.content_type, strategy=args.strategy
+                    ),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "activate-segmentation-profile":
+            _print(profile_svc.activate_segmentation_profile(args.profile_public_id, CLI_ADMIN_ID))
+        elif args.command == "archive-segmentation-profile":
+            _print(profile_svc.archive_segmentation_profile(args.profile_public_id, CLI_ADMIN_ID))
+        elif args.command == "inspect-file":
+            _print(
+                ingestion_svc.inspect_source_file(args.relative_path, args.declared_format)
+            )
+        elif args.command == "create-ingestion-job":
+            _print(
+                ingestion_svc.create_job(
+                    args.source_public_id,
+                    IngestionJobCreate(
+                        format=args.format,
+                        relative_paths=args.relative_path,
+                        idempotency_key=args.idempotency_key,
+                    ),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "ingestion-jobs":
+            _print(ingestion_svc.list_jobs(args.source_public_id))
+        elif args.command == "get-ingestion-job":
+            _print(ingestion_svc.get_job(args.job_public_id))
+        elif args.command == "run-ingestion-job":
+            if not _confirm(
+                f"About to run ingestion job {args.job_public_id} "
+                f"(snapshot -> extract -> normalize -> segment).",
+                "run",
+            ):
+                print("Cancelled.", file=sys.stderr)
+                return 1
+            _print(
+                ingestion_svc.run_job(args.job_public_id, args.relative_path, CLI_ADMIN_ID)
+            )
+        elif args.command == "cancel-ingestion-job":
+            _print(ingestion_svc.cancel_job(args.job_public_id, CLI_ADMIN_ID))
+        elif args.command == "retry-ingestion-job":
+            _print(ingestion_svc.retry_job(args.job_public_id, CLI_ADMIN_ID))
+        elif args.command == "segment-assessments":
+            _print(quality_svc.assessments_for_segment(args.segment_public_id))
+        elif args.command == "correct-label":
+            _print(
+                quality_svc.correct_label(
+                    args.segment_public_id,
+                    LabelCorrection(label_type=args.label_type, value=args.value),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "protected-content-sets":
+            _print(quality_svc.list_protected_content_sets())
+        elif args.command == "create-protected-content-set":
+            _print(
+                quality_svc.create_protected_content_set(
+                    ProtectedContentSetCreate(name=args.name, set_type=args.set_type),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "get-protected-content-set":
+            _print(quality_svc.get_protected_content_set(args.set_public_id))
+        elif args.command == "activate-protected-content-set":
+            _print(quality_svc.activate_protected_content_set(args.set_public_id, CLI_ADMIN_ID))
+        elif args.command == "add-protected-content-entries":
+            _print(
+                quality_svc.add_protected_content_entries(
+                    args.set_public_id,
+                    ProtectedContentEntryCreate(texts=args.text),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "preview-balance":
+            _print(
+                build_svc.preview_balance(
+                    args.collection_public_id,
+                    BalancePreviewRequest(balance_policy_public_id=args.balance_policy),
+                )
+            )
+        elif args.command == "preview-partitions":
+            _print(
+                build_svc.preview_partitions(
+                    args.collection_public_id,
+                    PartitionPreviewRequest(seed=args.seed),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "create-tokenizer-analysis":
+            if not _confirm(
+                f"About to run tokenizer compatibility analysis with "
+                f"tokenizer version {args.tokenizer_version}.",
+                "analyze",
+            ):
+                print("Cancelled.", file=sys.stderr)
+                return 1
+            _print(
+                tokenizer_analysis_svc.create_analysis(
+                    TokenizerAnalysisCreate(
+                        tokenizer_version_public_id=args.tokenizer_version,
+                        collection_public_id=args.collection,
+                        build_public_id=args.build,
+                    ),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "get-tokenizer-analysis":
+            _print(tokenizer_analysis_svc.get_analysis(args.analysis_public_id))
+        elif args.command == "create-readiness-evaluation":
+            _print(
+                readiness_svc.evaluate(
+                    ReadinessEvaluationCreate(
+                        build_public_id=args.build_public_id,
+                        tokenizer_analysis_public_id=args.tokenizer_analysis,
+                    ),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "get-readiness-evaluation":
+            _print(readiness_svc.get_evaluation(args.evaluation_public_id))
+        elif args.command == "releases":
+            _print(release_svc.list_releases())
+        elif args.command == "create-release":
+            _print(
+                release_svc.create_release(
+                    ReleaseCreate(
+                        corpus_version_public_id=args.version,
+                        readiness_evaluation_public_id=args.readiness_evaluation,
+                        semantic_version=args.semantic_version,
+                        release_name=args.release_name,
+                    ),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "get-release":
+            _print(release_svc.get_release(args.release_public_id))
+        elif args.command == "validate-release":
+            _print(release_svc.validate_release(args.release_public_id, CLI_ADMIN_ID))
+        elif args.command == "approve-release":
+            _print(
+                release_svc.record_approval(
+                    args.release_public_id,
+                    ReleaseApprovalCreate(decision=args.decision, comment=args.comment),
+                    CLI_ADMIN_ID,
+                )
+            )
+        elif args.command == "finalize-release":
+            if not _confirm(
+                f"About to finalize release {args.release_public_id}. This is immutable.",
+                "finalize",
+            ):
+                print("Cancelled.", file=sys.stderr)
+                return 1
+            _print(release_svc.finalize_release(args.release_public_id, CLI_ADMIN_ID))
+        elif args.command == "export-release":
+            _print(
+                release_svc.mark_exported(args.release_public_id, args.export, CLI_ADMIN_ID)
+            )
+        elif args.command == "retire-release":
+            _print(release_svc.retire_release(args.release_public_id, CLI_ADMIN_ID))
     except RepositoryError as exc:
         print(f"Corpus command failed: {exc}", file=sys.stderr)
         return 1

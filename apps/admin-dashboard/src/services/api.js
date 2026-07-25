@@ -583,4 +583,54 @@ export const generateCorpusManifest = (versionId) => request(`${CORPUS}/versions
 export const corpusManifest = (versionId) => request(`${CORPUS}/versions/${versionId}/manifest`)
 
 export const compareCorpusVersions = (body) => request(`${CORPUS}/compare`, { method: 'POST', body: JSON.stringify(body) })
+
+// --- Phase 20 -----------------------------------------------------
+
+export const setCorpusSourceReviewMetadata = (id, body) => request(`${CORPUS}/sources/${id}/review-metadata`, { method: 'PATCH', body: JSON.stringify(body) })
+export const advanceCorpusSourceProductionLifecycle = (id, body) => request(`${CORPUS}/sources/${id}/production-lifecycle`, { method: 'POST', body: JSON.stringify(body) })
+
+export const corpusNormalizationProfiles = () => request(`${CORPUS}/normalization-profiles`)
+export const createCorpusNormalizationProfile = (body) => request(`${CORPUS}/normalization-profiles`, { method: 'POST', body: JSON.stringify(body) })
+export const activateCorpusNormalizationProfile = (id) => request(`${CORPUS}/normalization-profiles/${id}/activate`, { method: 'POST' })
+export const archiveCorpusNormalizationProfile = (id) => request(`${CORPUS}/normalization-profiles/${id}/archive`, { method: 'POST' })
+
+export const corpusSegmentationProfiles = () => request(`${CORPUS}/segmentation-profiles`)
+export const createCorpusSegmentationProfile = (body) => request(`${CORPUS}/segmentation-profiles`, { method: 'POST', body: JSON.stringify(body) })
+export const activateCorpusSegmentationProfile = (id) => request(`${CORPUS}/segmentation-profiles/${id}/activate`, { method: 'POST' })
+export const archiveCorpusSegmentationProfile = (id) => request(`${CORPUS}/segmentation-profiles/${id}/archive`, { method: 'POST' })
+
+export const inspectCorpusSourceFile = (sourceId, body) => request(`${CORPUS}/sources/${sourceId}/inspect-file`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusIngestionJobs = (sourceId) => request(`${CORPUS}/sources/${sourceId}/ingestion-jobs`)
+export const createCorpusIngestionJob = (sourceId, body) => request(`${CORPUS}/sources/${sourceId}/ingestion-jobs`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusIngestionJob = (id) => request(`${CORPUS}/ingestion-jobs/${id}`)
+export const runCorpusIngestionJob = (id, body) => request(`${CORPUS}/ingestion-jobs/${id}/run`, { method: 'POST', body: JSON.stringify(body) })
+export const cancelCorpusIngestionJob = (id) => request(`${CORPUS}/ingestion-jobs/${id}/cancel`, { method: 'POST' })
+export const retryCorpusIngestionJob = (id) => request(`${CORPUS}/ingestion-jobs/${id}/retry`, { method: 'POST' })
+
+export const corpusSegmentAssessments = (id) => request(`${CORPUS}/segments/${id}/assessments`)
+export const correctCorpusSegmentLabel = (id, body) => request(`${CORPUS}/segments/${id}/correct-label`, { method: 'POST', body: JSON.stringify(body) })
+
+export const corpusProtectedContentSets = () => request(`${CORPUS}/protected-content-sets`)
+export const createCorpusProtectedContentSet = (body) => request(`${CORPUS}/protected-content-sets`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusProtectedContentSet = (id) => request(`${CORPUS}/protected-content-sets/${id}`)
+export const activateCorpusProtectedContentSet = (id) => request(`${CORPUS}/protected-content-sets/${id}/activate`, { method: 'POST' })
+export const addCorpusProtectedContentEntries = (id, body) => request(`${CORPUS}/protected-content-sets/${id}/entries`, { method: 'POST', body: JSON.stringify(body) })
+
+export const previewCorpusBalance = (collectionId, body) => request(`${CORPUS}/collections/${collectionId}/preview-balance`, { method: 'POST', body: JSON.stringify(body) })
+export const previewCorpusPartitions = (collectionId, body) => request(`${CORPUS}/collections/${collectionId}/preview-partitions`, { method: 'POST', body: JSON.stringify(body || {}) })
+
+export const createCorpusTokenizerAnalysis = (body) => request(`${CORPUS}/tokenizer-analyses`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusTokenizerAnalysis = (id) => request(`${CORPUS}/tokenizer-analyses/${id}`)
+
+export const createCorpusReadinessEvaluation = (body) => request(`${CORPUS}/readiness-evaluations`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusReadinessEvaluation = (id) => request(`${CORPUS}/readiness-evaluations/${id}`)
+
+export const corpusReleases = () => request(`${CORPUS}/releases`)
+export const createCorpusRelease = (body) => request(`${CORPUS}/releases`, { method: 'POST', body: JSON.stringify(body) })
+export const corpusRelease = (id) => request(`${CORPUS}/releases/${id}`)
+export const validateCorpusRelease = (id) => request(`${CORPUS}/releases/${id}/validate`, { method: 'POST' })
+export const approveCorpusRelease = (id, body) => request(`${CORPUS}/releases/${id}/approve`, { method: 'POST', body: JSON.stringify(body) })
+export const finalizeCorpusRelease = (id) => request(`${CORPUS}/releases/${id}/finalize`, { method: 'POST' })
+export const exportCorpusRelease = (id, body) => request(`${CORPUS}/releases/${id}/export`, { method: 'POST', body: JSON.stringify(body) })
+export const retireCorpusRelease = (id) => request(`${CORPUS}/releases/${id}/retire`, { method: 'POST' })
 export const corpusComparison = (id) => request(`${CORPUS}/comparisons/${id}`)

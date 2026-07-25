@@ -34,6 +34,7 @@ from backend.database.schema import (
     MIGRATION_017_NAME,
     MIGRATION_018_NAME,
     MIGRATION_019_NAME,
+    MIGRATION_020_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -54,6 +55,8 @@ from backend.database.schema import (
     PHASE17_SCHEMA,
     PHASE18_SCHEMA,
     PHASE19_SCHEMA,
+    PHASE20_COLUMNS,
+    PHASE20_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -435,6 +438,20 @@ def _apply_v19(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 19")
 
 
+def _apply_v20(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (20,)).fetchone():
+        return
+    for table, columns in PHASE20_COLUMNS.items():
+        for name, definition in columns:
+            if not _has_column(connection, table, name):
+                connection.execute(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}')
+    connection.executescript(PHASE20_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (20, MIGRATION_020_NAME)
+    )
+    connection.execute("PRAGMA user_version = 20")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -487,7 +504,7 @@ def initialize_database(
     version = current_schema_version(database_path)
     if version > SCHEMA_VERSION:
         raise MigrationError(f"database schema {version} is newer than supported {SCHEMA_VERSION}")
-    pre_v19_versions = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}
+    pre_v19_versions = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
     if version in pre_v19_versions and existed and auto_backup:
         create_verified_backup(database_path, backup_dir or database_path.parent / "backups")
     with database_connection(
@@ -515,6 +532,7 @@ def initialize_database(
             _apply_v17(connection)
             _apply_v18(connection)
             _apply_v19(connection)
+            _apply_v20(connection)
             connection.commit()
         except Exception:
             connection.rollback()
@@ -534,7 +552,7 @@ def upgrade_database(settings: Settings) -> tuple[int, BackupResult | None, str]
     if version == SCHEMA_VERSION:
         verification = verify_database(path)
         return version, None, verification.integrity_check
-    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}:
+    if version in {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}:
         try:
             verify_database(path)
         except Exception as exc:

@@ -14,19 +14,22 @@ from typing import Any
 from uuid import uuid4
 
 from backend.core.config import Settings
-from backend.core.json_utils import dumps_json
+from backend.core.json_utils import dumps_json, loads_json
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.corpus import CorpusRepository, public_row
 from backend.models.corpus import (
     BalancePolicyCreate,
+    BalancePreviewRequest,
     BuildCreate,
     CollectionCreate,
+    PartitionPreviewRequest,
     VersionCreate,
 )
 from core_model.corpus.balancing import (
     cap_source_share,
     compare_to_targets,
     compute_actual_distribution,
+    source_diversity_report,
 )
 from core_model.corpus.licence_policy import assess_training_export_eligibility
 from core_model.corpus.partitioning import (
@@ -422,11 +425,139 @@ class CorpusBuildService:
                 ).fetchone()
                 member["domain"] = domain_row["primary_domain"] if domain_row else "general"
             actual = compute_actual_distribution(included, key="domain") if included else {}
-            from backend.core.json_utils import loads_json
 
             targets_raw = loads_json(balance_row["domain_targets_json"], default={})
             targets = {k: tuple(v) for k, v in targets_raw.items()}
             return {"domain_distribution_report": compare_to_targets(actual, targets)}
+
+    # --- Phase 20: balance and partition previews -------------------------------
+
+    def preview_balance(
+        self, collection_public_id: str, payload: BalancePreviewRequest
+    ) -> dict[str, Any]:
+        """Read-only dry run -- never persists anything, never selects
+        or excludes a single segment. Shows actual vs. target
+        distribution across every configured dimension so an operator
+        can adjust a balance policy before committing to a real build."""
+
+        with self.repository.transaction() as connection:
+            collection_row = self.repository.collection(connection, collection_public_id)
+            balance_row = self.repository.balance_policy(
+                connection, payload.balance_policy_public_id
+            )
+            members = [
+                dict(member)
+                for member in self.repository.members_for_collection(
+                    connection, collection_row["id"]
+                )
+                if member["eligibility_status"] == "eligible"
+            ]
+            for member in members:
+                domain_row = connection.execute(
+                    "SELECT primary_domain FROM corpus_domain_assessments WHERE segment_id=? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (member["segment_id"],),
+                ).fetchone()
+                member["domain"] = domain_row["primary_domain"] if domain_row else "general"
+                language_row = connection.execute(
+                    "SELECT language_category FROM corpus_language_assessments "
+                    "WHERE segment_id=? ORDER BY id DESC LIMIT 1",
+                    (member["segment_id"],),
+                ).fetchone()
+                member["language"] = (
+                    language_row["language_category"] if language_row else "unknown"
+                )
+                style_row = connection.execute(
+                    "SELECT style FROM corpus_style_assessments WHERE segment_id=? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (member["segment_id"],),
+                ).fetchone()
+                member["style"] = style_row["style"] if style_row else "formal"
+                member["licence_family"] = member["licence_status"]
+
+            report: dict[str, Any] = {}
+            for dimension, target_column in (
+                ("language", "language_targets_json"),
+                ("domain", "domain_targets_json"),
+                ("style", "style_targets_json"),
+                ("licence_family", "licence_family_targets_json"),
+            ):
+                actual = compute_actual_distribution(members, key=dimension) if members else {}
+                targets_raw = loads_json(balance_row[target_column], default={})
+                targets = {k: tuple(v) for k, v in targets_raw.items()}
+                report[dimension] = compare_to_targets(actual, targets)
+            report["source_diversity"] = (
+                source_diversity_report(members, source_key="collection_id") if members else {}
+            )
+            report["eligible_segment_count"] = len(members)
+            return report
+
+    def preview_partitions(
+        self, collection_public_id: str, payload: PartitionPreviewRequest, admin_id: str
+    ) -> dict[str, Any]:
+        """Persists the preview result (append-only, for audit/
+        comparison purposes) but never creates a `corpus_build` or
+        assigns any segment -- non-binding, may be run repeatedly with
+        different seeds/proportions before a real build is created."""
+
+        with self.repository.transaction() as connection:
+            collection_row = self.repository.collection(connection, collection_public_id)
+            members = [
+                dict(member)
+                for member in self.repository.members_for_collection(
+                    connection, collection_row["id"]
+                )
+                if member["eligibility_status"] == "eligible"
+            ]
+            groups: dict[int, list[str]] = {}
+            for member in members:
+                segment_row = connection.execute(
+                    "SELECT public_id FROM corpus_segments WHERE id=?", (member["segment_id"],)
+                ).fetchone()
+                cluster_row = connection.execute(
+                    """SELECT c.id AS cluster_id FROM corpus_duplicate_members m
+                    JOIN corpus_duplicate_clusters c ON c.id = m.cluster_id
+                    WHERE m.segment_id=? ORDER BY m.id DESC LIMIT 1""",
+                    (member["segment_id"],),
+                ).fetchone()
+                group_key = cluster_row["cluster_id"] if cluster_row else member["segment_id"]
+                groups.setdefault(group_key, []).append(segment_row["public_id"])
+
+            group_payload = [
+                {"group_key": str(key), "segment_public_ids": ids} for key, ids in groups.items()
+            ]
+            assignment = assign_partitions(
+                group_payload, seed=payload.seed, proportions=payload.proportions
+            )
+            isolation = verify_partition_isolation(
+                assignment,
+                duplicate_clusters=[ids for ids in groups.values() if len(ids) > 1],
+            )
+            distribution = {split: len(ids) for split, ids in assignment.items()}
+            checksum = partition_checksum(assignment)
+
+            preview_public_id = self.repository.create_partition_preview(
+                connection,
+                {
+                    "collection_id": collection_row["id"],
+                    "seed": payload.seed,
+                    "proportions_json": dumps_json(payload.proportions),
+                    "strict_mode": payload.strict_mode,
+                    "distribution_json": dumps_json(distribution),
+                    "isolation_report_json": dumps_json(isolation),
+                    "preview_checksum_sha256": checksum,
+                    "created_by_admin_public_id": admin_id,
+                },
+            )
+            self._audit(
+                connection,
+                "corpus_partition_preview_created",
+                admin_id,
+                preview_public_id,
+                distribution=distribution,
+                isolated=isolation["isolated"],
+            )
+            return public_row(self.repository.partition_preview(connection, preview_public_id))
 
     # --- versions -----------------------------------------------------
 

@@ -283,8 +283,25 @@ class CorpusProcessingService:
     # --- normalization -----------------------------------------------------
 
     def create_normalization_run(
-        self, extraction_run_public_id: str, payload: NormalizationRunCreate, admin_id: str
+        self,
+        extraction_run_public_id: str,
+        payload: NormalizationRunCreate,
+        admin_id: str,
+        *,
+        operations: dict[str, bool] | None = None,
     ) -> dict[str, Any]:
+        """``operations`` gates Phase 20's named normalization profiles
+        (``unicode_normalization``/``tamil_normalization``/
+        ``boilerplate_detection``, each defaulting to enabled) -- when
+        omitted, every operation runs exactly as Phase 19 always did,
+        so this is purely additive and never changes default behavior."""
+
+        ops = {
+            "unicode_normalization": True,
+            "tamil_normalization": True,
+            "boilerplate_detection": True,
+            **(operations or {}),
+        }
         with self.repository.transaction() as connection:
             if self.repository.count_active_normalization_runs(connection) >= (
                 self.settings.corpus_max_active_processing_runs
@@ -322,12 +339,35 @@ class CorpusProcessingService:
                         {"document": document, "text": document["raw_text"], "ocr_corrections": 0}
                     )
 
-            boilerplate = detect_boilerplate_lines([item["text"] for item in ocr_cleaned])
+            boilerplate = (
+                detect_boilerplate_lines([item["text"] for item in ocr_cleaned])
+                if ops["boilerplate_detection"]
+                else {"boilerplate_lines": {}}
+            )
             transformation_totals: dict[str, int] = {}
             for item in ocr_cleaned:
-                removal = remove_boilerplate_lines(item["text"], boilerplate["boilerplate_lines"])
-                tamil = normalize_tamil_text(removal["cleaned_text"])
-                unicode_result = normalize_unicode(tamil["normalized_text"])
+                if ops["boilerplate_detection"]:
+                    removal = remove_boilerplate_lines(
+                        item["text"], boilerplate["boilerplate_lines"]
+                    )
+                else:
+                    removal = {"cleaned_text": item["text"], "removed_count": 0}
+
+                if ops["tamil_normalization"]:
+                    tamil = normalize_tamil_text(removal["cleaned_text"])
+                else:
+                    tamil = {
+                        "normalized_text": removal["cleaned_text"],
+                        "transformation_counts": {},
+                    }
+
+                if ops["unicode_normalization"]:
+                    unicode_result = normalize_unicode(tamil["normalized_text"])
+                    normalized_text = unicode_result["normalized_text"]
+                    unicode_integrity_status = unicode_result["unicode_integrity_status"]
+                else:
+                    normalized_text = tamil["normalized_text"]
+                    unicode_integrity_status = "unknown"
 
                 for category, count in tamil["transformation_counts"].items():
                     transformation_totals[category] = transformation_totals.get(category, 0) + count
@@ -336,13 +376,12 @@ class CorpusProcessingService:
                     + removal["removed_count"]
                 )
 
-                normalized_text = unicode_result["normalized_text"]
                 normalized_values = {
                     "normalization_run_id": run_row["id"],
                     "extracted_document_id": item["document"]["id"],
                     "normalized_text": normalized_text,
                     "normalized_text_checksum_sha256": content_checksum(normalized_text),
-                    "unicode_integrity_status": unicode_result["unicode_integrity_status"],
+                    "unicode_integrity_status": unicode_integrity_status,
                     "ocr_corrections_applied": item["ocr_corrections"],
                     "boilerplate_removals_applied": removal["removed_count"],
                     "transformation_counts_json": dumps_json(

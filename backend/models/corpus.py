@@ -187,3 +187,95 @@ class ExportCreate(DomainModel):
 class CorpusCompareRequest(DomainModel):
     left_version_public_id: str
     right_version_public_id: str
+
+
+# --- Phase 20: production corpus expansion -----------------------------------------------------
+
+
+class NormalizationProfileCreate(DomainModel):
+    name: str = Field(min_length=1, max_length=160)
+    profile_key: str = Field(min_length=1, max_length=60)
+    version: str = Field(default="v1", max_length=20)
+    operations: dict[str, Any] = Field(default_factory=dict)
+
+
+class SegmentationProfileCreate(DomainModel):
+    name: str = Field(min_length=1, max_length=160)
+    content_type: str = Field(min_length=1, max_length=60)
+    strategy: str = Field(min_length=1, max_length=40)
+    version: str = Field(default="v1", max_length=20)
+    configuration: dict[str, Any] = Field(default_factory=dict)
+
+
+class SourceInspectRequest(DomainModel):
+    relative_path: str = Field(min_length=1, max_length=500)
+    declared_format: str = Field(min_length=1, max_length=20)
+
+
+class IngestionJobCreate(DomainModel):
+    format: str = Field(min_length=1, max_length=20)
+    relative_paths: list[str] = Field(min_length=1)
+    idempotency_key: str | None = Field(default=None, max_length=200)
+    normalization_profile_public_id: str | None = None
+    segmentation_profile_public_id: str | None = None
+    segmentation_strategy: str = Field(default="heading_section", max_length=40)
+    ocr_language_configuration: str = Field(default="tam+eng", max_length=40)
+    max_retries: int = Field(default=3, ge=0, le=10)
+
+
+class SourceReviewUpdate(DomainModel):
+    original_url: str | None = Field(default=None, max_length=2000)
+    acquisition_date: str | None = None
+
+
+class ProtectedContentSetCreate(DomainModel):
+    name: str = Field(min_length=1, max_length=160)
+    set_type: str = Field(min_length=1, max_length=60)
+    description: str = Field(default="", max_length=2000)
+
+
+class ProtectedContentEntryCreate(DomainModel):
+    texts: list[str] = Field(min_length=1)
+    evidence_reference: str = Field(default="", max_length=2000)
+
+
+class PartitionPreviewRequest(DomainModel):
+    seed: int = Field(default=42, ge=0)
+    proportions: dict[str, float] = Field(
+        default_factory=lambda: {"train": 0.98, "validation": 0.01, "test": 0.01}
+    )
+    strict_mode: bool = True
+
+
+class BalancePreviewRequest(DomainModel):
+    balance_policy_public_id: str
+
+
+class TokenizerAnalysisCreate(DomainModel):
+    tokenizer_version_public_id: str
+    collection_public_id: str | None = None
+    build_public_id: str | None = None
+    max_sequence_length: int = Field(default=512, ge=1)
+
+
+class ReadinessEvaluationCreate(DomainModel):
+    build_public_id: str
+    tokenizer_analysis_public_id: str | None = None
+
+
+class ReleaseCreate(DomainModel):
+    corpus_version_public_id: str
+    readiness_evaluation_public_id: str | None = None
+    semantic_version: str = Field(min_length=1, max_length=40)
+    release_name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=2000)
+
+
+class ReleaseApprovalCreate(DomainModel):
+    decision: str = Field(min_length=1, max_length=20)
+    comment: str = Field(default="", max_length=2000)
+
+
+class LabelCorrection(DomainModel):
+    label_type: str = Field(min_length=1, max_length=20)
+    value: str = Field(min_length=1, max_length=60)

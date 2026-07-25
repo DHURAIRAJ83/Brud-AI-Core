@@ -28,6 +28,7 @@ from core_model.corpus.balancing import (
     compare_to_targets,
     compute_actual_distribution,
 )
+from core_model.corpus.licence_policy import assess_training_export_eligibility
 from core_model.corpus.partitioning import (
     assign_partitions,
     partition_checksum,
@@ -74,6 +75,60 @@ class CorpusBuildService:
             ]
             return result
 
+    def _resolve_segment_licence(self, connection, segment_row) -> dict[str, Any]:
+        """Walks segment -> normalized document -> extracted document ->
+        source file -> snapshot -> source -> latest licence, and reports
+        both the real licence family and whether it is training-export
+        eligible -- a segment must never be silently treated as
+        licence-eligible just because it passed quality/privacy/safety."""
+
+        normalized_document_id = connection.execute(
+            "SELECT public_id FROM corpus_normalized_documents WHERE id=?",
+            (segment_row["normalized_document_id"],),
+        ).fetchone()["public_id"]
+        normalized_document = self.repository.normalized_document(
+            connection, normalized_document_id
+        )
+        extracted_document_public_id = connection.execute(
+            "SELECT public_id FROM corpus_extracted_documents WHERE id=?",
+            (normalized_document["extracted_document_id"],),
+        ).fetchone()["public_id"]
+        extracted_document = self.repository.extracted_document(
+            connection, extracted_document_public_id
+        )
+        file_public_id = connection.execute(
+            "SELECT public_id FROM corpus_source_files WHERE id=?",
+            (extracted_document["source_file_id"],),
+        ).fetchone()["public_id"]
+        file_row = self.repository.file(connection, file_public_id)
+        snapshot_public_id = connection.execute(
+            "SELECT public_id FROM corpus_source_snapshots WHERE id=?",
+            (file_row["snapshot_id"],),
+        ).fetchone()["public_id"]
+        snapshot_row = self.repository.snapshot(connection, snapshot_public_id)
+        source_row = self.repository.source(connection, snapshot_row["source_public_id"])
+        licence_row = self.repository.latest_licence_for_source(connection, source_row["id"])
+
+        if licence_row is None:
+            return {"licence_family": "unknown", "eligible": False}
+
+        import datetime as _dt
+
+        expires_at = licence_row["expires_at"]
+        expired = bool(expires_at) and expires_at < _dt.datetime.now(_dt.UTC).isoformat()
+        eligibility = assess_training_export_eligibility(
+            review_status=licence_row["review_status"],
+            ai_training_permitted=bool(licence_row["ai_training_permitted"]),
+            source_status=source_row["status"],
+            intended_use=source_row["intended_use"],
+            licence_family=licence_row["licence_family"],
+            expires_at_is_past=expired,
+        )
+        return {
+            "licence_family": licence_row["licence_family"],
+            "eligible": eligibility["eligible"],
+        }
+
     def add_member(
         self, collection_public_id: str, segment_public_id: str, admin_id: str
     ) -> dict[str, Any]:
@@ -101,14 +156,31 @@ class CorpusBuildService:
                 "safety"
             ]
             safety_blocked = any(row["status"] == "blocked" for row in safety_rows)
+            licence = self._resolve_segment_licence(connection, segment_row)
 
-            eligible = quality_status != "fail" and not privacy_blocked and not safety_blocked
+            eligible = (
+                quality_status != "fail"
+                and not privacy_blocked
+                and not safety_blocked
+                and licence["eligible"]
+            )
+            if quality_status == "fail":
+                exclusion_reason = "failed_quality_privacy_or_safety_check"
+            elif privacy_blocked or safety_blocked:
+                exclusion_reason = "failed_quality_privacy_or_safety_check"
+            elif not licence["eligible"]:
+                exclusion_reason = "licence_not_training_eligible"
+            else:
+                exclusion_reason = None
             values = {
                 "collection_id": collection_row["id"],
                 "segment_id": segment_row["id"],
                 "eligibility_status": "eligible" if eligible else "ineligible",
-                "inclusion_reason": "passed_quality_privacy_safety_checks" if eligible else "",
-                "exclusion_reason": None if eligible else "failed_quality_privacy_or_safety_check",
+                "inclusion_reason": "passed_quality_privacy_safety_licence_checks"
+                if eligible
+                else "",
+                "exclusion_reason": exclusion_reason,
+                "licence_status": licence["licence_family"],
                 "quality_status": quality_status,
                 "duplicate_status": "unique",
                 "contamination_status": "clean",

@@ -1,7 +1,10 @@
 from core_model.corpus.balancing import cap_source_share, compare_to_targets
 from core_model.corpus.boilerplate_removal import detect_boilerplate_lines, remove_boilerplate_lines
 from core_model.corpus.contamination import check_contamination
-from core_model.corpus.document_segmentation import segment_document
+from core_model.corpus.document_segmentation import (
+    segment_document,
+    split_into_heading_sections,
+)
 from core_model.corpus.domain_classification import classify_domain
 from core_model.corpus.exact_deduplication import all_checksums, classify_exact_duplicate
 from core_model.corpus.language_detection import assess_language
@@ -93,6 +96,53 @@ def test_segment_document_drops_short_segments_below_minimum():
     )
     assert len(segments) == 1
     assert segments[0]["character_count"] >= 30
+
+
+def test_split_into_heading_sections_preserves_text_before_first_heading():
+    """Regression test: content appearing before the first detected
+    heading must never be silently discarded -- previously an entire
+    real-PDF page of Tamil content vanished because a page-number
+    footer line was mistaken for the document's first heading."""
+
+    text = (
+        "Real opening content that has no heading above it.\nReal Heading\nBody under the heading."
+    )
+    sections = split_into_heading_sections(text)
+    assert sections[0]["heading"] is None
+    assert "Real opening content" in sections[0]["text"]
+    assert sections[1]["heading"] == "Real Heading"
+    assert "Body under the heading" in sections[1]["text"]
+
+
+def test_split_into_heading_sections_ignores_page_footer_lines():
+    """Regression test: a bare "Page N" footer line must never be
+    treated as a heading -- it previously absorbed everything after it
+    under a meaningless "Page 1" heading while discarding everything
+    before it."""
+
+    text = (
+        "Genuine content on this page.\nPage 1\n\n\n"
+        "More genuine content on the next page.\nPage 2\n"
+    )
+    sections = split_into_heading_sections(text)
+    assert len(sections) == 1
+    assert sections[0]["heading"] is None
+    assert "Genuine content on this page" in sections[0]["text"]
+    assert "More genuine content on the next page" in sections[0]["text"]
+    assert "Page 1" not in [s["heading"] for s in sections]
+
+
+def test_split_into_heading_sections_does_not_treat_ordinary_sentence_as_heading():
+    """Regression test: an ordinary mixed-case sentence (not a genuine
+    Title-Case heading) must not be mistaken for one merely because it
+    starts with a capital letter."""
+
+    text = (
+        "Indha document is a real sentence with mixed case words kaga.\n"
+        "It continues onto more ordinary prose that is not a heading."
+    )
+    sections = split_into_heading_sections(text)
+    assert sections[0]["heading"] is None
 
 
 def test_segment_document_never_emits_empty_segments():
@@ -228,10 +278,18 @@ def test_near_duplicate_classification_above_threshold():
 
 def test_select_representative_prefers_approved_licence_deterministically():
     candidates = [
-        {"public_id": "b", "licence_status": "unknown", "character_count": 100,
-         "source_created_at": "2020-01-01"},
-        {"public_id": "a", "licence_status": "approved", "character_count": 50,
-         "source_created_at": "2020-01-02"},
+        {
+            "public_id": "b",
+            "licence_status": "unknown",
+            "character_count": 100,
+            "source_created_at": "2020-01-01",
+        },
+        {
+            "public_id": "a",
+            "licence_status": "approved",
+            "character_count": 50,
+            "source_created_at": "2020-01-02",
+        },
     ]
     representative = select_representative(candidates)
     assert representative["public_id"] == "a"

@@ -68,6 +68,10 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("policies")
     create_policy_parser = subparsers.add_parser("create-policy")
     create_policy_parser.add_argument("--name", required=True)
+    validate_policy_parser = subparsers.add_parser("validate-policy")
+    validate_policy_parser.add_argument("policy_public_id")
+    activate_policy_parser = subparsers.add_parser("activate-policy")
+    activate_policy_parser.add_argument("policy_public_id")
 
     subparsers.add_parser("sources")
     create_source_parser = subparsers.add_parser("create-source")
@@ -165,6 +169,10 @@ def main(argv: list[str] | None = None) -> int:
             _print(source_svc.list_policies())
         elif args.command == "create-policy":
             _print(source_svc.create_policy(CorpusPolicyCreate(name=args.name), CLI_ADMIN_ID))
+        elif args.command == "validate-policy":
+            _print(source_svc.validate_policy(args.policy_public_id, CLI_ADMIN_ID))
+        elif args.command == "activate-policy":
+            _print(source_svc.activate_policy(args.policy_public_id, CLI_ADMIN_ID))
         elif args.command == "sources":
             _print(source_svc.list_sources())
         elif args.command == "create-source":

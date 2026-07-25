@@ -107,6 +107,16 @@ async def patch_policy(
     return source_service(settings).patch_policy(public_id, payload, admin.admin.public_id)
 
 
+@router.post("/policies/{public_id}/validate")
+async def validate_policy(public_id: str, settings: SettingsDependency, admin: CsrfDependency):
+    return source_service(settings).validate_policy(public_id, admin.admin.public_id)
+
+
+@router.post("/policies/{public_id}/activate")
+async def activate_policy(public_id: str, settings: SettingsDependency, admin: CsrfDependency):
+    return source_service(settings).activate_policy(public_id, admin.admin.public_id)
+
+
 # --- sources -----------------------------------------------------
 
 

@@ -12,7 +12,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_HEADING_PATTERN = re.compile(r"^(#{1,6}\s+.+|[A-Z][A-Za-z0-9 ]{2,60}:?\s*)$", re.MULTILINE)
+_HEADING_PATTERN = re.compile(
+    r"^(#{1,6}\s+.+|(?:[A-Z][A-Za-z0-9']*|\d+)(?:\s+(?:[A-Z][A-Za-z0-9']*|\d+))*:?)\s*$",
+    re.MULTILINE,
+)
+# A bare "Page N" / "P. N" line is a scanned-page footer, never a
+# heading -- checked separately since it would otherwise match the
+# Title-Case heuristic above (every token capitalized or numeric).
+_PAGE_FOOTER_LINE = re.compile(r"^(page|p)\.?\s*\d+$", re.IGNORECASE)
 _PARAGRAPH_SPLIT = re.compile(r"\n\s*\n+")
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?।॥])\s+")
 
@@ -41,13 +48,22 @@ def split_into_paragraphs(text: str) -> list[str]:
 
 def split_into_heading_sections(text: str) -> list[dict[str, Any]]:
     """Returns [{"heading": str | None, "text": str}, ...]. Falls back
-    to a single section with no heading if none are detected."""
+    to a single section with no heading if none are detected. Text
+    appearing before the first detected heading is always preserved as
+    its own heading=None section -- it is never silently discarded."""
 
-    matches = list(_HEADING_PATTERN.finditer(text))
+    matches = [
+        match
+        for match in _HEADING_PATTERN.finditer(text)
+        if not _PAGE_FOOTER_LINE.match(match.group().strip())
+    ]
     if not matches:
         return [{"heading": None, "text": text}]
 
     sections = []
+    preamble = text[: matches[0].start()].strip()
+    if preamble:
+        sections.append({"heading": None, "text": preamble})
     for index, match in enumerate(matches):
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)

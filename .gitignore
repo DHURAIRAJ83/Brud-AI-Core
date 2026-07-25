@@ -20,6 +20,9 @@ data/dataset_exports/
 data/tokenizers/
 data/core_models/
 data/core_models/pretraining/
+data/corpus_uploads/
+data/corpus_snapshots/
+data/corpus_exports/
 models/checkpoints/*
 models/active/*
 models/exports/*

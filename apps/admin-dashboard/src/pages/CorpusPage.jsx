@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import StatusCard from '../components/StatusCard.jsx'
 import {
+  activateCorpusPolicy,
   addCorpusCollectionMember,
   assessCorpusSegment,
   compareCorpusVersions,
@@ -42,6 +43,7 @@ import {
   reviewCorpusLicence,
   segmentCorpusDocument,
   transitionCorpusSource,
+  validateCorpusPolicy,
   verifyCorpusSourceOrigin,
 } from '../services/api.js'
 
@@ -151,6 +153,26 @@ export default function CorpusPage() {
     try {
       await createCorpusPolicy(policyForm)
       setPolicyForm({ name: '' })
+      setPanelError('')
+      await load()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runValidatePolicy(policyId) {
+    try {
+      await validateCorpusPolicy(policyId)
+      setPanelError('')
+      await load()
+    } catch (error) {
+      setPanelError(error.message)
+    }
+  }
+
+  async function runActivatePolicy(policyId) {
+    try {
+      await activateCorpusPolicy(policyId)
       setPanelError('')
       await load()
     } catch (error) {
@@ -507,6 +529,12 @@ export default function CorpusPage() {
                 <article key={policy.public_id}>
                   <strong>{policy.name}</strong> — {policy.lifecycle_status}
                   <div>min segment chars: {policy.minimum_segment_characters}</div>
+                  <div className="inline-form">
+                    <button disabled={policy.lifecycle_status !== 'draft'}
+                      onClick={() => runValidatePolicy(policy.public_id)}>Validate</button>
+                    <button disabled={policy.lifecycle_status !== 'validated'}
+                      onClick={() => runActivatePolicy(policy.public_id)}>Activate</button>
+                  </div>
                 </article>
               ))}
             </>

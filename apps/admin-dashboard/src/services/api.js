@@ -525,6 +525,8 @@ export const corpusPolicies = () => request(`${CORPUS}/policies`)
 export const createCorpusPolicy = (body) => request(`${CORPUS}/policies`, { method: 'POST', body: JSON.stringify(body) })
 export const corpusPolicy = (id) => request(`${CORPUS}/policies/${id}`)
 export const patchCorpusPolicy = (id, body) => request(`${CORPUS}/policies/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+export const validateCorpusPolicy = (id) => request(`${CORPUS}/policies/${id}/validate`, { method: 'POST' })
+export const activateCorpusPolicy = (id) => request(`${CORPUS}/policies/${id}/activate`, { method: 'POST' })
 
 export const corpusSources = () => request(`${CORPUS}/sources`)
 export const createCorpusSource = (body) => request(`${CORPUS}/sources`, { method: 'POST', body: JSON.stringify(body) })

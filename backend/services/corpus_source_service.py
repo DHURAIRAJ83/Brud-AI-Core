@@ -102,6 +102,30 @@ class CorpusSourceService:
             self._audit(connection, "corpus_policy_patched", admin_id, public_id)
             return public_row(self.repository.policy(connection, public_id))
 
+    def validate_policy(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        with self.repository.transaction() as connection:
+            row = self.repository.policy(connection, public_id)
+            ok, reason = validate_policy_bounds(
+                maximum_source_bytes=row["maximum_source_bytes"],
+                maximum_document_characters=row["maximum_document_characters"],
+                maximum_segment_characters=row["maximum_segment_characters"],
+                minimum_segment_characters=row["minimum_segment_characters"],
+            )
+            if not ok:
+                raise ValidationError(reason)
+            self.repository.update_policy(connection, row["id"], {"lifecycle_status": "validated"})
+            self._audit(connection, "corpus_policy_validated", admin_id, public_id)
+            return public_row(self.repository.policy(connection, public_id))
+
+    def activate_policy(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        with self.repository.transaction() as connection:
+            row = self.repository.policy(connection, public_id)
+            if row["lifecycle_status"] != "validated":
+                raise ValidationError("policy must be validated before activation")
+            self.repository.update_policy(connection, row["id"], {"lifecycle_status": "active"})
+            self._audit(connection, "corpus_policy_activated", admin_id, public_id)
+            return public_row(self.repository.policy(connection, public_id))
+
     # --- sources -----------------------------------------------------
 
     def create_source(self, payload: SourceRegistryCreate, admin_id: str) -> dict[str, Any]:

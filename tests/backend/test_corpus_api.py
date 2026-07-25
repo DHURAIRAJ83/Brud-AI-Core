@@ -381,6 +381,27 @@ async def test_unknown_licence_blocks_training_eligibility(authenticated_client)
     assert "ai_training_permission_absent" in body["blocking_reasons"]
 
 
+async def test_policy_validate_activate_lifecycle(authenticated_client):
+    client, headers = authenticated_client
+    policy_id = await _create_policy(client, headers)
+
+    created = await client.get(f"{CM}/policies/{policy_id}", headers=headers)
+    assert created.json()["lifecycle_status"] == "draft"
+
+    activate_before_validate = await client.post(
+        f"{CM}/policies/{policy_id}/activate", headers=headers
+    )
+    assert activate_before_validate.status_code >= 400
+
+    validated = await client.post(f"{CM}/policies/{policy_id}/validate", headers=headers)
+    assert validated.status_code == 200, validated.text
+    assert validated.json()["lifecycle_status"] == "validated"
+
+    activated = await client.post(f"{CM}/policies/{policy_id}/activate", headers=headers)
+    assert activated.status_code == 200, activated.text
+    assert activated.json()["lifecycle_status"] == "active"
+
+
 async def test_mutations_require_csrf(api_app: FastAPI):
     from httpx import ASGITransport, AsyncClient
 

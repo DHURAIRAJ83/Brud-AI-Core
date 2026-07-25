@@ -572,6 +572,7 @@ class CorpusIngestionService:
             files = self.repository.files_for_snapshot(connection, snapshot_row["id"])
 
         documents_created, failed_files, characters_extracted, warnings_count = 0, 0, 0, 0
+        any_ocr_used = False
         for sequence, file_row in enumerate(files):
             path = self.source_service.resolve_approved_path(file_row["safe_relative_storage_key"])
             raw_bytes = path.read_bytes()
@@ -580,6 +581,8 @@ class CorpusIngestionService:
             except ValidationError:
                 failed_files += 1
                 continue
+            ocr_used = "ocr_fallback" in " ".join(result.issues)
+            any_ocr_used = any_ocr_used or ocr_used
             with self.repository.transaction() as connection:
                 doc_values = {
                     "extraction_run_id": self.repository.extraction_run(
@@ -590,7 +593,7 @@ class CorpusIngestionService:
                     "raw_text": result.text,
                     "raw_text_checksum_sha256": content_checksum(result.text),
                     "extraction_confidence": result.confidence,
-                    "ocr_used": "ocr_fallback" in " ".join(result.issues),
+                    "ocr_used": ocr_used,
                     "character_count": len(result.text),
                     "issue_summary_json": dumps_json(build_issue_summary(result.issues)),
                 }
@@ -608,15 +611,22 @@ class CorpusIngestionService:
                 if failed_files == 0
                 else ("completed_with_warnings" if documents_created > 0 else "failed")
             )
+            run_updates = {
+                "status": final_status,
+                "files_processed": len(files),
+                "documents_created": documents_created,
+                "failed_files": failed_files,
+            }
+            if fmt == "pdf" and any_ocr_used:
+                # The embedded-text-first/OCR-fallback decision is made per
+                # whole document in PdfAdapter.extract(); if any document in
+                # this run genuinely required OCR, `extraction_method` must
+                # reflect that rather than the format-only default guess.
+                run_updates["extraction_method"] = "tesseract_ocr"
             self.repository.update_extraction_run(
                 connection,
                 extraction_run_row["id"],
-                {
-                    "status": final_status,
-                    "files_processed": len(files),
-                    "documents_created": documents_created,
-                    "failed_files": failed_files,
-                },
+                run_updates,
             )
             job_row = self.repository.ingestion_job(connection, job_public_id)
             self.repository.update_ingestion_job(

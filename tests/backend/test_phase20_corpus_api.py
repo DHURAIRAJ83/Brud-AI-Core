@@ -10,6 +10,7 @@ release surfaces.
 import sqlite3
 from pathlib import Path
 
+import fitz
 import pytest
 from fastapi import FastAPI
 
@@ -650,6 +651,102 @@ async def test_release_lifecycle_guards_and_full_happy_path(authenticated_client
         f"{CM}/releases/{release_id}/finalize", headers=headers
     )
     assert no_further_transitions.status_code >= 400
+
+
+# --- PDF extraction-method correctness (embedded vs. genuine OCR) -----------------
+
+
+def _write_selectable_pdf(path: Path) -> None:
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "This PDF has a real embedded text layer.")
+    doc.save(str(path))
+    doc.close()
+
+
+def _write_image_only_pdf(path: Path) -> None:
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "This text is rasterized, not embedded.")
+    pixmap = page.get_pixmap(dpi=150)
+    image_bytes = pixmap.tobytes("png")
+    doc.close()
+
+    image_doc = fitz.open()
+    image_page = image_doc.new_page(width=pixmap.width, height=pixmap.height)
+    image_page.insert_image(image_page.rect, stream=image_bytes)
+    image_doc.save(str(path))
+    image_doc.close()
+
+
+async def test_pdf_extraction_method_reflects_embedded_text(authenticated_client, api_app):
+    client, headers = authenticated_client
+    approved_root = api_app.state.settings.corpus_approved_roots[1]
+    _write_selectable_pdf(approved_root / "selectable.pdf")
+
+    policy_id = await _create_policy(client, headers)
+    source_id = await _create_approved_source(
+        client, headers, policy_id, title="Selectable PDF Source"
+    )
+
+    created = await client.post(
+        f"{CM}/sources/{source_id}/ingestion-jobs", headers=headers,
+        json={"format": "pdf", "relative_paths": ["selectable.pdf"]},
+    )
+    job_id = created.json()["public_id"]
+    run = await client.post(
+        f"{CM}/ingestion-jobs/{job_id}/run", headers=headers,
+        json={"relative_paths": ["selectable.pdf"]},
+    )
+    assert run.status_code == 200, run.text
+
+    connection = sqlite3.connect(api_app.state.settings.resolved_database_path)
+    connection.row_factory = sqlite3.Row
+    row = connection.execute(
+        """SELECT er.extraction_method, ed.ocr_used FROM corpus_ingestion_jobs j
+        JOIN corpus_extraction_runs er ON er.id = j.extraction_run_id
+        JOIN corpus_extracted_documents ed ON ed.extraction_run_id = er.id
+        WHERE j.public_id=?""",
+        (job_id,),
+    ).fetchone()
+    connection.close()
+    assert row["extraction_method"] == "embedded_pdf_text"
+    assert row["ocr_used"] == 0
+
+
+async def test_pdf_extraction_method_reflects_genuine_ocr_fallback(authenticated_client, api_app):
+    client, headers = authenticated_client
+    approved_root = api_app.state.settings.corpus_approved_roots[1]
+    _write_image_only_pdf(approved_root / "image_only.pdf")
+
+    policy_id = await _create_policy(client, headers)
+    source_id = await _create_approved_source(
+        client, headers, policy_id, title="Image-Only PDF Source"
+    )
+
+    created = await client.post(
+        f"{CM}/sources/{source_id}/ingestion-jobs", headers=headers,
+        json={"format": "pdf", "relative_paths": ["image_only.pdf"]},
+    )
+    job_id = created.json()["public_id"]
+    run = await client.post(
+        f"{CM}/ingestion-jobs/{job_id}/run", headers=headers,
+        json={"relative_paths": ["image_only.pdf"]},
+    )
+    assert run.status_code == 200, run.text
+
+    connection = sqlite3.connect(api_app.state.settings.resolved_database_path)
+    connection.row_factory = sqlite3.Row
+    row = connection.execute(
+        """SELECT er.extraction_method, ed.ocr_used FROM corpus_ingestion_jobs j
+        JOIN corpus_extraction_runs er ON er.id = j.extraction_run_id
+        JOIN corpus_extracted_documents ed ON ed.extraction_run_id = er.id
+        WHERE j.public_id=?""",
+        (job_id,),
+    ).fetchone()
+    connection.close()
+    assert row["ocr_used"] == 1
+    assert row["extraction_method"] == "tesseract_ocr"
 
 
 async def test_phase20_mutations_require_csrf(api_app: FastAPI):

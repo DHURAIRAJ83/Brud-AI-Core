@@ -223,6 +223,14 @@ forbidden category lists) are documented separately in
 so a freshly configured deployment retains no conversation memory at
 all until a policy and consent are explicitly set up.
 
+Phase 18's 21 `BRUD_FEEDBACK_*` settings (privacy/safety scan
+requirements, human-review and dataset-approval requirements, feedback/
+correction/attachment size bounds, near-duplicate threshold,
+contamination-blocking flags, licence/approval-checksum requirements)
+default entirely to the safe side — every `require_*` and `block_*`
+flag defaults `true` — and are documented alongside the policy shape
+in [feedback_policies.md](feedback_policies.md).
+
 Do not store secrets in `.env`; it is ignored by Git. The system requires no API keys. Use HTTPS and set `BRUD_ADMIN_COOKIE_SECURE=true` outside local development.
 
 ## Common commands

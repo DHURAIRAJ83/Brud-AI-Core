@@ -76,6 +76,7 @@ async def test_schema_and_audit_endpoints(protected_api_app: FastAPI) -> None:
             "015_phase15_controlled_inference_runtime",
             "016_phase16_rag_grounded_answering",
             "017_phase17_conversation_memory",
+            "018_phase18_feedback_learning_loop",
         }
     audit = (await get(protected_api_app, "/api/admin/audit/recent?limit=2")).json()
     assert audit["limit"] == 2

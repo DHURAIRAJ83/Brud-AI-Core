@@ -67,3 +67,11 @@ alongside conversation memory evidence in one bounded, orchestrated
 context — no second retrieval implementation, no second vector/keyword
 index. See `docs/chat_orchestration_architecture.md` and
 `docs/context_orchestration.md`.
+
+## Phase 18 addendum
+
+Phase 18 can take a `rag_grounded_answer` as a feedback subject (via a
+checksum-and-public-ID snapshot only) and reuses Phase 16's
+`core_model.rag.chunk_validation.near_duplicate_ratio` unchanged for
+feedback-candidate near-duplicate detection — no second similarity
+implementation. See `docs/feedback_deduplication_and_contamination.md`.

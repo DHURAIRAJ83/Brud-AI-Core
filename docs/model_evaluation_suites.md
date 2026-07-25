@@ -55,3 +55,15 @@ was created against is recorded inside the run's own
 the actual bounded generation policy for that run. This keeps the schema
 additive (no new column, no migration risk) while still making every run
 traceable to the exact fixture set it evaluated.
+
+## Phase 18 addendum: contamination checks
+
+Phase 18's feedback-derived dataset candidates are checked against
+this suite's fixtures (`prompt`/`reference_answer`, normalized and
+checksummed) before approval — a candidate whose content matches an
+existing evaluation fixture is quarantined and its approval rejected
+outright (`evaluation_fixture_leakage`, a blocking contamination
+status). This suite's fixtures are read-only from Phase 18's
+perspective; nothing in the feedback pipeline ever creates, modifies,
+or exports into `model_evaluation_fixtures`. See
+`docs/feedback_deduplication_and_contamination.md`.

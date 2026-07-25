@@ -146,3 +146,18 @@ the model lineage: it governs what context a generation call receives,
 never which model or checkpoint is used. See
 [database_schema_v17.md](database_schema_v17.md) and
 [chat_orchestration_architecture.md](chat_orchestration_architecture.md).
+
+## Phase 18 feedback pipeline (no new lineage row, no new inference runtime)
+
+Phase 18 never rewrites a `core_model_versions` row either. Regression
+execution (`RegressionEvaluationService.execute_run()`) reuses the
+identical `ModelAssignmentService.ensure_instance_loaded()` /
+`InferenceRuntimeService.run_generation()` pair, requiring an
+`admin_diagnostic`-scope assignment exactly like RAG generation and
+chat orchestration before it — no second runtime, no second loader, no
+new assignment scope. A feedback subject snapshot
+(`feedback_subjects`) records which model release/version/checkpoint a
+piece of feedback is about via checksums and public-ID references
+only — it never touches or reinterprets the lineage row itself. See
+[database_schema_v18.md](database_schema_v18.md) and
+[feedback_regression_suites.md](feedback_regression_suites.md).

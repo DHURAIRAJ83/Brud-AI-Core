@@ -829,6 +829,68 @@ class Settings(BaseSettings):
         default=True, validation_alias="BRUD_MEMORY_REQUIRE_DELETION_CACHE_INVALIDATION"
     )
 
+    feedback_enabled: bool = Field(default=True, validation_alias="BRUD_FEEDBACK_ENABLED")
+    feedback_max_comment_characters: int = Field(
+        default=2000, ge=1, validation_alias="BRUD_FEEDBACK_MAX_COMMENT_CHARACTERS"
+    )
+    feedback_max_correction_characters: int = Field(
+        default=4000, ge=1, validation_alias="BRUD_FEEDBACK_MAX_CORRECTION_CHARACTERS"
+    )
+    feedback_max_attachment_bytes: int = Field(
+        default=2_000_000, ge=0, validation_alias="BRUD_FEEDBACK_MAX_ATTACHMENT_BYTES"
+    )
+    feedback_default_retention_seconds: int = Field(
+        default=7_776_000, ge=0, validation_alias="BRUD_FEEDBACK_DEFAULT_RETENTION_SECONDS"
+    )
+    feedback_require_privacy_scan: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_PRIVACY_SCAN"
+    )
+    feedback_require_safety_scan: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_SAFETY_SCAN"
+    )
+    feedback_require_human_review: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_HUMAN_REVIEW"
+    )
+    feedback_require_dataset_approval: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_DATASET_APPROVAL"
+    )
+    feedback_allow_free_text: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_ALLOW_FREE_TEXT"
+    )
+    feedback_allow_corrections: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_ALLOW_CORRECTIONS"
+    )
+    feedback_allow_dataset_candidates: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_ALLOW_DATASET_CANDIDATES"
+    )
+    feedback_allow_regression_fixtures: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_ALLOW_REGRESSION_FIXTURES"
+    )
+    feedback_max_active_review_assignments: int = Field(
+        default=20, ge=1, validation_alias="BRUD_FEEDBACK_MAX_ACTIVE_REVIEW_ASSIGNMENTS"
+    )
+    feedback_max_active_regression_runs: int = Field(
+        default=1, ge=1, validation_alias="BRUD_FEEDBACK_MAX_ACTIVE_REGRESSION_RUNS"
+    )
+    feedback_near_duplicate_threshold: float = Field(
+        default=0.9, ge=0, le=1, validation_alias="BRUD_FEEDBACK_NEAR_DUPLICATE_THRESHOLD"
+    )
+    feedback_block_test_leakage: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_BLOCK_TEST_LEAKAGE"
+    )
+    feedback_block_evaluation_leakage: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_BLOCK_EVALUATION_LEAKAGE"
+    )
+    feedback_block_regression_leakage: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_BLOCK_REGRESSION_LEAKAGE"
+    )
+    feedback_require_known_licence: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_KNOWN_LICENCE"
+    )
+    feedback_require_current_approval_checksum: bool = Field(
+        default=True, validation_alias="BRUD_FEEDBACK_REQUIRE_CURRENT_APPROVAL_CHECKSUM"
+    )
+
     @field_validator("log_level")
     @classmethod
     def normalize_log_level(cls, value: str) -> str:

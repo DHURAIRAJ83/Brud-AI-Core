@@ -11,6 +11,7 @@ from backend.api.routes import (
     core_models,
     datasets,
     documents,
+    feedback,
     health,
     imports,
     inference_runtime,
@@ -44,3 +45,4 @@ api_router.include_router(model_release.router)
 api_router.include_router(inference_runtime.router)
 api_router.include_router(rag.router)
 api_router.include_router(conversation_memory.router)
+api_router.include_router(feedback.router)

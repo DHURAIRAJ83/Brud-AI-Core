@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -3648,5 +3648,541 @@ CREATE TRIGGER IF NOT EXISTS memory_evaluation_metrics_immutable_update BEFORE U
 CREATE TRIGGER IF NOT EXISTS memory_evaluation_metrics_immutable_delete BEFORE DELETE ON memory_evaluation_metrics BEGIN SELECT RAISE(ABORT, 'evaluation metrics are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS conversation_memory_manifests_immutable_update BEFORE UPDATE ON conversation_memory_manifests BEGIN SELECT RAISE(ABORT, 'conversation memory manifests are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS conversation_memory_manifests_immutable_delete BEFORE DELETE ON conversation_memory_manifests BEGIN SELECT RAISE(ABORT, 'conversation memory manifests are append-only'); END;
+"""
+
+MIGRATION_018_NAME = "018_phase18_feedback_learning_loop"
+
+# Phase 18 stores a feedback event's subject lineage as one immutable
+# snapshot row (`feedback_subjects`) created before the event itself,
+# holding only public-ID references and checksums for whichever of the
+# 7 subject types (inference_result, rag_grounded_answer,
+# conversation_response, evaluation_output,
+# memory_orchestration_response, release_candidate, model_release) the
+# feedback is about -- never a dozen mostly-null FK columns, and never
+# raw hidden system prompts or private content. `subject_type` +
+# `subject_reference_public_id` is validated against the real owning
+# table at the service layer (never an arbitrary string or filesystem
+# reference), matching the "resolve to an existing public entity"
+# requirement without needing a polymorphic FK (SQLite has none).
+#
+# Two deviations from a literal reading of the spec's append-only
+# table list, both following the exact precedent already established
+# in Phase 16 (`rag_grounded_requests`, `rag_evaluation_runs`) and
+# Phase 17 (`memory_evaluation_runs`): a genuine two-phase
+# create-then-transition API flow is incompatible with an append-only
+# trigger, so is classified mutable here proactively instead of
+# discovered again the hard way.
+#
+#   * `feedback_corrected_responses`: created `draft`, then
+#     `POST .../validate` or `POST .../reject` must update the same
+#     row's `validation_status` (and a later correction for the same
+#     feedback event flips the prior row to `superseded`). This never
+#     touches the original model output -- that stays an immutable
+#     checksum on `feedback_subjects.output_checksum_sha256` --  only
+#     the correction proposal's own lifecycle is mutable.
+#   * `feedback_regression_runs`: `POST .../runs` creates a `draft`
+#     row, `POST .../execute` must update it to a terminal status.
+#     `feedback_regression_results` (the per-fixture pass/fail
+#     evidence) and `feedback_model_comparisons` (a single computed
+#     comparison, never re-executed in place) remain genuinely
+#     append-only.
+#
+# `feedback_candidate_approvals` stays append-only by construction:
+# each approval decision is one fully-formed row inserted exactly once
+# (mirrors `rag_answer_citations`); a stale approval is detected by
+# comparing its stored `candidate_version_id` snapshot against the
+# candidate's current version at read time, never by mutating the old
+# approval row.
+PHASE18_SCHEMA = """
+CREATE TABLE IF NOT EXISTS feedback_policies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    allowed_subject_types_json TEXT NOT NULL DEFAULT '[]',
+    allowed_feedback_types_json TEXT NOT NULL DEFAULT '[]',
+    allow_free_text INTEGER NOT NULL DEFAULT 1 CHECK (allow_free_text IN (0,1)),
+    allow_corrected_response INTEGER NOT NULL DEFAULT 1 CHECK (allow_corrected_response IN (0,1)),
+    require_privacy_scan INTEGER NOT NULL DEFAULT 1 CHECK (require_privacy_scan IN (0,1)),
+    require_safety_scan INTEGER NOT NULL DEFAULT 1 CHECK (require_safety_scan IN (0,1)),
+    require_human_review INTEGER NOT NULL DEFAULT 1 CHECK (require_human_review IN (0,1)),
+    require_dataset_approval INTEGER NOT NULL DEFAULT 1 CHECK (require_dataset_approval IN (0,1)),
+    maximum_feedback_characters INTEGER NOT NULL DEFAULT 2000 CHECK (maximum_feedback_characters > 0),
+    maximum_attachment_bytes INTEGER NOT NULL DEFAULT 2000000 CHECK (maximum_attachment_bytes >= 0),
+    default_retention_seconds INTEGER NOT NULL DEFAULT 7776000 CHECK (default_retention_seconds >= 0),
+    allow_regression_fixture_creation INTEGER NOT NULL DEFAULT 1 CHECK (allow_regression_fixture_creation IN (0,1)),
+    allow_dataset_candidate_creation INTEGER NOT NULL DEFAULT 1 CHECK (allow_dataset_candidate_creation IN (0,1)),
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','validated','active','deprecated','archived'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS feedback_subjects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    subject_type TEXT NOT NULL CHECK (subject_type IN (
+        'inference_result','rag_grounded_answer','conversation_response',
+        'evaluation_output','memory_orchestration_response','release_candidate','model_release'
+    )),
+    subject_reference_public_id TEXT NOT NULL,
+    model_release_public_id TEXT,
+    model_version_public_id TEXT,
+    checkpoint_checksum_sha256 TEXT,
+    tokenizer_version_public_id TEXT,
+    assignment_version_public_id TEXT,
+    generation_configuration_json TEXT NOT NULL DEFAULT '{}',
+    rag_retrieval_run_public_id TEXT,
+    citation_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    memory_item_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    conversation_session_public_id TEXT,
+    evaluation_suite_public_id TEXT,
+    evaluation_run_public_id TEXT,
+    output_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS feedback_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_policy_id INTEGER NOT NULL,
+    subject_id INTEGER NOT NULL,
+    participant_scope_key TEXT NOT NULL,
+    feedback_type TEXT NOT NULL CHECK (feedback_type IN (
+        'thumbs_up','thumbs_down','rating','issue_report','correction',
+        'citation_report','safety_report','language_report','memory_report','retrieval_report'
+    )),
+    rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 5),
+    comment_text TEXT,
+    comment_checksum_sha256 TEXT,
+    suggested_correction_text TEXT,
+    suggested_correction_checksum_sha256 TEXT,
+    expected_language TEXT,
+    expected_citation_reference TEXT,
+    expected_retrieval_source_reference TEXT,
+    severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','low','medium','high','critical')),
+    status TEXT NOT NULL DEFAULT 'submitted' CHECK (status IN (
+        'submitted','triaged','in_review','reviewed','candidate_created',
+        'resolved','rejected','expired','deleted','archived'
+    )),
+    privacy_status TEXT NOT NULL DEFAULT 'requires_review' CHECK (privacy_status IN (
+        'safe','redacted','requires_review','blocked'
+    )),
+    safety_status TEXT NOT NULL DEFAULT 'requires_review' CHECK (safety_status IN (
+        'safe','flagged','blocked','requires_review'
+    )),
+    retention_expires_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    triaged_at TEXT,
+    resolved_at TEXT,
+    deleted_at TEXT,
+    FOREIGN KEY (feedback_policy_id) REFERENCES feedback_policies(id) ON DELETE RESTRICT,
+    FOREIGN KEY (subject_id) REFERENCES feedback_subjects(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_classifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_event_id INTEGER NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'helpful','unhelpful','incorrect','partially_correct','unsupported_claim',
+        'hallucination_like','wrong_language','poor_tamil','poor_tanglish','format_failure',
+        'instruction_not_followed','citation_missing','citation_invalid','citation_wrong',
+        'retrieval_irrelevant','retrieval_missing','unsafe_response','over_refusal',
+        'under_refusal','prompt_leakage','role_token_leakage','repetition','memory_wrong',
+        'memory_outdated','memory_privacy_issue','memory_not_used','memory_should_not_be_used',
+        'too_long','too_short','unclear','other'
+    )),
+    severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','low','medium','high','critical')),
+    assigned_by TEXT NOT NULL DEFAULT 'admin' CHECK (assigned_by IN ('system','admin')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_event_id INTEGER NOT NULL,
+    attachment_type TEXT NOT NULL DEFAULT 'excerpt',
+    checksum_sha256 TEXT NOT NULL,
+    byte_size INTEGER NOT NULL DEFAULT 0 CHECK (byte_size >= 0),
+    mime_type TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_review_queues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    queue_type TEXT NOT NULL CHECK (queue_type IN (
+        'general_quality','language','tamil_quality','tanglish_quality','citation','retrieval',
+        'safety','privacy','memory','dataset_candidate','regression'
+    )),
+    description TEXT NOT NULL DEFAULT '',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN ('draft','active','archived')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS feedback_review_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    queue_id INTEGER NOT NULL,
+    feedback_event_id INTEGER NOT NULL,
+    reviewer_admin_public_id TEXT NOT NULL,
+    assigned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_at TEXT,
+    status TEXT NOT NULL DEFAULT 'assigned' CHECK (status IN (
+        'assigned','in_progress','completed','reassigned','cancelled','expired'
+    )),
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('info','low','medium','high','critical')),
+    conflict_of_interest_flag INTEGER NOT NULL DEFAULT 0 CHECK (conflict_of_interest_flag IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (queue_id) REFERENCES feedback_review_queues(id) ON DELETE RESTRICT,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_human_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_event_id INTEGER NOT NULL,
+    reviewer_admin_public_id TEXT NOT NULL,
+    rubric_version TEXT NOT NULL DEFAULT '1',
+    classification_confirmed TEXT,
+    severity_confirmed TEXT CHECK (severity_confirmed IS NULL OR severity_confirmed IN (
+        'info','low','medium','high','critical'
+    )),
+    correctness_score INTEGER CHECK (correctness_score IS NULL OR correctness_score BETWEEN 1 AND 5),
+    relevance_score INTEGER CHECK (relevance_score IS NULL OR relevance_score BETWEEN 1 AND 5),
+    language_quality_score INTEGER CHECK (language_quality_score IS NULL OR language_quality_score BETWEEN 1 AND 5),
+    safety_score INTEGER CHECK (safety_score IS NULL OR safety_score BETWEEN 1 AND 5),
+    citation_score INTEGER CHECK (citation_score IS NULL OR citation_score BETWEEN 1 AND 5),
+    retrieval_score INTEGER CHECK (retrieval_score IS NULL OR retrieval_score BETWEEN 1 AND 5),
+    memory_use_score INTEGER CHECK (memory_use_score IS NULL OR memory_use_score BETWEEN 1 AND 5),
+    overall_score INTEGER NOT NULL CHECK (overall_score BETWEEN 1 AND 5),
+    verdict TEXT NOT NULL CHECK (verdict IN (
+        'valid_feedback','partially_valid','invalid_feedback','needs_second_review',
+        'privacy_blocked','safety_blocked','candidate_recommended','regression_recommended'
+    )),
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_corrected_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_event_id INTEGER NOT NULL,
+    original_output_checksum_sha256 TEXT NOT NULL,
+    corrected_response_text TEXT NOT NULL,
+    corrected_response_checksum_sha256 TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'unknown',
+    citation_map_json TEXT NOT NULL DEFAULT '[]',
+    memory_use_policy TEXT NOT NULL DEFAULT 'none' CHECK (memory_use_policy IN (
+        'none','reference_existing','propose_new'
+    )),
+    validation_status TEXT NOT NULL DEFAULT 'draft' CHECK (validation_status IN (
+        'draft','validated','validated_with_warnings','rejected','superseded'
+    )),
+    validation_issues_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    validated_at TEXT,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_privacy_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_event_id INTEGER,
+    candidate_id INTEGER,
+    category TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('safe','redacted','requires_review','blocked')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT,
+    FOREIGN KEY (candidate_id) REFERENCES feedback_dataset_candidates(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_safety_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_event_id INTEGER,
+    candidate_id INTEGER,
+    category TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('safe','flagged','blocked')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT,
+    FOREIGN KEY (candidate_id) REFERENCES feedback_dataset_candidates(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_quality_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    dimension TEXT NOT NULL CHECK (dimension IN (
+        'clarity','correctness_support','instruction_quality','response_quality',
+        'language_quality','format_quality','safety_quality','citation_quality',
+        'provenance_completeness','licence_completeness','privacy_safety',
+        'deduplication','contamination_safety'
+    )),
+    status TEXT NOT NULL DEFAULT 'not_assessed' CHECK (status IN ('pass','warning','fail','not_assessed')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES feedback_dataset_candidates(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_dataset_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_feedback_event_id INTEGER NOT NULL,
+    source_subject_id INTEGER NOT NULL,
+    source_corrected_response_id INTEGER,
+    candidate_type TEXT NOT NULL CHECK (candidate_type IN (
+        'instruction','chat','translation','tanglish_pair','safety','preference','evaluation_only'
+    )),
+    failed_model_version_public_id TEXT,
+    current_version_id INTEGER,
+    privacy_status TEXT NOT NULL DEFAULT 'requires_review' CHECK (privacy_status IN (
+        'safe','redacted','requires_review','blocked'
+    )),
+    safety_status TEXT NOT NULL DEFAULT 'requires_review' CHECK (safety_status IN (
+        'safe','flagged','blocked','requires_review'
+    )),
+    licence_status TEXT NOT NULL DEFAULT 'unknown' CHECK (licence_status IN (
+        'approved','restricted','unknown','blocked','not_applicable'
+    )),
+    deduplication_status TEXT NOT NULL DEFAULT 'unique' CHECK (deduplication_status IN (
+        'unique','exact_duplicate','normalized_duplicate','near_duplicate',
+        'prompt_duplicate','response_duplicate','prompt_response_duplicate'
+    )),
+    contamination_status TEXT NOT NULL DEFAULT 'clean' CHECK (contamination_status IN (
+        'clean','training_duplicate','validation_leakage','test_leakage',
+        'evaluation_fixture_leakage','regression_fixture_leakage',
+        'subject_output_copy','hidden_prompt_leakage'
+    )),
+    intended_use TEXT NOT NULL DEFAULT 'training_candidate',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','validating','review_required','approved','approved_with_warnings',
+        'rejected','quarantined','exported','archived'
+    )),
+    exported_dataset_record_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_feedback_event_id) REFERENCES feedback_events(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_subject_id) REFERENCES feedback_subjects(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_corrected_response_id) REFERENCES feedback_corrected_responses(id) ON DELETE RESTRICT,
+    FOREIGN KEY (current_version_id) REFERENCES feedback_candidate_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_candidate_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    prompt_text TEXT NOT NULL,
+    input_text TEXT,
+    output_text TEXT NOT NULL,
+    language TEXT NOT NULL DEFAULT 'unknown',
+    prompt_checksum_sha256 TEXT NOT NULL,
+    output_checksum_sha256 TEXT NOT NULL,
+    metadata_checksum_sha256 TEXT NOT NULL,
+    change_reason TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(candidate_id, version_number),
+    FOREIGN KEY (candidate_id) REFERENCES feedback_dataset_candidates(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_candidate_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('info','low','medium','high','critical')),
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES feedback_dataset_candidates(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_candidate_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    candidate_version_id INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'approve','approve_with_warning','reject','request_changes','quarantine'
+    )),
+    review_evidence_checksum_sha256 TEXT,
+    privacy_assessment TEXT NOT NULL,
+    safety_assessment TEXT NOT NULL,
+    deduplication_result TEXT NOT NULL,
+    contamination_result TEXT NOT NULL,
+    licence_result TEXT NOT NULL,
+    intended_use_decision TEXT NOT NULL DEFAULT 'training_candidate',
+    admin_public_id TEXT NOT NULL,
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES feedback_dataset_candidates(id) ON DELETE RESTRICT,
+    FOREIGN KEY (candidate_version_id) REFERENCES feedback_candidate_versions(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_regression_suites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','validated','active','retired','archived'
+    )),
+    checksum_sha256 TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS feedback_regression_fixtures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    suite_id INTEGER NOT NULL,
+    category TEXT NOT NULL CHECK (category IN (
+        'language_regression','tamil_quality_regression','tanglish_regression',
+        'instruction_following_regression','citation_regression','retrieval_regression',
+        'safety_regression','memory_regression','privacy_regression','format_regression',
+        'repetition_regression'
+    )),
+    language TEXT NOT NULL DEFAULT 'unknown',
+    input_text TEXT NOT NULL,
+    controlled_context_json TEXT NOT NULL DEFAULT '{}',
+    expected_behavior TEXT NOT NULL,
+    forbidden_behavior TEXT,
+    expected_citations_json TEXT NOT NULL DEFAULT '[]',
+    expected_memory_behavior_json TEXT NOT NULL DEFAULT '{}',
+    severity TEXT NOT NULL DEFAULT 'medium' CHECK (severity IN ('info','low','medium','high','critical')),
+    source_feedback_event_ids_json TEXT NOT NULL DEFAULT '[]',
+    checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (suite_id) REFERENCES feedback_regression_suites(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_regression_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    suite_id INTEGER NOT NULL,
+    model_assignment_id INTEGER NOT NULL,
+    generation_configuration_checksum_sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','queued','running','completed','failed'
+    )),
+    started_at TEXT,
+    ended_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (suite_id) REFERENCES feedback_regression_suites(id) ON DELETE RESTRICT,
+    FOREIGN KEY (model_assignment_id) REFERENCES inference_model_assignments(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_regression_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_id INTEGER NOT NULL,
+    fixture_id INTEGER NOT NULL,
+    passed INTEGER NOT NULL CHECK (passed IN (0,1)),
+    failure_reason TEXT,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES feedback_regression_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (fixture_id) REFERENCES feedback_regression_fixtures(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_model_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    regression_suite_id INTEGER NOT NULL,
+    left_run_id INTEGER NOT NULL,
+    right_run_id INTEGER NOT NULL,
+    compatibility TEXT NOT NULL CHECK (compatibility IN ('compatible','partially_compatible','incompatible')),
+    comparison_result TEXT NOT NULL CHECK (comparison_result IN (
+        'improved','mixed','unchanged','regressed','incomparable'
+    )),
+    fixed_failure_rate REAL,
+    persistent_failure_rate REAL,
+    new_regression_rate REAL,
+    language_regression_rate REAL,
+    citation_regression_rate REAL,
+    safety_regression_rate REAL,
+    memory_regression_rate REAL,
+    privacy_regression_rate REAL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (regression_suite_id) REFERENCES feedback_regression_suites(id) ON DELETE RESTRICT,
+    FOREIGN KEY (left_run_id) REFERENCES feedback_regression_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (right_run_id) REFERENCES feedback_regression_runs(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_improvement_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_policy_id INTEGER,
+    regression_run_id INTEGER,
+    comparison_id INTEGER,
+    report_json TEXT NOT NULL,
+    report_checksum_sha256 TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_policy_id) REFERENCES feedback_policies(id) ON DELETE RESTRICT,
+    FOREIGN KEY (regression_run_id) REFERENCES feedback_regression_runs(id) ON DELETE RESTRICT,
+    FOREIGN KEY (comparison_id) REFERENCES feedback_model_comparisons(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS feedback_manifests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    feedback_policy_id INTEGER NOT NULL,
+    manifest_json TEXT NOT NULL,
+    manifest_checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_policy_id) REFERENCES feedback_policies(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_feedback_events_subject ON feedback_events(subject_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_events_participant ON feedback_events(participant_scope_key);
+CREATE INDEX IF NOT EXISTS ix_feedback_events_status ON feedback_events(status);
+CREATE INDEX IF NOT EXISTS ix_feedback_classifications_event ON feedback_classifications(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_attachments_event ON feedback_attachments(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_review_assignments_queue ON feedback_review_assignments(queue_id, status);
+CREATE INDEX IF NOT EXISTS ix_feedback_review_assignments_event ON feedback_review_assignments(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_human_reviews_event ON feedback_human_reviews(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_corrected_responses_event ON feedback_corrected_responses(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_privacy_findings_event ON feedback_privacy_findings(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_privacy_findings_candidate ON feedback_privacy_findings(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_safety_findings_event ON feedback_safety_findings(feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_safety_findings_candidate ON feedback_safety_findings(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_quality_assessments_candidate ON feedback_quality_assessments(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_dataset_candidates_event ON feedback_dataset_candidates(source_feedback_event_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_dataset_candidates_status ON feedback_dataset_candidates(status);
+CREATE INDEX IF NOT EXISTS ix_feedback_candidate_versions_candidate ON feedback_candidate_versions(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_candidate_issues_candidate ON feedback_candidate_issues(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_candidate_approvals_candidate ON feedback_candidate_approvals(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_regression_fixtures_suite ON feedback_regression_fixtures(suite_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_regression_runs_suite ON feedback_regression_runs(suite_id, status);
+CREATE INDEX IF NOT EXISTS ix_feedback_regression_results_run ON feedback_regression_results(run_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_model_comparisons_suite ON feedback_model_comparisons(regression_suite_id);
+CREATE INDEX IF NOT EXISTS ix_feedback_manifests_policy ON feedback_manifests(feedback_policy_id);
+CREATE TRIGGER IF NOT EXISTS feedback_subjects_immutable_update BEFORE UPDATE ON feedback_subjects BEGIN SELECT RAISE(ABORT, 'feedback subjects are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_subjects_immutable_delete BEFORE DELETE ON feedback_subjects BEGIN SELECT RAISE(ABORT, 'feedback subjects are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_classifications_immutable_update BEFORE UPDATE ON feedback_classifications BEGIN SELECT RAISE(ABORT, 'feedback classifications are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_classifications_immutable_delete BEFORE DELETE ON feedback_classifications BEGIN SELECT RAISE(ABORT, 'feedback classifications are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_attachments_immutable_update BEFORE UPDATE ON feedback_attachments BEGIN SELECT RAISE(ABORT, 'feedback attachments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_attachments_immutable_delete BEFORE DELETE ON feedback_attachments BEGIN SELECT RAISE(ABORT, 'feedback attachments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_human_reviews_immutable_update BEFORE UPDATE ON feedback_human_reviews BEGIN SELECT RAISE(ABORT, 'human reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_human_reviews_immutable_delete BEFORE DELETE ON feedback_human_reviews BEGIN SELECT RAISE(ABORT, 'human reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_privacy_findings_immutable_update BEFORE UPDATE ON feedback_privacy_findings BEGIN SELECT RAISE(ABORT, 'privacy findings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_privacy_findings_immutable_delete BEFORE DELETE ON feedback_privacy_findings BEGIN SELECT RAISE(ABORT, 'privacy findings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_safety_findings_immutable_update BEFORE UPDATE ON feedback_safety_findings BEGIN SELECT RAISE(ABORT, 'safety findings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_safety_findings_immutable_delete BEFORE DELETE ON feedback_safety_findings BEGIN SELECT RAISE(ABORT, 'safety findings are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_quality_assessments_immutable_update BEFORE UPDATE ON feedback_quality_assessments BEGIN SELECT RAISE(ABORT, 'quality assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_quality_assessments_immutable_delete BEFORE DELETE ON feedback_quality_assessments BEGIN SELECT RAISE(ABORT, 'quality assessments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_candidate_versions_immutable_update BEFORE UPDATE ON feedback_candidate_versions BEGIN SELECT RAISE(ABORT, 'candidate versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_candidate_versions_immutable_delete BEFORE DELETE ON feedback_candidate_versions BEGIN SELECT RAISE(ABORT, 'candidate versions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_candidate_issues_immutable_update BEFORE UPDATE ON feedback_candidate_issues BEGIN SELECT RAISE(ABORT, 'candidate issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_candidate_issues_immutable_delete BEFORE DELETE ON feedback_candidate_issues BEGIN SELECT RAISE(ABORT, 'candidate issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_candidate_approvals_immutable_update BEFORE UPDATE ON feedback_candidate_approvals BEGIN SELECT RAISE(ABORT, 'candidate approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_candidate_approvals_immutable_delete BEFORE DELETE ON feedback_candidate_approvals BEGIN SELECT RAISE(ABORT, 'candidate approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_regression_fixtures_immutable_update BEFORE UPDATE ON feedback_regression_fixtures BEGIN SELECT RAISE(ABORT, 'regression fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_regression_fixtures_immutable_delete BEFORE DELETE ON feedback_regression_fixtures BEGIN SELECT RAISE(ABORT, 'regression fixtures are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_regression_results_immutable_update BEFORE UPDATE ON feedback_regression_results BEGIN SELECT RAISE(ABORT, 'regression results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_regression_results_immutable_delete BEFORE DELETE ON feedback_regression_results BEGIN SELECT RAISE(ABORT, 'regression results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_model_comparisons_immutable_update BEFORE UPDATE ON feedback_model_comparisons BEGIN SELECT RAISE(ABORT, 'model comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_model_comparisons_immutable_delete BEFORE DELETE ON feedback_model_comparisons BEGIN SELECT RAISE(ABORT, 'model comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_improvement_reports_immutable_update BEFORE UPDATE ON feedback_improvement_reports BEGIN SELECT RAISE(ABORT, 'improvement reports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_improvement_reports_immutable_delete BEFORE DELETE ON feedback_improvement_reports BEGIN SELECT RAISE(ABORT, 'improvement reports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_manifests_immutable_update BEFORE UPDATE ON feedback_manifests BEGIN SELECT RAISE(ABORT, 'feedback manifests are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS feedback_manifests_immutable_delete BEFORE DELETE ON feedback_manifests BEGIN SELECT RAISE(ABORT, 'feedback manifests are append-only'); END;
 """
 

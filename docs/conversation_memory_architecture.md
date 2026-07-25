@@ -90,3 +90,13 @@ session (mode + policy) -> turn (role-validated, optionally persisted)
 
 See `docs/database_schema_v17.md` for the schema, and the
 per-subsystem docs for detail.
+
+## Phase 18 addendum
+
+Phase 18's feedback pipeline can reference a conversation turn or a
+memory-orchestration response as a feedback subject
+(`conversation_response`/`memory_orchestration_response` subject
+types), but only ever via a checksum-and-public-ID snapshot taken at
+feedback-submission time — it never reads or duplicates raw
+conversation/memory content, and it never writes back into
+conversation-memory tables. See `docs/feedback_architecture.md`.

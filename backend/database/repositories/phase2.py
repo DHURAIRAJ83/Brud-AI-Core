@@ -42,6 +42,27 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _approval_public(row: sqlite3.Row) -> AdminApprovalPublic:
+    return AdminApprovalPublic(
+        public_id=row["public_id"],
+        action_type=row["action_type"],
+        target_type=row["target_type"],
+        target_public_id=row["target_public_id"],
+        request_payload=redact_secrets(loads_json(row["request_payload_json"])),
+        requested_by=row["requested_by"],
+        summary=row["summary"],
+        status=row["status"],
+        reviewed_by=row["reviewed_by"],
+        review_comment=row["review_comment"],
+        execution_status=row["execution_status"],
+        executed_at=row["executed_at"],
+        execution_result=redact_secrets(loads_json(row["execution_result_json"] or "{}")),
+        executor_public_id=row["executor_public_id"],
+        created_at=row["created_at"],
+        reviewed_at=row["reviewed_at"],
+    )
+
+
 def _source_public(row: sqlite3.Row) -> DatasetSourcePublic:
     return DatasetSourcePublic(
         public_id=row["public_id"],
@@ -739,7 +760,8 @@ class AdminApprovalRepository(BaseRepository):
         with self.transaction() as connection:
             connection.execute(
                 """INSERT INTO admin_approvals(public_id,action_type,target_type,
-                target_public_id,request_payload_json,requested_by) VALUES (?,?,?,?,?,?)""",
+                target_public_id,request_payload_json,requested_by,summary)
+                VALUES (?,?,?,?,?,?,?)""",
                 (
                     public_id,
                     item.action_type,
@@ -747,6 +769,7 @@ class AdminApprovalRepository(BaseRepository):
                     item.target_public_id,
                     dumps_json(item.request_payload),
                     item.requested_by,
+                    item.summary,
                 ),
             )
         return self.get_by_public_id(public_id)
@@ -758,19 +781,86 @@ class AdminApprovalRepository(BaseRepository):
             ).fetchone()
         if not row:
             raise NotFoundError("admin approval not found")
-        return AdminApprovalPublic(
-            public_id=row["public_id"],
-            action_type=row["action_type"],
-            target_type=row["target_type"],
-            target_public_id=row["target_public_id"],
-            request_payload=redact_secrets(loads_json(row["request_payload_json"])),
-            requested_by=row["requested_by"],
-            status=row["status"],
-            reviewed_by=row["reviewed_by"],
-            review_comment=row["review_comment"],
-            created_at=row["created_at"],
-            reviewed_at=row["reviewed_at"],
-        )
+        return _approval_public(row)
+
+    def list(
+        self, *, status: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[AdminApprovalPublic]:
+        limit, offset = self.pagination(limit, offset)
+        with self.transaction() as connection:
+            if status:
+                rows = connection.execute(
+                    """SELECT * FROM admin_approvals WHERE status=?
+                    ORDER BY id DESC LIMIT ? OFFSET ?""",
+                    (status, limit, offset),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM admin_approvals ORDER BY id DESC LIMIT ? OFFSET ?",
+                    (limit, offset),
+                ).fetchall()
+        return [_approval_public(row) for row in rows]
+
+    def update_review(
+        self,
+        public_id: str,
+        *,
+        status: str,
+        reviewed_by: str,
+        review_comment: str | None,
+    ) -> AdminApprovalPublic:
+        with self.transaction() as connection:
+            current = connection.execute(
+                "SELECT status FROM admin_approvals WHERE public_id=?", (public_id,)
+            ).fetchone()
+            if not current:
+                raise NotFoundError("admin approval not found")
+            if current["status"] != "pending":
+                raise ValidationError(
+                    f"admin approval already reviewed (status={current['status']})"
+                )
+            execution_status = "pending" if status == "approved" else "not_applicable"
+            connection.execute(
+                """UPDATE admin_approvals SET status=?, reviewed_by=?, review_comment=?,
+                reviewed_at=?, execution_status=? WHERE public_id=?""",
+                (status, reviewed_by, review_comment, _now(), execution_status, public_id),
+            )
+        return self.get_by_public_id(public_id)
+
+    def update_execution(
+        self,
+        public_id: str,
+        *,
+        execution_status: str,
+        execution_result: dict[str, Any],
+        executor_public_id: str,
+    ) -> AdminApprovalPublic:
+        with self.transaction() as connection:
+            current = connection.execute(
+                "SELECT status, execution_status FROM admin_approvals WHERE public_id=?",
+                (public_id,),
+            ).fetchone()
+            if not current:
+                raise NotFoundError("admin approval not found")
+            if current["status"] != "approved":
+                raise ValidationError("only approved proposals may be executed")
+            if current["execution_status"] != "pending":
+                raise ValidationError(
+                    f"proposal is not awaiting execution (execution_status="
+                    f"{current['execution_status']})"
+                )
+            connection.execute(
+                """UPDATE admin_approvals SET execution_status=?, execution_result_json=?,
+                executor_public_id=?, executed_at=? WHERE public_id=?""",
+                (
+                    execution_status,
+                    dumps_json(execution_result),
+                    executor_public_id,
+                    _now(),
+                    public_id,
+                ),
+            )
+        return self.get_by_public_id(public_id)
 
 
 class AuditLogRepository(BaseRepository):

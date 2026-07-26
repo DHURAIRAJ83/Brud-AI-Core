@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -5481,4 +5481,26 @@ CREATE TRIGGER IF NOT EXISTS pretraining_dataset_snapshots_immutable_delete BEFO
 CREATE TRIGGER IF NOT EXISTS base_model_readiness_dimensions_immutable_update BEFORE UPDATE ON base_model_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS base_model_readiness_dimensions_immutable_delete BEFORE DELETE ON base_model_readiness_dimensions BEGIN SELECT RAISE(ABORT, 'readiness dimensions are append-only'); END;
 """
+
+MIGRATION_022_NAME = "022_phase22_admin_assistant_execution_tracking"
+
+# Phase 22 turns the Phase 2 `admin_approvals` table (previously created
+# but never wired to a caller) into the governed execution record for the
+# Admin Assistant: a proposal is created pending, an admin reviews it
+# (approve/reject, already modeled by `status`), and only an approved
+# proposal may be executed exactly once through an allowlisted existing
+# service call. The three new columns record that execution outcome
+# without a separate table, since execution is 1:1 with an approval and
+# never has its own independent lifecycle. `summary` is a short
+# human-readable description surfaced in review queues so an admin does
+# not have to parse `request_payload_json` to decide.
+PHASE22_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "admin_approvals": [
+        ("summary", "TEXT NOT NULL DEFAULT ''"),
+        ("execution_status", "TEXT NOT NULL DEFAULT 'not_applicable'"),
+        ("executed_at", "TEXT"),
+        ("execution_result_json", "TEXT"),
+        ("executor_public_id", "TEXT"),
+    ],
+}
 

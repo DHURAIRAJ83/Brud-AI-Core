@@ -36,6 +36,7 @@ from backend.database.schema import (
     MIGRATION_019_NAME,
     MIGRATION_020_NAME,
     MIGRATION_021_NAME,
+    MIGRATION_022_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -59,6 +60,7 @@ from backend.database.schema import (
     PHASE20_COLUMNS,
     PHASE20_SCHEMA,
     PHASE21A_SCHEMA,
+    PHASE22_COLUMNS,
     SCHEMA_VERSION,
 )
 
@@ -464,6 +466,19 @@ def _apply_v21(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 21")
 
 
+def _apply_v22(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (22,)).fetchone():
+        return
+    for table, columns in PHASE22_COLUMNS.items():
+        for name, definition in columns:
+            if not _has_column(connection, table, name):
+                connection.execute(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}')
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (22, MIGRATION_022_NAME)
+    )
+    connection.execute("PRAGMA user_version = 22")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -546,6 +561,7 @@ def initialize_database(
             _apply_v19(connection)
             _apply_v20(connection)
             _apply_v21(connection)
+            _apply_v22(connection)
             connection.commit()
         except Exception:
             connection.rollback()

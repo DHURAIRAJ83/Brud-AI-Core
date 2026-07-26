@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import DashboardLayout from './components/DashboardLayout.jsx'
+import AdminAssistantPage from './pages/AdminAssistantPage.jsx'
 import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
@@ -49,5 +50,6 @@ export default function App() {
   if (active === 'Feedback & Improvement') page = <FeedbackPage />
   if (active === 'Corpus Builder') page = <CorpusPage />
   if (active === 'Pretraining Readiness') page = <PretrainingReadinessPage />
+  if (active === 'Admin Assistant') page = <AdminAssistantPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

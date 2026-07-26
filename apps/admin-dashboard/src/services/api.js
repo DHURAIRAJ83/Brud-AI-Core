@@ -664,3 +664,12 @@ export const smokeRun = (id) => request(`${PR}/smoke-runs/${id}`)
 export const baseModelReadinessEvaluations = () => request(`${PR}/readiness-evaluations`)
 export const createBaseModelReadinessEvaluation = (body) => request(`${PR}/readiness-evaluations`, { method: 'POST', body: JSON.stringify(body) })
 export const baseModelReadinessEvaluation = (id) => request(`${PR}/readiness-evaluations/${id}`)
+
+const AA = '/api/admin/assistant'
+export const assistantOverview = () => request(`${AA}/overview`)
+export const assistantActions = () => request(`${AA}/actions`)
+export const assistantProposals = (status) => request(`${AA}/proposals${status ? `?status=${status}` : ''}`)
+export const assistantProposal = (id) => request(`${AA}/proposals/${id}`)
+export const createAssistantProposal = (body) => request(`${AA}/proposals`, { method: 'POST', body: JSON.stringify(body) })
+export const reviewAssistantProposal = (id, body) => request(`${AA}/proposals/${id}/review`, { method: 'POST', body: JSON.stringify(body) })
+export const executeAssistantProposal = (id) => request(`${AA}/proposals/${id}/execute`, { method: 'POST' })

@@ -463,12 +463,20 @@ class UserFeedbackPublic(UserFeedbackCreate, PublicIdModel):
     reviewed_at: datetime | None
 
 
+class ExecutionStatus(StrEnum):
+    NOT_APPLICABLE = "not_applicable"
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
 class AdminApprovalCreate(DomainModel):
     action_type: str
     target_type: str
     target_public_id: str
     request_payload: dict[str, Any] = Field(default_factory=dict)
     requested_by: str
+    summary: str = ""
 
 
 class AdminApprovalUpdate(DomainModel):
@@ -482,6 +490,10 @@ class AdminApprovalRecord(PublicIdModel, AdminApprovalCreate):
     status: ApprovalStatus
     reviewed_by: str | None
     review_comment: str | None
+    execution_status: ExecutionStatus
+    executed_at: datetime | None
+    execution_result: dict[str, Any] = Field(default_factory=dict)
+    executor_public_id: str | None
     created_at: datetime
     reviewed_at: datetime | None
 
@@ -490,6 +502,10 @@ class AdminApprovalPublic(AdminApprovalCreate, PublicIdModel):
     status: ApprovalStatus
     reviewed_by: str | None
     review_comment: str | None
+    execution_status: ExecutionStatus
+    executed_at: datetime | None
+    execution_result: dict[str, Any] = Field(default_factory=dict)
+    executor_public_id: str | None
     created_at: datetime
     reviewed_at: datetime | None
 

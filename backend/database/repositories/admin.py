@@ -227,7 +227,12 @@ class AdminRepository(BaseRepository):
         token_hash = _hash_token(token)
         rejection: type[ValidationError] | None = None
         result: tuple[AdminPublic, SessionPublic, int] | None = None
-        with self.transaction() as connection:
+        # immediate=True: this is called on every authenticated request and
+        # always reads then conditionally writes (last_used_at touch, or an
+        # audit row on rejection) -- exactly the shape vulnerable to the
+        # deferred-BEGIN lock-upgrade race under a concurrent writer (see
+        # BaseRepository.transaction). Never nests a second transaction().
+        with self.transaction(immediate=True) as connection:
             row = connection.execute(
                 """SELECT s.*,a.public_id AS admin_public_id,a.username,a.display_name,a.status
                 FROM admin_sessions s JOIN admin_accounts a ON a.id=s.admin_account_id

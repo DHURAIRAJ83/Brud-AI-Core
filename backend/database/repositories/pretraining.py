@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from backend.core.json_utils import loads_json
@@ -31,6 +33,24 @@ def public_row(row: sqlite3.Row | None) -> dict[str, Any]:
 
 
 class PretrainingRepository(BaseRepository):
+    @contextmanager
+    def transaction(self, *, immediate: bool = True) -> Iterator[sqlite3.Connection]:
+        """Defaults to `immediate=True`: the pretraining worker writes a
+        metric and/or checkpoint row on every training step (as often as
+        every step, depending on configuration) while the API layer polls
+        job/metrics status and pause/resume flags on the same database from
+        another thread. Every one of this repository's transactions reads
+        the current job row and then conditionally writes -- the exact
+        shape that a deferred `BEGIN` leaves vulnerable to a lock-upgrade
+        failure under that concurrent write load (see
+        `BaseRepository.transaction`). None of this repository's callers in
+        `PretrainingService` nest a second `transaction()` inside an
+        already-open one, so there is no deadlock risk in claiming the
+        write lock up front here.
+        """
+        with super().transaction(immediate=immediate) as connection:
+            yield connection
+
     def job(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
         row = connection.execute(
             """SELECT j.*,d.public_id AS dataset_version_public_id,

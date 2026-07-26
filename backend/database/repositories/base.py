@@ -30,10 +30,32 @@ class BaseRepository:
         self.database_path = database_path
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
+        """`immediate=True` claims the write lock at BEGIN time instead of
+        deferring it until the transaction's first write statement. A
+        deferred transaction that reads, then later writes, can find its
+        read snapshot invalidated by a concurrent writer's commit in
+        between -- SQLite raises `sqlite3.OperationalError: database is
+        locked` for that lock upgrade, and `busy_timeout` does not retry it
+        (it's a lock-upgrade/snapshot conflict, not a plain contended wait).
+        Reproduced directly against concurrent read-then-write connections
+        under write-heavy load (e.g. the pretraining worker's per-step
+        checkpoint/metric writes racing the admin session touch on every
+        request).
+
+        Defaults to False (today's plain `BEGIN`) because some call sites
+        open a second, independent connection via a nested repository/
+        service call while an outer `transaction()` on a first connection
+        is still open (e.g. `_processor_for_experiment` inside
+        `generate_profile`); if both connections claimed the write lock
+        immediately, the second would deadlock behind the first with no
+        thread able to release it. Only opt into `immediate=True` at (or
+        for) callers verified not to nest a second `transaction()` inside
+        an already-open one.
+        """
         with database_connection(self.database_path) as connection:
             try:
-                connection.execute("BEGIN")
+                connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
                 yield connection
                 connection.commit()
             except sqlite3.IntegrityError as exc:

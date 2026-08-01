@@ -2,15 +2,26 @@ import { useEffect, useState } from 'react'
 import StatusCard from '../components/StatusCard.jsx'
 import {
   assistantActions,
+  assistantLanguagePreference,
   assistantOverview,
   assistantProposal,
   assistantProposals,
   createAssistantProposal,
   executeAssistantProposal,
   reviewAssistantProposal,
+  setAssistantLanguagePreference,
 } from '../services/api.js'
 
 const GOVERNANCE_NOTICE = 'The Admin Assistant never mutates anything on its own. Every proposed action must be approved through Admin Review, and approved actions execute only through the existing secured dataset/admin services -- never a direct database write. It cannot start model training.'
+
+// Mirrors AdminAssistantWidget.jsx's LANGUAGE_OPTIONS exactly -- both
+// surfaces read/write the one saved preference, never a competing copy.
+const LANGUAGE_OPTIONS = [
+  { key: 'tamil', label: 'தமிழ்' },
+  { key: 'english', label: 'English' },
+  { key: 'tanglish', label: 'Tanglish' },
+  { key: 'auto', label: 'Auto' },
+]
 
 function Pre({ value }) {
   if (value === undefined || value === null) return null
@@ -28,6 +39,10 @@ export default function AdminAssistantPage() {
   const [error, setError] = useState('')
   const [selected, setSelected] = useState(null)
   const [comment, setComment] = useState('')
+  const [language, setLanguage] = useState('auto')
+  const [languageLoaded, setLanguageLoaded] = useState(false)
+  const [languageSaving, setLanguageSaving] = useState(false)
+  const [languageError, setLanguageError] = useState('')
 
   const [form, setForm] = useState({
     action_type: 'dataset_record_review',
@@ -49,6 +64,32 @@ export default function AdminAssistantPage() {
 
   useEffect(() => { loadOverview() }, [])
   useEffect(() => { if (tab === 'Proposals & Admin Review') loadProposals() }, [tab])
+  useEffect(() => {
+    assistantLanguagePreference()
+      .then((data) => setLanguage(data.response_language))
+      .catch(() => {})
+      .finally(() => setLanguageLoaded(true))
+  }, [])
+
+  // Shares the one saved preference with the floating widget -- the two
+  // surfaces never keep competing copies. Changing it here also changes
+  // what the widget's next reply is written in, since both simply read
+  // the same backend-stored value.
+  async function changeLanguage(nextLanguage) {
+    const previous = language
+    setLanguage(nextLanguage)
+    setLanguageSaving(true)
+    setLanguageError('')
+    try {
+      await setAssistantLanguagePreference(nextLanguage)
+      loadOverview()
+    } catch (reason) {
+      setLanguage(previous)
+      setLanguageError(reason.message)
+    } finally {
+      setLanguageSaving(false)
+    }
+  }
 
   async function submitProposal(event) {
     event.preventDefault()
@@ -103,6 +144,18 @@ export default function AdminAssistantPage() {
     </section>
     <div className="notice">{GOVERNANCE_NOTICE}</div>
     {error && <div className="notice error-notice">{error}</div>}
+    <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', margin: '.75rem 0' }}>
+      <label htmlFor="assistant-page-response-language">Reply language</label>
+      <select
+        id="assistant-page-response-language"
+        value={language}
+        disabled={!languageLoaded || languageSaving}
+        onChange={(event) => changeLanguage(event.target.value)}
+      >
+        {LANGUAGE_OPTIONS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+      </select>
+    </div>
+    {languageError && <div className="notice error-notice">{languageError}</div>}
     <nav aria-label="Admin Assistant sections" style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap', margin: '1rem 0' }}>
       {TABS.map((item) => (
         <button key={item} className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{item}</button>
@@ -113,7 +166,7 @@ export default function AdminAssistantPage() {
       <h3>What needs attention</h3>
       {!overview && <p>Loading dashboard summary…</p>}
       {overview && <>
-        <ul>{overview.guidance.map((line) => <li key={line}>{line}</li>)}</ul>
+        <ul>{(overview.localized_guidance ?? overview.guidance).map((line) => <li key={line}>{line}</li>)}</ul>
         <h3>Dashboard snapshot</h3>
         <section className="card-grid">
           {Object.entries(overview.summary).map(([area, buckets]) => (

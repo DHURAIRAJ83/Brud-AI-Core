@@ -11,16 +11,24 @@ All three steps, plus failures, are written to the audit log by the
 service layer.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import Field
 
-from backend.api.auth import CsrfDependency, require_admin
+from backend.api.auth import AdminDependency, CsrfDependency, require_admin
 from backend.api.dependencies import SettingsDependency
 from backend.core.validation import DomainModel
+from backend.database.repositories.admin_assistant_context import (
+    AdminAssistantContextRepository,
+)
 from backend.models.domain import AdminApprovalPublic
+from backend.services.admin_assistant_chat_service import AdminAssistantChatService
+from backend.services.admin_assistant_language_service import AdminAssistantLanguageService
 from backend.services.admin_assistant_service import ACTION_EXECUTORS, AdminAssistantService
+from core_model.admin_assistant.action_registry import ACTION_DEFINITIONS
+from core_model.admin_assistant.dashboard_registry import DASHBOARD_PAGES, REGISTRY_VERSION
+from core_model.admin_assistant.localization import pending_work_lines
 
 router = APIRouter(
     prefix="/admin/assistant", tags=["admin-assistant"], dependencies=[Depends(require_admin)]
@@ -29,6 +37,14 @@ router = APIRouter(
 
 def service(settings) -> AdminAssistantService:
     return AdminAssistantService(settings)
+
+
+def language_service(settings) -> AdminAssistantLanguageService:
+    return AdminAssistantLanguageService(settings)
+
+
+def chat_service(settings) -> AdminAssistantChatService:
+    return AdminAssistantChatService(settings)
 
 
 class ProposalCreateRequest(DomainModel):
@@ -44,16 +60,191 @@ class ProposalReviewRequest(DomainModel):
     comment: str | None = Field(default=None, max_length=4000)
 
 
+class ProposalCancelRequest(DomainModel):
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class ChatMessageRequest(DomainModel):
+    message: str = Field(min_length=1, max_length=4000)
+    page_id: str = Field(min_length=1, max_length=80)
+    tab_id: str | None = Field(default=None, max_length=120)
+    entity_type: str | None = Field(default=None, max_length=60)
+    entity_public_id: str | None = Field(default=None, max_length=80)
+    mode: str = Field(default="guide", max_length=20)
+    # Preview/testing only (Step 8) -- resolves this one reply's language
+    # without ever silently changing the admin's saved preference.
+    response_language_override: str | None = Field(default=None, max_length=20)
+
+
+class FeedbackCreateRequest(DomainModel):
+    rating: Literal["helpful", "not_helpful", "incorrect_guidance", "action_failed"]
+    page_id: str | None = Field(default=None, max_length=80)
+    action_id: str | None = Field(default=None, max_length=80)
+    message_reference: str | None = Field(default=None, max_length=120)
+    comment: str = Field(default="", max_length=2000)
+
+
+class LanguagePreferenceUpdateRequest(DomainModel):
+    response_language: str
+
+
+class LanguagePreferencePreviewRequest(DomainModel):
+    message_text: str = Field(default="", max_length=4000)
+    response_language_override: str | None = Field(default=None, max_length=20)
+
+
 @router.get("/overview")
-async def overview(settings: SettingsDependency) -> dict[str, Any]:
-    """Read-only summary of every governed area of the Admin Dashboard."""
-    return service(settings).dashboard_overview()
+async def overview(settings: SettingsDependency, admin: AdminDependency) -> dict[str, Any]:
+    """Read-only summary of every governed area of the Admin Dashboard.
+    `localized_guidance` is an additive field rendered in the requesting
+    admin's resolved response language -- the original `guidance` list
+    stays English-only and unchanged, since other callers/tests already
+    depend on that exact contract."""
+
+    result = service(settings).dashboard_overview()
+    resolved = language_service(settings).resolve(admin_id=admin.admin.public_id)
+    result["localized_guidance"] = pending_work_lines(
+        result.get("summary", {}), resolved.resolved_language
+    )
+    result["resolved_language"] = resolved.resolved_language
+    return result
 
 
 @router.get("/actions")
-async def available_actions() -> dict[str, list[str]]:
-    """Allowlisted action types the assistant may propose. Nothing else is possible."""
-    return {"action_types": sorted(ACTION_EXECUTORS)}
+async def available_actions() -> dict[str, Any]:
+    """Allowlisted action types the assistant may propose, plus (additively)
+    each one's pure metadata from the action registry -- risk level, mode,
+    payload shape, and bilingual confirmation copy. `action_types` is kept
+    exactly as before for backward compatibility."""
+
+    return {
+        "action_types": sorted(ACTION_EXECUTORS),
+        "actions": [
+            {
+                "action_type": action.action_type,
+                "target_type": action.target_type,
+                "risk_level": action.risk_level,
+                "mode": action.mode,
+                "requires_reason": action.requires_reason,
+                "reversible": action.reversible,
+                "payload_fields": list(action.payload_fields),
+                "summary": action.summary,
+                "confirmation_text": action.confirmation_text,
+            }
+            for action in ACTION_DEFINITIONS
+            if action.action_type in ACTION_EXECUTORS
+        ],
+    }
+
+
+@router.get("/pages")
+async def dashboard_pages() -> dict[str, Any]:
+    """The full dashboard page registry -- the assistant's single source
+    of truth for page purpose/tabs/safety notes, exposed so the frontend
+    never needs its own duplicate copy."""
+
+    return {
+        "registry_version": REGISTRY_VERSION,
+        "items": [
+            {
+                "page_id": page.page_id,
+                "nav_key": page.nav_key,
+                "group": page.group,
+                "implemented": page.implemented,
+                "mode": page.mode,
+                "title": page.title,
+                "purpose": page.purpose,
+                "tabs": list(page.tabs),
+                "related_page_ids": list(page.related_page_ids),
+                "safety_note": page.safety_note,
+            }
+            for page in DASHBOARD_PAGES
+        ],
+    }
+
+
+@router.get("/health")
+async def assistant_health(settings: SettingsDependency) -> dict[str, Any]:
+    """Real, read-only diagnostic: is an LLM-backed reply currently
+    possible. Deterministic guide/status features work regardless."""
+
+    return chat_service(settings).llm_status()
+
+
+@router.get("/preferences")
+async def get_language_preference(
+    settings: SettingsDependency, admin: AdminDependency
+) -> dict[str, Any]:
+    """The requesting admin's own saved Admin Assistant response
+    language preference -- never another admin's (scoped by their own
+    authenticated session, same as every other admin-scoped read
+    here)."""
+
+    return language_service(settings).get_preference(admin.admin.public_id)
+
+
+@router.patch("/preferences")
+async def set_language_preference(
+    payload: LanguagePreferenceUpdateRequest, settings: SettingsDependency, admin: CsrfDependency
+) -> dict[str, Any]:
+    # `AdminRepository.set_response_language` itself raises `ValidationError`
+    # for anything outside `RESPONSE_LANGUAGES` -- the existing
+    # `RepositoryError` -> 422 exception handler covers it, no separate
+    # check needed here.
+    return language_service(settings).set_preference(
+        admin.admin.public_id, payload.response_language
+    )
+
+
+@router.post("/preferences/preview")
+async def preview_language_resolution(
+    payload: LanguagePreferencePreviewRequest, settings: SettingsDependency, admin: CsrfDependency
+) -> dict[str, Any]:
+    """Non-persistent preview (Step 8) -- resolves what response
+    language *would* apply without reading or writing the saved
+    preference, so an admin can try a mode before committing to it.
+    Every other `POST` in this router requires CSRF; this endpoint
+    keeps that consistent even though it performs no mutation."""
+
+    del admin
+    return language_service(settings).preview(
+        message_text=payload.message_text,
+        request_override=payload.response_language_override,
+    )
+
+
+@router.post("/chat")
+async def send_chat_message(
+    payload: ChatMessageRequest, settings: SettingsDependency, admin: CsrfDependency
+) -> dict[str, Any]:
+    return chat_service(settings).send_message(
+        admin_id=admin.admin.public_id,
+        message=payload.message,
+        page_id=payload.page_id,
+        tab_id=payload.tab_id,
+        entity_type=payload.entity_type,
+        entity_public_id=payload.entity_public_id,
+        mode=payload.mode,
+        response_language_override=payload.response_language_override,
+    )
+
+
+@router.post("/feedback")
+async def submit_feedback(
+    payload: FeedbackCreateRequest, settings: SettingsDependency, admin: CsrfDependency
+) -> dict[str, Any]:
+    repository = AdminAssistantContextRepository(settings.resolved_database_path)
+    return repository.create_feedback(
+        {
+            "rating": payload.rating,
+            "page_id": payload.page_id,
+            "action_id": payload.action_id,
+            "message_reference": payload.message_reference,
+            "comment": payload.comment,
+            "registry_version": REGISTRY_VERSION,
+            "submitted_by_admin_public_id": admin.admin.public_id,
+        }
+    )
 
 
 @router.post("/proposals", response_model=AdminApprovalPublic)
@@ -106,3 +297,15 @@ async def execute_proposal(
     public_id: str, settings: SettingsDependency, admin: CsrfDependency
 ) -> AdminApprovalPublic:
     return service(settings).execute(public_id, executor_public_id=admin.admin.public_id)
+
+
+@router.post("/proposals/{public_id}/cancel", response_model=AdminApprovalPublic)
+async def cancel_proposal(
+    public_id: str,
+    payload: ProposalCancelRequest,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+) -> AdminApprovalPublic:
+    return service(settings).cancel(
+        public_id, cancelled_by=admin.admin.public_id, reason=payload.reason
+    )

@@ -1,0 +1,19 @@
+# Document SFT Production Closure — Audit
+
+Baseline: `master` @ `e24849f27a3dd4aaebf31ed89d7a3dd8d44d84a4`, schema 44, previous
+verdict `DOCUMENT_SFT_PRODUCTION_INTEGRATION_COMPLETE_WITH_LIMITATIONS`.
+
+| Item | Status | Evidence |
+|---|---|---|
+| Deep-link navigation into Documents/Wizard tabs | missing | `App.jsx`'s `initialPage` parsing (`window.location.hash.slice(1)).split('?')[0]`) already **discards** any query string -- confirms no deep-link support exists today, though the hash-based `#Page` pattern and precedent for App-level "initial ID" props (`initialCandidatePublicId`, `initialSampleImportPublicId`, `initialVerificationCasePublicId` in `App.jsx`) already exist and are the right pattern to extend |
+| Admin Assistant navigation metadata | **partially_available** | A real `navigation_target` contract already exists in `AdminAssistantChatService.send_message()`'s response (`{page_id, nav_key}`, sometimes with extra keys -- see the `dataset_discovery`/`dataset_verification`/`sample_import`/`rag_sandbox` cases at lines 774-836). It has no document-specific `tab_key`/`document_public_id` fields and no intent matchers for any of the 10 required document navigation cases |
+| Dashboard registry parity for Documents/Wizard | **stale (bug)** | `documents` `PageEntry.tabs` in `dashboard_registry.py` still lists the 8 pre-closure tabs and is missing `Overview`, `Security Review`, `Media & Tables`, `Tamil Corrections` (added in the prior two passes but never synced into this registry) |
+| Document Wizard registry description | **stale (bug)** | `document_wizard`'s `purpose` still says "all ten Document SFT workflow steps" (it is 14 since the last pass) and its `safety_note` still claims "This page never mutates anything" -- **false** since the prior pass added real mutating actions directly to the Wizard (handoff ingest, dataset-version build confirm) |
+| Playwright suite for the full handoff→build path | **built, executed 8 times, 9/10 converged, final re-verification interrupted** | `09-document-sft-production-closure.spec.js` was authored, then actually run 8 times against a real isolated backend/frontend/database per explicit user instruction. 4 real product bugs were found and fixed purely through this execution (deep-link state ignoring browser Back/Forward, a stale-closure history-corruption bug, a post-mutation refresh race that could revert navigation, and a notice-clobbering bug across 3 Wizard handlers). 4 of 8 attempts were killed externally (zero output, no orphaned processes, stable memory -- host/harness instability, not a resource or product issue). The latest completed run reached 9/10; the one remaining failure (a `<select>`-population timing issue) received a defensive fix that was not re-confirmed before the final authorized retry was itself externally killed. Full attempt-by-attempt evidence in `document_sft_full_browser_verification.md` |
+| Full canonical `ProductionRegressionService` manifest run | missing | Consistently not attempted across all four passes this session (per explicit user instruction this pass, not started at all -- reserved until Playwright shows a clean 10/10) |
+| "Open resulting dataset version" button | **partially_available** | Exists in the Wizard (`DocumentWizardPage.jsx`) but currently only calls `onNavigate?.('Datasets')` with no version identifier -- `DatasetsPage.jsx` has no prop to accept a version ID to preselect |
+| Query-string/route-state pattern | none exists | Confirmed by reading `App.jsx` in full: routing is a single hash string (`#PageName`), `replaceState` only, no `pushState`, no popstate listener -- Back/Forward currently has no effect at all in this app |
+
+No item is `duplicate_risk`. `environment_constrained` applies to the Playwright suite and
+the canonical regression run, pending the resource check performed later in this pass
+(see final report).

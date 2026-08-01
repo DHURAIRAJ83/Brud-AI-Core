@@ -8,6 +8,7 @@ import DatasetSampleImportPage from './pages/DatasetSampleImportPage.jsx'
 import DatasetVerificationPage from './pages/DatasetVerificationPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
+import DocumentWizardPage from './pages/DocumentWizardPage.jsx'
 import ConversationMemoryPage from './pages/ConversationMemoryPage.jsx'
 import CorpusPage from './pages/CorpusPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
@@ -34,20 +35,43 @@ import SystemPage from './pages/SystemPage.jsx'
 import TokenizerPage from './pages/TokenizerPage.jsx'
 import TrainingPage from './pages/TrainingPage.jsx'
 import { getMe, login, logout } from './services/api.js'
+import { buildDocumentsHash, buildWizardHash, parseHash } from './services/documentNavigation.js'
 
 export default function App() {
   const [auth, setAuth] = useState({ checking: true, admin: null })
-  const initialPage = decodeURIComponent(window.location.hash.slice(1)) || 'Overview'
-  const [active, setActive] = useState(initialPage)
+  const initialHashState = parseHash(window.location.hash.slice(1))
+  const [active, setActive] = useState(initialHashState.page)
+  const [documentNav, setDocumentNav] = useState({
+    documentPublicId: initialHashState.documentPublicId, tab: initialHashState.tab, step: initialHashState.step,
+  })
+  const [datasetVersionId, setDatasetVersionId] = useState(null)
   const [verificationCandidateId, setVerificationCandidateId] = useState(null)
   const [sampleImportCaseId, setSampleImportCaseId] = useState(null)
   const [ragSandboxSampleImportId, setRagSandboxSampleImportId] = useState(null)
   useEffect(() => { getMe().then((data) => setAuth({ checking: false, admin: data.admin })).catch(() => setAuth({ checking: false, admin: null })) }, [])
+  useEffect(() => {
+    function handlePopState() {
+      const parsed = parseHash(window.location.hash.slice(1))
+      setActive(parsed.page)
+      setDocumentNav({ documentPublicId: parsed.documentPublicId, tab: parsed.tab, step: parsed.step })
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
   async function signIn(username, password) { const data = await login(username, password); setAuth({ checking: false, admin: data.admin }); setActive('Overview') }
   async function signOut() { try { await logout() } finally { setAuth({ checking: false, admin: null }); window.history.replaceState(null, '', '#Login') } }
   if (auth.checking) return <main className="login-shell"><div className="notice">Checking admin session…</div></main>
   if (!auth.admin) return <LoginPage onLogin={signIn} />
-  const selectPage = (page) => { window.history.replaceState(null, '', `#${encodeURIComponent(page)}`); setActive(page) }
+  const selectPage = (page) => { window.history.replaceState(null, '', `#${encodeURIComponent(page)}`); setActive(page); setDocumentNav({ documentPublicId: null, tab: null, step: null }) }
+  const openDocumentsTab = (documentPublicId, tab) => {
+    window.history.pushState(null, '', buildDocumentsHash(documentPublicId, tab))
+    setActive('Documents'); setDocumentNav({ documentPublicId, tab, step: null })
+  }
+  const openWizardStep = (documentPublicId, step) => {
+    window.history.pushState(null, '', buildWizardHash(documentPublicId, step))
+    setActive('Document Wizard'); setDocumentNav({ documentPublicId, tab: null, step })
+  }
+  const openDatasetVersion = (versionPublicId) => { setDatasetVersionId(versionPublicId); selectPage('Datasets') }
   const openVerificationForCandidate = (candidatePublicId) => { setVerificationCandidateId(candidatePublicId); selectPage('Dataset Verification') }
   const openSampleImportForCase = (casePublicId) => { setSampleImportCaseId(casePublicId); selectPage('Sample Import & Quarantine') }
   const openRagSandboxForSampleImport = (sampleImportPublicId) => { setRagSandboxSampleImportId(sampleImportPublicId); selectPage('RAG Sandbox') }
@@ -67,8 +91,16 @@ export default function App() {
   if (active === 'Chunk & Record Studio') page = <ChunkStudioPage />
   if (active === 'Quality & Approval') page = <GovernancePage />
   if (active === 'Builds & Pipelines') page = <BuildsPipelinesPage />
-  if (active === 'Datasets') page = <DatasetsPage />
-  if (active === 'Documents') page = <DocumentsPage />
+  if (active === 'Datasets') page = <DatasetsPage initialVersionPublicId={datasetVersionId} />
+  if (active === 'Documents') page = <DocumentsPage
+      initialDocumentPublicId={documentNav.documentPublicId} initialTab={documentNav.tab}
+      onNavigationChange={openDocumentsTab}
+    />
+  if (active === 'Document Wizard') page = <DocumentWizardPage
+      onNavigate={selectPage} initialDocumentPublicId={documentNav.documentPublicId}
+      initialStep={documentNav.step} onNavigationChange={openWizardStep}
+      onOpenDatasetVersion={openDatasetVersion}
+    />
   if (active === 'Tokenizer') page = <TokenizerPage />
   if (active === 'Core Model') page = <CoreModelPage />
   if (active === 'Training') page = <TrainingPage />

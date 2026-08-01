@@ -18,6 +18,19 @@ from backend.api.routes import (
     imports,
     inference_runtime,
     instruction_tuning,
+    data_lineage,
+    data_sources,
+    dataset_discovery,
+    dataset_sample_import,
+    dataset_verification,
+    external_data_providers,
+    governance,
+    governed_builds,
+    incremental_training,
+    manual_data,
+    rag_sandbox,
+    semantic_chunks,
+    structured_records,
     model_evaluation,
     model_release,
     pretraining,
@@ -52,3 +65,16 @@ api_router.include_router(conversation_memory.router)
 api_router.include_router(feedback.router)
 api_router.include_router(corpus.router)
 api_router.include_router(pretraining_readiness.router)
+api_router.include_router(data_sources.router)
+api_router.include_router(manual_data.router)
+api_router.include_router(semantic_chunks.router)
+api_router.include_router(structured_records.router)
+api_router.include_router(governance.router)
+api_router.include_router(governed_builds.router)
+api_router.include_router(data_lineage.router)
+api_router.include_router(external_data_providers.router)
+api_router.include_router(dataset_discovery.router)
+api_router.include_router(dataset_verification.router)
+api_router.include_router(dataset_sample_import.router)
+api_router.include_router(rag_sandbox.router)
+api_router.include_router(incremental_training.router)

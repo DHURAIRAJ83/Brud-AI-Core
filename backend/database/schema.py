@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 44
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -5504,3 +5504,5296 @@ PHASE22_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+MIGRATION_023_NAME = "023_data_studio_phase2_source_rights_registry"
+
+# Data Studio Phase 2 adds a general-purpose Source, Rights & Usage
+# Registry covering *any* data entering Brud AI -- not a duplicate of
+# Phase 19/20's `corpus_source_registries`/`corpus_source_licences`
+# (which remain untouched here). That system requires every source to
+# belong to a `corpus_policy_id` and is scoped to the corpus-builder
+# pipeline; this registry deliberately has no such requirement, so an
+# admin can register e.g. their own spoken-Tamil phrasing as a source
+# without first creating a corpus policy. Where the two systems overlap
+# conceptually (deciding whether a piece of content may be used for a
+# given purpose), they share one policy brain
+# (`core_model.data_governance.usage_policy.evaluate_source_usage`) fed
+# by a small adapter for each table shape, rather than forking the
+# decision logic -- see docs/data_studio/phase2_source_rights_registry_plan.md.
+#
+# `data_sources` is the canonical source record. `source_rights` holds
+# the single current rights declaration for a source (one row per
+# source, mutably updated as review progresses -- traceability comes
+# from `source_verification_events`, not from versioning this table).
+# `source_verification_events` and `source_usage_decisions` are
+# append-only history (immutability enforced by trigger, matching the
+# Phase 19/20 convention) so a verification action or a usage-eligibility
+# check can never be silently overwritten after the fact.
+# `source_record_links` is a governed polymorphic link -- mirroring the
+# `target_type`/`target_public_id` shape `admin_approvals` already uses
+# -- from a source to any entity (a dataset record, a document, a corpus
+# item, a RAG source, ...) identified by its public_id rather than its
+# internal numeric id, since a link table spanning many different entity
+# tables cannot hold a real foreign key to all of them. Unlike the other
+# four tables, links may be deleted (unlinking), because the task
+# explicitly calls for that and a stale link is not evidence of anything.
+PHASE23_SCHEMA = """
+CREATE TABLE IF NOT EXISTS data_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_code TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    source_type TEXT NOT NULL CHECK (source_type IN (
+        'human_created','admin_created','teacher_created','institution_created',
+        'document_derived','government_source','public_domain','open_dataset',
+        'licensed_dataset','permission_granted','user_contributed','ai_assisted',
+        'ai_generated','web_source','unknown'
+    )),
+    owner_name TEXT,
+    author_name TEXT,
+    publisher_name TEXT,
+    organization_name TEXT,
+    source_url TEXT,
+    source_reference TEXT,
+    publication_year INTEGER,
+    edition TEXT,
+    language_codes_json TEXT NOT NULL DEFAULT '[]',
+    description TEXT NOT NULL DEFAULT '',
+    knowledge_risk TEXT NOT NULL DEFAULT 'unknown' CHECK (knowledge_risk IN (
+        'low','medium','high','unknown'
+    )),
+    fact_dependency TEXT NOT NULL DEFAULT 'unknown' CHECK (fact_dependency IN (
+        'low','medium','high','unknown'
+    )),
+    verification_required INTEGER NOT NULL DEFAULT 0 CHECK (verification_required IN (0,1)),
+    independent_reviewer_required INTEGER NOT NULL DEFAULT 0
+        CHECK (independent_reviewer_required IN (0,1)),
+    internal_rag_policy_allows_unknown_rights INTEGER NOT NULL DEFAULT 0
+        CHECK (internal_rag_policy_allows_unknown_rights IN (0,1)),
+    acquired_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','needs_review','verified','restricted','rejected','archived'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_data_sources_status ON data_sources(status);
+CREATE INDEX IF NOT EXISTS ix_data_sources_source_type ON data_sources(source_type);
+
+CREATE TABLE IF NOT EXISTS source_rights (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    data_source_id INTEGER NOT NULL UNIQUE,
+    rights_status TEXT NOT NULL DEFAULT 'unknown' CHECK (rights_status IN (
+        'unknown','pending_review','public_domain','open_license','licensed',
+        'permission_granted','internal_only','restricted','prohibited','expired'
+    )),
+    license_name TEXT,
+    license_identifier TEXT,
+    license_url TEXT,
+    copyright_owner TEXT,
+    permission_reference TEXT,
+    permission_document_reference TEXT,
+    permission_received_at TEXT,
+    permission_expires_at TEXT,
+    attribution_required INTEGER NOT NULL DEFAULT 0 CHECK (attribution_required IN (0,1)),
+    attribution_text TEXT,
+    share_alike_required INTEGER NOT NULL DEFAULT 0 CHECK (share_alike_required IN (0,1)),
+    modification_allowed INTEGER NOT NULL DEFAULT 0 CHECK (modification_allowed IN (0,1)),
+    commercial_use_allowed INTEGER NOT NULL DEFAULT 0 CHECK (commercial_use_allowed IN (0,1)),
+    rag_use_allowed INTEGER NOT NULL DEFAULT 0 CHECK (rag_use_allowed IN (0,1)),
+    training_use_allowed INTEGER NOT NULL DEFAULT 0 CHECK (training_use_allowed IN (0,1)),
+    evaluation_use_allowed INTEGER NOT NULL DEFAULT 0 CHECK (evaluation_use_allowed IN (0,1)),
+    public_export_allowed INTEGER NOT NULL DEFAULT 0 CHECK (public_export_allowed IN (0,1)),
+    redistribution_allowed INTEGER NOT NULL DEFAULT 0 CHECK (redistribution_allowed IN (0,1)),
+    internal_only INTEGER NOT NULL DEFAULT 0 CHECK (internal_only IN (0,1)),
+    verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN (
+        'unverified','self_declared','document_verified','owner_confirmed',
+        'legal_reviewed','rejected'
+    )),
+    verified_by_admin_public_id TEXT,
+    verified_at TEXT,
+    review_notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_source_rights_data_source ON source_rights(data_source_id);
+CREATE INDEX IF NOT EXISTS ix_source_rights_status ON source_rights(rights_status);
+
+CREATE TABLE IF NOT EXISTS source_verification_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    data_source_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK (action IN (
+        'self_declare','document_verify','owner_confirm','legal_review','reject',
+        'expire','restrict'
+    )),
+    verification_status_after TEXT NOT NULL,
+    performed_by_admin_public_id TEXT NOT NULL,
+    evidence_reference TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_source_verification_events_data_source
+    ON source_verification_events(data_source_id);
+
+CREATE TABLE IF NOT EXISTS source_usage_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    data_source_id INTEGER NOT NULL,
+    target_use TEXT NOT NULL CHECK (target_use IN (
+        'rag','training','evaluation','commercial','public_export','redistribution'
+    )),
+    allowed INTEGER NOT NULL CHECK (allowed IN (0,1)),
+    decision_code TEXT NOT NULL,
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    required_actions_json TEXT NOT NULL DEFAULT '[]',
+    evaluated_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_source_usage_decisions_data_source_target
+    ON source_usage_decisions(data_source_id, target_use);
+
+CREATE TABLE IF NOT EXISTS source_record_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    data_source_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL CHECK (entity_type IN (
+        'dataset_record','dataset_source','dataset_version','import_job','document',
+        'document_page','corpus_source_registry','corpus_item','chunk',
+        'rag_knowledge_source','rag_item','evaluation_case'
+    )),
+    entity_public_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL DEFAULT 'primary_source' CHECK (relationship_type IN (
+        'primary_source','supporting_source','derived_from','verified_against',
+        'translated_from','generated_from'
+    )),
+    source_page TEXT,
+    source_section TEXT,
+    source_locator TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id) ON DELETE RESTRICT,
+    UNIQUE(data_source_id, entity_type, entity_public_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS ix_source_record_links_entity
+    ON source_record_links(entity_type, entity_public_id);
+CREATE INDEX IF NOT EXISTS ix_source_record_links_source
+    ON source_record_links(data_source_id);
+
+CREATE TRIGGER IF NOT EXISTS source_verification_events_immutable_update
+    BEFORE UPDATE ON source_verification_events
+    BEGIN SELECT RAISE(ABORT, 'verification events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS source_verification_events_immutable_delete
+    BEFORE DELETE ON source_verification_events
+    BEGIN SELECT RAISE(ABORT, 'verification events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS source_usage_decisions_immutable_update
+    BEFORE UPDATE ON source_usage_decisions
+    BEGIN SELECT RAISE(ABORT, 'usage decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS source_usage_decisions_immutable_delete
+    BEFORE DELETE ON source_usage_decisions
+    BEGIN SELECT RAISE(ABORT, 'usage decisions are append-only'); END;
+"""
+
+MIGRATION_024_NAME = "024_data_studio_phase3_manual_data_studio"
+
+# Data Studio Phase 3 adds a governed Manual Data Studio: a staging layer
+# for hand-authored Tamil/English/Tanglish language data, conversations,
+# Q&A, instructions, dictionary entries, translations, and knowledge notes
+# that the existing `dataset_records` manual-entry API has no columns for.
+# It does not compete with that system -- an approved manual record only
+# becomes a real `dataset_records` row through the explicit
+# "create dataset candidate" action, which calls
+# `DatasetService.create_record()` directly (the same bridge
+# `feedback_dataset_service.export_candidate()` already uses), so every
+# manual-derived record still passes through the existing duplicate-hash
+# check, quality assessment, and dataset lifecycle unchanged.
+#
+# `manual_data_records` is the canonical record; `source_id` is a required
+# link to a Phase 2 `data_sources` row (every manual record must be
+# traceable to a source). `manual_data_record_revisions` is the append
+# (never edit) content history -- `active_revision_id` points at the
+# currently active one; approving a record never mutates its active
+# revision, and a later edit creates a new draft revision instead,
+# mirroring `feedback_candidate_versions`. `manual_data_reviews` and
+# `manual_data_verifications` record human review/verification actions
+# (a supporting or fact-checked-against source is linked via
+# `manual_data_verifications.source_id`, separate from the record's
+# primary source, covering the "primary source + supporting source"
+# scenario without widening `source_record_links`'s CHECK constraint,
+# which migration 023 cannot be altered to do). `manual_data_usage_decisions`
+# and `manual_data_events` are append-only history (immutability enforced
+# by trigger, matching the Phase 2 convention) so a usage-eligibility check
+# or a lifecycle action can never be silently overwritten after the fact.
+PHASE24_SCHEMA = """
+CREATE TABLE IF NOT EXISTS manual_data_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_code TEXT NOT NULL UNIQUE,
+    record_type TEXT NOT NULL CHECK (record_type IN (
+        'plain_text','language_example','conversation','question_answer',
+        'instruction_response','dictionary_entry','translation_pair',
+        'tanglish_normalization','knowledge_note','grammar_example',
+        'evaluation_case_draft'
+    )),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','needs_review','needs_source_verification','needs_domain_review',
+        'approved','rejected','archived'
+    )),
+    active_revision_id INTEGER,
+    source_id INTEGER NOT NULL,
+    primary_language TEXT NOT NULL DEFAULT 'unknown' CHECK (primary_language IN (
+        'ta','en','tgl','mixed','unknown'
+    )),
+    input_language TEXT CHECK (input_language IN ('ta','en','tgl','mixed','unknown')),
+    output_language TEXT CHECK (output_language IN ('ta','en','tgl','mixed','unknown')),
+    domain TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL DEFAULT '',
+    difficulty TEXT,
+    audience TEXT,
+    style TEXT,
+    fact_dependency TEXT NOT NULL DEFAULT 'none' CHECK (fact_dependency IN (
+        'none','low','medium','high'
+    )),
+    knowledge_risk TEXT NOT NULL DEFAULT 'language_only' CHECK (knowledge_risk IN (
+        'language_only','general','domain_specific','high_risk','time_sensitive'
+    )),
+    creation_method TEXT NOT NULL DEFAULT 'admin_created' CHECK (creation_method IN (
+        'human_created','admin_created','teacher_created','ai_assisted',
+        'imported_manual','derived_manual'
+    )),
+    requested_uses_json TEXT NOT NULL DEFAULT '[]',
+    approved_uses_json TEXT NOT NULL DEFAULT '[]',
+    review_expiry_at TEXT,
+    exported_dataset_record_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT,
+    FOREIGN KEY (source_id) REFERENCES data_sources(id) ON DELETE RESTRICT,
+    FOREIGN KEY (active_revision_id) REFERENCES manual_data_record_revisions(id)
+        ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_manual_data_records_status ON manual_data_records(status);
+CREATE INDEX IF NOT EXISTS ix_manual_data_records_record_type
+    ON manual_data_records(record_type);
+CREATE INDEX IF NOT EXISTS ix_manual_data_records_source ON manual_data_records(source_id);
+
+CREATE TABLE IF NOT EXISTS manual_data_record_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_id INTEGER NOT NULL,
+    revision_number INTEGER NOT NULL,
+    title TEXT,
+    input_text TEXT,
+    output_text TEXT,
+    instruction_text TEXT,
+    response_text TEXT,
+    question_text TEXT,
+    answer_text TEXT,
+    tamil_text TEXT,
+    english_text TEXT,
+    tanglish_text TEXT,
+    word TEXT,
+    part_of_speech TEXT,
+    meanings_json TEXT NOT NULL DEFAULT '[]',
+    examples_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    content_hash TEXT NOT NULL,
+    change_summary TEXT NOT NULL DEFAULT '',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (record_id) REFERENCES manual_data_records(id) ON DELETE RESTRICT,
+    UNIQUE(record_id, revision_number)
+);
+CREATE INDEX IF NOT EXISTS ix_manual_data_record_revisions_record
+    ON manual_data_record_revisions(record_id);
+CREATE INDEX IF NOT EXISTS ix_manual_data_record_revisions_hash
+    ON manual_data_record_revisions(content_hash);
+
+CREATE TABLE IF NOT EXISTS manual_data_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_id INTEGER NOT NULL,
+    revision_id INTEGER NOT NULL,
+    review_type TEXT NOT NULL CHECK (review_type IN (
+        'language','translation','factual','domain','general'
+    )),
+    review_status TEXT NOT NULL CHECK (review_status IN (
+        'approved','rejected','changes_requested'
+    )),
+    reviewer_admin_public_id TEXT NOT NULL,
+    comments TEXT NOT NULL DEFAULT '',
+    language_score REAL,
+    meaning_score REAL,
+    naturalness_score REAL,
+    factual_score REAL,
+    source_score REAL,
+    overall_score REAL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (record_id) REFERENCES manual_data_records(id) ON DELETE RESTRICT,
+    FOREIGN KEY (revision_id) REFERENCES manual_data_record_revisions(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_manual_data_reviews_record ON manual_data_reviews(record_id);
+
+CREATE TABLE IF NOT EXISTS manual_data_verifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_id INTEGER NOT NULL,
+    revision_id INTEGER NOT NULL,
+    verification_type TEXT NOT NULL CHECK (verification_type IN (
+        'source_verification','factual_verification','domain_verification',
+        'time_sensitivity_revalidation'
+    )),
+    verification_status TEXT NOT NULL DEFAULT 'pending' CHECK (verification_status IN (
+        'pending','verified','rejected','expired'
+    )),
+    source_id INTEGER,
+    verified_by_admin_public_id TEXT,
+    verification_notes TEXT NOT NULL DEFAULT '',
+    verified_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (record_id) REFERENCES manual_data_records(id) ON DELETE RESTRICT,
+    FOREIGN KEY (revision_id) REFERENCES manual_data_record_revisions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (source_id) REFERENCES data_sources(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_manual_data_verifications_record
+    ON manual_data_verifications(record_id);
+
+CREATE TABLE IF NOT EXISTS manual_data_usage_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_id INTEGER NOT NULL,
+    revision_id INTEGER NOT NULL,
+    target_use TEXT NOT NULL CHECK (target_use IN (
+        'rag','training','evaluation','commercial','public_export','redistribution'
+    )),
+    allowed INTEGER NOT NULL CHECK (allowed IN (0,1)),
+    decision_code TEXT NOT NULL,
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    evaluated_by_admin_public_id TEXT,
+    evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (record_id) REFERENCES manual_data_records(id) ON DELETE RESTRICT,
+    FOREIGN KEY (revision_id) REFERENCES manual_data_record_revisions(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_manual_data_usage_decisions_record_target
+    ON manual_data_usage_decisions(record_id, target_use);
+
+CREATE TABLE IF NOT EXISTS manual_data_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    status_before TEXT,
+    status_after TEXT,
+    performed_by_admin_public_id TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (record_id) REFERENCES manual_data_records(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_manual_data_events_record ON manual_data_events(record_id);
+
+CREATE TRIGGER IF NOT EXISTS manual_data_usage_decisions_immutable_update
+    BEFORE UPDATE ON manual_data_usage_decisions
+    BEGIN SELECT RAISE(ABORT, 'usage decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS manual_data_usage_decisions_immutable_delete
+    BEFORE DELETE ON manual_data_usage_decisions
+    BEGIN SELECT RAISE(ABORT, 'usage decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS manual_data_events_immutable_update
+    BEFORE UPDATE ON manual_data_events
+    BEGIN SELECT RAISE(ABORT, 'manual data events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS manual_data_events_immutable_delete
+    BEFORE DELETE ON manual_data_events
+    BEGIN SELECT RAISE(ABORT, 'manual data events are append-only'); END;
+"""
+
+MIGRATION_025_NAME = "025_data_studio_phase4_pdf_research_workspace"
+
+# Data Studio Phase 4 enhances the existing Phase 5 (`005_phase5_document_processing`)
+# PDF pipeline with a governed review workspace -- it does not replace or
+# duplicate that pipeline. `document_pages.raw_text`/`cleaned_text` and the
+# existing `document_page_revisions` table (already append-only, already
+# immutable by trigger) continue to work exactly as before; `edit_page()`
+# already never overwrites `raw_text`. What was missing:
+#
+# - a durable, append-only record of every *extraction attempt* itself
+#   (today, re-running extraction legitimately overwrites
+#   `document_pages.raw_text` with the newest attempt -- desired behavior,
+#   but it previously left no trace of the prior attempt at all).
+#   `document_page_extractions` fills that gap without changing what
+#   `document_pages.raw_text` means or how reprocessing works.
+# - a human *review* outcome, which is a different question from
+#   *extraction* outcome (`document_pages.extraction_status` already
+#   answers "did extraction succeed"; nothing previously answered "has an
+#   admin approved this page's content"). Modeled as new columns on
+#   `document_pages` (`review_status` et al.) plus an append-only
+#   `document_page_review_events` history table, mirroring
+#   `source_verification_events`'s shape.
+# - cross-page repeated header/footer/page-number detection with a bulk
+#   accept/reject action. The existing `clean_document_text()` only ever
+#   flagged a single page's boundary lines as a *candidate*; nothing
+#   aggregated that signal across a document or offered removal.
+#   `document_repeated_elements` fills that gap.
+#
+# `document_page_regions` (bounding-box layout analysis) and
+# `document_cleanup_profiles` (multiple configurable preprocessing
+# profiles) are deliberately not created here -- see
+# docs/data_studio/phase4_pdf_research_workspace_plan.md section 2 for
+# why. Source linking uses the *existing* `source_record_links` table
+# (`entity_type='document'`, already a valid enum value since Phase 2)
+# rather than a new column, so no document_sources schema change is
+# needed for that at all.
+PHASE25_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "document_pages": [
+        ("review_status", "TEXT NOT NULL DEFAULT 'pending'"),
+        ("reviewed_by_admin_public_id", "TEXT"),
+        ("reviewed_at", "TEXT"),
+        ("review_notes", "TEXT NOT NULL DEFAULT ''"),
+        ("approved_revision_number", "INTEGER"),
+    ],
+}
+
+PHASE25_SCHEMA = """
+CREATE TABLE IF NOT EXISTS document_page_extractions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_page_id INTEGER NOT NULL,
+    extraction_method TEXT NOT NULL CHECK (extraction_method IN (
+        'embedded','ocr','hybrid','manual','failed'
+    )),
+    raw_text TEXT,
+    raw_text_hash TEXT,
+    ocr_engine TEXT,
+    ocr_engine_version TEXT,
+    ocr_language_mode TEXT,
+    ocr_confidence REAL CHECK (ocr_confidence IS NULL OR ocr_confidence BETWEEN 0 AND 1),
+    preprocessing_metadata_json TEXT NOT NULL DEFAULT '{}',
+    extraction_warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by_admin_public_id TEXT NOT NULL,
+    FOREIGN KEY (document_page_id) REFERENCES document_pages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_page_extractions_page
+    ON document_page_extractions(document_page_id);
+
+CREATE TABLE IF NOT EXISTS document_page_review_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_page_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK (action IN (
+        'approve','reject','exclude','request_correction','request_ocr_rerun',
+        'request_extraction_rerun','restore_previous_revision','reopen'
+    )),
+    review_status_after TEXT NOT NULL,
+    performed_by_admin_public_id TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_page_id) REFERENCES document_pages(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_page_review_events_page
+    ON document_page_review_events(document_page_id);
+
+CREATE TABLE IF NOT EXISTS document_repeated_elements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    normalized_text TEXT NOT NULL,
+    element_type TEXT NOT NULL CHECK (element_type IN (
+        'header','footer','page_number','unknown'
+    )),
+    page_occurrences_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    status TEXT NOT NULL DEFAULT 'suggested' CHECK (status IN (
+        'suggested','accepted','rejected','applied'
+    )),
+    reviewed_by_admin_public_id TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_repeated_elements_document
+    ON document_repeated_elements(document_source_id);
+CREATE INDEX IF NOT EXISTS ix_document_repeated_elements_status
+    ON document_repeated_elements(document_source_id, status);
+
+CREATE TRIGGER IF NOT EXISTS document_page_extractions_immutable_update
+    BEFORE UPDATE ON document_page_extractions
+    BEGIN SELECT RAISE(ABORT, 'document page extractions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS document_page_extractions_immutable_delete
+    BEFORE DELETE ON document_page_extractions
+    BEGIN SELECT RAISE(ABORT, 'document page extractions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS document_page_review_events_immutable_update
+    BEFORE UPDATE ON document_page_review_events
+    BEGIN SELECT RAISE(ABORT, 'document page review events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS document_page_review_events_immutable_delete
+    BEFORE DELETE ON document_page_review_events
+    BEGIN SELECT RAISE(ABORT, 'document page review events are append-only'); END;
+"""
+
+MIGRATION_026_NAME = "026_data_studio_phase5_semantic_chunk_structured_record_studio"
+
+# Data Studio Phase 5 enhances the existing segmentation/candidate pipeline
+# (`DocumentService.segment()`/`document_candidates`, Phase 5 of the original
+# document-processing build) with chunk-level typing, hierarchy, and
+# fine-grained provenance -- it does not replace or duplicate that pipeline.
+# `document_candidates` continues to serve the plain pretrain-window
+# Candidates tab exactly as before.
+#
+# `semantic_chunks`/`semantic_chunk_revisions`/`semantic_chunk_relations`/
+# `semantic_chunk_reviews`/`semantic_chunk_events` are new because nothing
+# existing provides chunk typing (heading/definition/dictionary_entry/...),
+# hierarchy (parent/child, reading order), or sub-page provenance (character
+# offsets/locators) -- `document_candidates` only ever had a flat page range.
+#
+# `structured_record_candidates`/`structured_record_candidate_revisions`/
+# `structured_record_reviews` are a new, independent staging layer mirroring
+# `manual_data_records`'s shape and lifecycle style but NOT reusing that
+# table directly -- see docs/data_studio/phase5_semantic_chunk_structured_record_plan.md
+# section 4 for why (the codebase's own convention is multiple independent
+# candidate-staging tables, each with its own thin bridge into
+# `dataset_records`, rather than retrofitting an already-shipped table with
+# new chunk-lineage columns it was never designed to hold). The
+# `record_type -> DatasetRecordType` mapping is imported directly from
+# `core_model.manual_data.DATASET_RECORD_TYPE_MAP` (not duplicated).
+PHASE26_SCHEMA = """
+CREATE TABLE IF NOT EXISTS semantic_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    chunk_code TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    data_source_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','needs_review','needs_structure_review','needs_content_review',
+        'approved','rejected','excluded','archived'
+    )),
+    chunk_type TEXT NOT NULL DEFAULT 'unknown' CHECK (chunk_type IN (
+        'heading','subheading','paragraph','definition','example','dictionary_entry',
+        'grammar_rule','question','answer','instruction','response','translation_source',
+        'translation_target','tanglish_text','tamil_text','english_text','table','table_row',
+        'list','footnote','caption','reference','metadata','irrelevant','unknown'
+    )),
+    active_revision_id INTEGER,
+    parent_chunk_id INTEGER,
+    reading_order INTEGER NOT NULL DEFAULT 0,
+    language TEXT NOT NULL DEFAULT 'unknown',
+    domain TEXT NOT NULL DEFAULT '',
+    topic TEXT NOT NULL DEFAULT '',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE RESTRICT,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id) ON DELETE RESTRICT,
+    FOREIGN KEY (parent_chunk_id) REFERENCES semantic_chunks(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunks_document ON semantic_chunks(document_source_id);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunks_status ON semantic_chunks(document_source_id,status);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunks_parent ON semantic_chunks(parent_chunk_id);
+
+CREATE TABLE IF NOT EXISTS semantic_chunk_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    chunk_id INTEGER NOT NULL,
+    revision_number INTEGER NOT NULL CHECK (revision_number > 0),
+    text TEXT NOT NULL,
+    normalized_text TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    document_page_id INTEGER,
+    page_number INTEGER,
+    extraction_id INTEGER,
+    page_revision_id INTEGER,
+    start_locator_json TEXT NOT NULL DEFAULT '{}',
+    end_locator_json TEXT NOT NULL DEFAULT '{}',
+    generation_method TEXT NOT NULL DEFAULT 'manual' CHECK (generation_method IN (
+        'existing_segmenter','paragraph_boundary','heading_boundary','manual','imported'
+    )),
+    confidence REAL CHECK (confidence IS NULL OR confidence BETWEEN 0 AND 1),
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    change_summary TEXT NOT NULL DEFAULT '',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chunk_id) REFERENCES semantic_chunks(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_page_id) REFERENCES document_pages(id) ON DELETE SET NULL,
+    FOREIGN KEY (extraction_id) REFERENCES document_page_extractions(id) ON DELETE SET NULL,
+    FOREIGN KEY (page_revision_id) REFERENCES document_page_revisions(id) ON DELETE SET NULL,
+    UNIQUE(chunk_id, revision_number)
+);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunk_revisions_chunk ON semantic_chunk_revisions(chunk_id);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunk_revisions_hash ON semantic_chunk_revisions(content_hash);
+
+CREATE TABLE IF NOT EXISTS semantic_chunk_relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    source_chunk_id INTEGER NOT NULL,
+    target_chunk_id INTEGER NOT NULL,
+    relationship_type TEXT NOT NULL CHECK (relationship_type IN (
+        'derived_from_page','continues_from','continues_to','child_of','table_contains',
+        'definition_of','example_of','answer_to','translation_of'
+    )),
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_chunk_id) REFERENCES semantic_chunks(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_chunk_id) REFERENCES semantic_chunks(id) ON DELETE CASCADE,
+    UNIQUE(source_chunk_id, target_chunk_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunk_relations_source ON semantic_chunk_relations(source_chunk_id);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunk_relations_target ON semantic_chunk_relations(target_chunk_id);
+
+CREATE TABLE IF NOT EXISTS semantic_chunk_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    chunk_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK (action IN (
+        'approve','request_boundary_correction','request_classification_correction',
+        'reject','exclude','archive','reopen'
+    )),
+    status_after TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chunk_id) REFERENCES semantic_chunks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunk_reviews_chunk ON semantic_chunk_reviews(chunk_id);
+
+CREATE TABLE IF NOT EXISTS semantic_chunk_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    chunk_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    performed_by_admin_public_id TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chunk_id) REFERENCES semantic_chunks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_semantic_chunk_events_chunk ON semantic_chunk_events(chunk_id);
+
+CREATE TABLE IF NOT EXISTS structured_record_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_code TEXT NOT NULL UNIQUE,
+    record_type TEXT NOT NULL CHECK (record_type IN (
+        'plain_text','language_example','conversation','question_answer',
+        'instruction_response','dictionary_entry','translation_pair',
+        'tanglish_normalization','knowledge_note','grammar_example','rag_chunk'
+    )),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','needs_review','approved','rejected','archived'
+    )),
+    data_source_id INTEGER NOT NULL,
+    document_source_id INTEGER,
+    primary_chunk_id INTEGER,
+    active_revision_id INTEGER,
+    requested_uses_json TEXT NOT NULL DEFAULT '[]',
+    approved_uses_json TEXT NOT NULL DEFAULT '[]',
+    exported_dataset_record_public_id TEXT,
+    rag_handoff_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id) ON DELETE RESTRICT,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE SET NULL,
+    FOREIGN KEY (primary_chunk_id) REFERENCES semantic_chunks(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_structured_record_candidates_status
+    ON structured_record_candidates(status);
+CREATE INDEX IF NOT EXISTS ix_structured_record_candidates_type
+    ON structured_record_candidates(record_type);
+
+CREATE TABLE IF NOT EXISTS structured_record_candidate_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id INTEGER NOT NULL,
+    chunk_id INTEGER NOT NULL,
+    role TEXT NOT NULL DEFAULT 'evidence',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (candidate_id) REFERENCES structured_record_candidates(id) ON DELETE CASCADE,
+    FOREIGN KEY (chunk_id) REFERENCES semantic_chunks(id) ON DELETE RESTRICT,
+    UNIQUE(candidate_id, chunk_id, role)
+);
+CREATE INDEX IF NOT EXISTS ix_structured_record_candidate_chunks_candidate
+    ON structured_record_candidate_chunks(candidate_id);
+
+CREATE TABLE IF NOT EXISTS structured_record_candidate_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    revision_number INTEGER NOT NULL CHECK (revision_number > 0),
+    title TEXT,
+    text TEXT,
+    question TEXT,
+    answer TEXT,
+    instruction TEXT,
+    context TEXT,
+    response TEXT,
+    word TEXT,
+    part_of_speech TEXT,
+    meanings_json TEXT NOT NULL DEFAULT '[]',
+    examples_json TEXT NOT NULL DEFAULT '[]',
+    synonyms_json TEXT NOT NULL DEFAULT '[]',
+    antonyms_json TEXT NOT NULL DEFAULT '[]',
+    related_words_json TEXT NOT NULL DEFAULT '[]',
+    source_language TEXT,
+    source_text TEXT,
+    target_language TEXT,
+    target_text TEXT,
+    tanglish_text TEXT,
+    normalized_tamil TEXT,
+    english_meaning TEXT,
+    grammar_rule TEXT,
+    correct_example TEXT,
+    incorrect_example TEXT,
+    correction TEXT,
+    origin TEXT NOT NULL DEFAULT 'source_grounded' CHECK (origin IN (
+        'source_grounded','admin_authored','human_synthesized'
+    )),
+    content_hash TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    change_summary TEXT NOT NULL DEFAULT '',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES structured_record_candidates(id) ON DELETE CASCADE,
+    UNIQUE(candidate_id, revision_number)
+);
+CREATE INDEX IF NOT EXISTS ix_structured_record_candidate_revisions_candidate
+    ON structured_record_candidate_revisions(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_structured_record_candidate_revisions_hash
+    ON structured_record_candidate_revisions(content_hash);
+
+CREATE TABLE IF NOT EXISTS structured_record_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    revision_id INTEGER NOT NULL,
+    review_status TEXT NOT NULL CHECK (review_status IN (
+        'approved','rejected','changes_requested'
+    )),
+    comments TEXT NOT NULL DEFAULT '',
+    reviewer_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES structured_record_candidates(id) ON DELETE RESTRICT,
+    FOREIGN KEY (revision_id) REFERENCES structured_record_candidate_revisions(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS ix_structured_record_reviews_candidate
+    ON structured_record_reviews(candidate_id);
+
+CREATE TRIGGER IF NOT EXISTS semantic_chunk_revisions_immutable_update
+    BEFORE UPDATE ON semantic_chunk_revisions
+    BEGIN SELECT RAISE(ABORT, 'semantic chunk revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS semantic_chunk_revisions_immutable_delete
+    BEFORE DELETE ON semantic_chunk_revisions
+    BEGIN SELECT RAISE(ABORT, 'semantic chunk revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS semantic_chunk_events_immutable_update
+    BEFORE UPDATE ON semantic_chunk_events
+    BEGIN SELECT RAISE(ABORT, 'semantic chunk events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS semantic_chunk_events_immutable_delete
+    BEFORE DELETE ON semantic_chunk_events
+    BEGIN SELECT RAISE(ABORT, 'semantic chunk events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS structured_record_candidate_revisions_immutable_update
+    BEFORE UPDATE ON structured_record_candidate_revisions
+    BEGIN SELECT RAISE(ABORT, 'structured record candidate revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS structured_record_candidate_revisions_immutable_delete
+    BEFORE DELETE ON structured_record_candidate_revisions
+    BEGIN SELECT RAISE(ABORT, 'structured record candidate revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS structured_record_reviews_immutable_update
+    BEFORE UPDATE ON structured_record_reviews
+    BEGIN SELECT RAISE(ABORT, 'structured record reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS structured_record_reviews_immutable_delete
+    BEFORE DELETE ON structured_record_reviews
+    BEGIN SELECT RAISE(ABORT, 'structured record reviews are append-only'); END;
+"""
+
+MIGRATION_027_NAME = "027_data_studio_phase6_quality_duplicate_conflict_approval"
+
+# Data Studio Phase 6 adds a governance layer *above* six existing,
+# independently-reviewed entity types (document_pages, manual_data_records,
+# semantic_chunks, structured_record_candidates, document_candidates,
+# dataset_records) rather than replacing any of their own lifecycles,
+# quality scoring, or duplicate/conflict detection. See
+# docs/data_studio/phase6_quality_duplicate_conflict_approval_plan.md
+# section 3 for the full architecture rationale. Entities are referenced
+# polymorphically (entity_type, entity_public_id), mirroring Phase 2's
+# `source_record_links` convention, rather than by internal FK, since
+# the six entity types live in six different tables with independent id
+# sequences.
+PHASE27_SCHEMA = """
+CREATE TABLE IF NOT EXISTS governance_review_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    review_code TEXT NOT NULL UNIQUE,
+    entity_type TEXT NOT NULL CHECK (entity_type IN (
+        'document_page','manual_data_record','semantic_chunk',
+        'structured_record_candidate','document_candidate','dataset_record'
+    )),
+    entity_public_id TEXT NOT NULL,
+    entity_revision_public_id TEXT,
+    source_public_id TEXT,
+    document_public_id TEXT,
+    page_public_id TEXT,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN (
+        'open','in_review','waiting_for_correction','waiting_for_source',
+        'waiting_for_verification','resolved','rejected','archived'
+    )),
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN (
+        'low','normal','high','urgent'
+    )),
+    assigned_admin_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TEXT
+);
+-- A partial (not table-wide) uniqueness rule: only one *unresolved*
+-- review item may exist per entity at a time. A table-wide
+-- UNIQUE(entity_type, entity_public_id, status) would also block a
+-- second-ever "resolved" row for the same entity, which is wrong --
+-- an entity can legitimately be opened, resolved, reopened, and
+-- resolved again many times over its life.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_governance_review_items_open_entity
+    ON governance_review_items(entity_type, entity_public_id)
+    WHERE status NOT IN ('resolved','rejected','archived');
+CREATE INDEX IF NOT EXISTS ix_governance_review_items_entity
+    ON governance_review_items(entity_type, entity_public_id);
+CREATE INDEX IF NOT EXISTS ix_governance_review_items_status
+    ON governance_review_items(status);
+CREATE INDEX IF NOT EXISTS ix_governance_review_items_priority
+    ON governance_review_items(priority);
+
+CREATE TABLE IF NOT EXISTS governance_review_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    review_item_id INTEGER NOT NULL,
+    issue_code TEXT NOT NULL,
+    issue_category TEXT NOT NULL CHECK (issue_category IN (
+        'language_quality','meaning_quality','factual_accuracy','source_traceability',
+        'rights_restriction','verification_missing','exact_duplicate','normalized_duplicate',
+        'source_overlap','dictionary_sense_conflict','answer_conflict','translation_conflict',
+        'chunk_overlap','chunk_gap','revision_conflict','ai_assisted_unreviewed',
+        'high_risk_unverified','time_sensitive_expired','format_invalid','export_duplicate'
+    )),
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','error','critical')),
+    is_blocking INTEGER NOT NULL DEFAULT 0 CHECK (is_blocking IN (0,1)),
+    blocking_targets_json TEXT NOT NULL DEFAULT '[]',
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    detector TEXT NOT NULL,
+    detector_version TEXT NOT NULL DEFAULT 'v1',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TEXT,
+    FOREIGN KEY (review_item_id) REFERENCES governance_review_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_governance_review_issues_item
+    ON governance_review_issues(review_item_id);
+
+CREATE TABLE IF NOT EXISTS governance_duplicate_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    group_code TEXT NOT NULL UNIQUE,
+    duplicate_type TEXT NOT NULL CHECK (duplicate_type IN (
+        'exact','normalized','source_locator','export_duplicate'
+    )),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+    canonical_entity_type TEXT,
+    canonical_entity_public_id TEXT,
+    match_reason TEXT NOT NULL,
+    match_value TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_governance_duplicate_groups_status
+    ON governance_duplicate_groups(status);
+
+CREATE TABLE IF NOT EXISTS governance_duplicate_group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_public_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member','canonical')),
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES governance_duplicate_groups(id) ON DELETE CASCADE,
+    UNIQUE(group_id, entity_type, entity_public_id)
+);
+CREATE INDEX IF NOT EXISTS ix_governance_duplicate_group_members_group
+    ON governance_duplicate_group_members(group_id);
+
+CREATE TABLE IF NOT EXISTS governance_conflict_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    group_code TEXT NOT NULL UNIQUE,
+    conflict_type TEXT NOT NULL CHECK (conflict_type IN (
+        'dictionary_sense','answer','translation','source_fact',
+        'chunk_overlap','chunk_gap','revision','classification'
+    )),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+    match_reason TEXT NOT NULL,
+    match_value TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_governance_conflict_groups_status
+    ON governance_conflict_groups(status);
+
+CREATE TABLE IF NOT EXISTS governance_conflict_group_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_public_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (group_id) REFERENCES governance_conflict_groups(id) ON DELETE CASCADE,
+    UNIQUE(group_id, entity_type, entity_public_id)
+);
+CREATE INDEX IF NOT EXISTS ix_governance_conflict_group_members_group
+    ON governance_conflict_group_members(group_id);
+
+CREATE TABLE IF NOT EXISTS governance_resolutions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    duplicate_group_id INTEGER,
+    conflict_group_id INTEGER,
+    resolution_action TEXT NOT NULL CHECK (resolution_action IN (
+        'keep_all','choose_canonical','mark_alternate','merge_manually','reject_selected',
+        'archive_selected','not_a_duplicate','keep_both_with_context','mark_alternate_sense',
+        'mark_alternate_answer','choose_preferred_translation','request_domain_review',
+        'request_source_verification','resolve_with_new_revision'
+    )),
+    resolution_reason TEXT NOT NULL,
+    selected_entities_json TEXT NOT NULL DEFAULT '[]',
+    created_revision_ids_json TEXT NOT NULL DEFAULT '[]',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (duplicate_group_id) REFERENCES governance_duplicate_groups(id) ON DELETE SET NULL,
+    FOREIGN KEY (conflict_group_id) REFERENCES governance_conflict_groups(id) ON DELETE SET NULL,
+    CHECK ((duplicate_group_id IS NOT NULL) OR (conflict_group_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS ix_governance_resolutions_duplicate_group
+    ON governance_resolutions(duplicate_group_id);
+CREATE INDEX IF NOT EXISTS ix_governance_resolutions_conflict_group
+    ON governance_resolutions(conflict_group_id);
+
+CREATE TABLE IF NOT EXISTS governance_target_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    review_item_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_public_id TEXT NOT NULL,
+    target_use TEXT NOT NULL CHECK (target_use IN (
+        'rag','training','evaluation','commercial','public_export',
+        'redistribution','dataset_export','rag_handoff'
+    )),
+    decision TEXT NOT NULL CHECK (decision IN (
+        'allowed','blocked','needs_review','not_requested'
+    )),
+    decision_code TEXT NOT NULL,
+    blocking_issue_ids_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    required_actions_json TEXT NOT NULL DEFAULT '[]',
+    is_override INTEGER NOT NULL DEFAULT 0 CHECK (is_override IN (0,1)),
+    override_reason TEXT,
+    decided_by_admin_public_id TEXT NOT NULL,
+    decided_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    FOREIGN KEY (review_item_id) REFERENCES governance_review_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_governance_target_approvals_entity
+    ON governance_target_approvals(entity_type, entity_public_id, target_use);
+CREATE INDEX IF NOT EXISTS ix_governance_target_approvals_item
+    ON governance_target_approvals(review_item_id);
+
+CREATE TABLE IF NOT EXISTS governance_review_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    review_item_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    performed_by_admin_public_id TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (review_item_id) REFERENCES governance_review_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_governance_review_events_item
+    ON governance_review_events(review_item_id);
+
+CREATE TRIGGER IF NOT EXISTS governance_review_issues_immutable_update
+    BEFORE UPDATE OF issue_code, issue_category, severity, message, detector, created_at
+    ON governance_review_issues
+    BEGIN SELECT RAISE(ABORT, 'governance review issue facts are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_review_issues_immutable_delete
+    BEFORE DELETE ON governance_review_issues
+    BEGIN SELECT RAISE(ABORT, 'governance review issues are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_resolutions_immutable_update
+    BEFORE UPDATE ON governance_resolutions
+    BEGIN SELECT RAISE(ABORT, 'governance resolutions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_resolutions_immutable_delete
+    BEFORE DELETE ON governance_resolutions
+    BEGIN SELECT RAISE(ABORT, 'governance resolutions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_target_approvals_immutable_update
+    BEFORE UPDATE ON governance_target_approvals
+    BEGIN SELECT RAISE(ABORT, 'governance target approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_target_approvals_immutable_delete
+    BEFORE DELETE ON governance_target_approvals
+    BEGIN SELECT RAISE(ABORT, 'governance target approvals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_review_events_immutable_update
+    BEFORE UPDATE ON governance_review_events
+    BEGIN SELECT RAISE(ABORT, 'governance review events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governance_review_events_immutable_delete
+    BEFORE DELETE ON governance_review_events
+    BEGIN SELECT RAISE(ABORT, 'governance review events are append-only'); END;
+"""
+
+MIGRATION_028_NAME = "028_data_studio_phase7_dataset_rag_training_integration"
+
+# Data Studio Phase 7 adds a governed build/preflight/lineage layer
+# *above* the existing dataset build/versioning system
+# (`dataset_versions`/`dataset_version_items`/`dataset_build_jobs`/
+# `dataset_exports`, unchanged), the existing RAG ingestion system, and
+# the existing tokenizer/pretraining-readiness/instruction-tuning/
+# evaluation/model-release systems -- see
+# docs/data_studio/phase7_dataset_rag_training_integration_plan.md
+# section 2 for the full architecture rationale. A governed build
+# always produces its artifact (most commonly a real, existing
+# `dataset_versions` row) through the *existing* builder; this phase
+# never creates a second dataset-versioning system. Entities are
+# referenced polymorphically (entity_type, entity_public_id), mirroring
+# Phase 2's `source_record_links` and Phase 6's `governance_*`
+# convention.
+PHASE28_SCHEMA = """
+CREATE TABLE IF NOT EXISTS governed_build_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    build_code TEXT NOT NULL UNIQUE,
+    target_pipeline TEXT NOT NULL CHECK (target_pipeline IN (
+        'dataset_version','rag','tokenizer','pretraining','instruction_tuning',
+        'evaluation','commercial_release','public_export'
+    )),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','preflight_running','preflight_ready','blocked','approved_to_build',
+        'building','completed','failed','cancelled'
+    )),
+    build_label TEXT NOT NULL DEFAULT '',
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    result_entity_type TEXT,
+    result_entity_public_id TEXT,
+    manifest_extension_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS ix_governed_build_requests_status
+    ON governed_build_requests(status);
+CREATE INDEX IF NOT EXISTS ix_governed_build_requests_target
+    ON governed_build_requests(target_pipeline);
+
+CREATE TABLE IF NOT EXISTS governed_build_preflight_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    build_request_id INTEGER NOT NULL,
+    target_pipeline TEXT NOT NULL,
+    eligible_count INTEGER NOT NULL DEFAULT 0,
+    blocked_count INTEGER NOT NULL DEFAULT 0,
+    warning_count INTEGER NOT NULL DEFAULT 0,
+    excluded_count INTEGER NOT NULL DEFAULT 0,
+    decision_summary_json TEXT NOT NULL DEFAULT '{}',
+    source_summary_json TEXT NOT NULL DEFAULT '{}',
+    rights_summary_json TEXT NOT NULL DEFAULT '{}',
+    quality_summary_json TEXT NOT NULL DEFAULT '{}',
+    duplicate_summary_json TEXT NOT NULL DEFAULT '{}',
+    conflict_summary_json TEXT NOT NULL DEFAULT '{}',
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    record_type_distribution_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by_admin_public_id TEXT NOT NULL,
+    FOREIGN KEY (build_request_id) REFERENCES governed_build_requests(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_governed_build_preflight_results_request
+    ON governed_build_preflight_results(build_request_id);
+
+CREATE TABLE IF NOT EXISTS governed_build_request_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    build_request_id INTEGER NOT NULL,
+    preflight_result_id INTEGER NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_public_id TEXT NOT NULL,
+    entity_revision_public_id TEXT,
+    source_public_id TEXT,
+    decision TEXT NOT NULL CHECK (decision IN ('eligible','blocked','warning','excluded')),
+    decision_code TEXT NOT NULL,
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    included INTEGER NOT NULL DEFAULT 0 CHECK (included IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_request_id) REFERENCES governed_build_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (preflight_result_id)
+        REFERENCES governed_build_preflight_results(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_governed_build_request_items_request
+    ON governed_build_request_items(build_request_id);
+CREATE INDEX IF NOT EXISTS ix_governed_build_request_items_preflight
+    ON governed_build_request_items(preflight_result_id);
+CREATE INDEX IF NOT EXISTS ix_governed_build_request_items_entity
+    ON governed_build_request_items(entity_type, entity_public_id);
+
+CREATE TABLE IF NOT EXISTS pipeline_artifact_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    build_request_id INTEGER NOT NULL,
+    artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+        'dataset_version','rag_source','rag_index','tokenizer_corpus_build',
+        'pretraining_job','instruction_tuning_experiment','evaluation_run',
+        'model_release','export'
+    )),
+    artifact_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by_admin_public_id TEXT NOT NULL,
+    FOREIGN KEY (build_request_id) REFERENCES governed_build_requests(id) ON DELETE CASCADE,
+    UNIQUE(build_request_id, artifact_type, artifact_public_id)
+);
+CREATE INDEX IF NOT EXISTS ix_pipeline_artifact_links_request
+    ON pipeline_artifact_links(build_request_id);
+CREATE INDEX IF NOT EXISTS ix_pipeline_artifact_links_artifact
+    ON pipeline_artifact_links(artifact_type, artifact_public_id);
+
+CREATE TABLE IF NOT EXISTS lineage_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    upstream_entity_type TEXT NOT NULL,
+    upstream_entity_id TEXT NOT NULL,
+    downstream_entity_type TEXT NOT NULL,
+    downstream_entity_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL CHECK (relationship_type IN (
+        'derived_from','included_in','exported_as','indexed_into','tokenized_into',
+        'trained_from','evaluated_with','released_from','supersedes'
+    )),
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by_admin_public_id TEXT NOT NULL,
+    UNIQUE(upstream_entity_type, upstream_entity_id, downstream_entity_type,
+        downstream_entity_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS ix_lineage_edges_upstream
+    ON lineage_edges(upstream_entity_type, upstream_entity_id);
+CREATE INDEX IF NOT EXISTS ix_lineage_edges_downstream
+    ON lineage_edges(downstream_entity_type, downstream_entity_id);
+
+CREATE TABLE IF NOT EXISTS lineage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    build_request_id INTEGER,
+    lineage_edge_id INTEGER,
+    event_type TEXT NOT NULL,
+    performed_by_admin_public_id TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (build_request_id) REFERENCES governed_build_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (lineage_edge_id) REFERENCES lineage_edges(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_lineage_events_request
+    ON lineage_events(build_request_id);
+CREATE INDEX IF NOT EXISTS ix_lineage_events_edge
+    ON lineage_events(lineage_edge_id);
+
+CREATE TRIGGER IF NOT EXISTS governed_build_preflight_results_immutable_update
+    BEFORE UPDATE ON governed_build_preflight_results
+    BEGIN SELECT RAISE(ABORT, 'governed build preflight results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS governed_build_preflight_results_immutable_delete
+    BEFORE DELETE ON governed_build_preflight_results
+    BEGIN SELECT RAISE(ABORT, 'governed build preflight results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS pipeline_artifact_links_immutable_update
+    BEFORE UPDATE ON pipeline_artifact_links
+    BEGIN SELECT RAISE(ABORT, 'pipeline artifact links are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS pipeline_artifact_links_immutable_delete
+    BEFORE DELETE ON pipeline_artifact_links
+    BEGIN SELECT RAISE(ABORT, 'pipeline artifact links are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS lineage_edges_immutable_update
+    BEFORE UPDATE ON lineage_edges
+    BEGIN SELECT RAISE(ABORT, 'lineage edges are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS lineage_edges_immutable_delete
+    BEFORE DELETE ON lineage_edges
+    BEGIN SELECT RAISE(ABORT, 'lineage edges are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS lineage_events_immutable_update
+    BEFORE UPDATE ON lineage_events
+    BEGIN SELECT RAISE(ABORT, 'lineage events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS lineage_events_immutable_delete
+    BEFORE DELETE ON lineage_events
+    BEGIN SELECT RAISE(ABORT, 'lineage events are append-only'); END;
+"""
+
+MIGRATION_029_NAME = "029_admin_assistant_phase8_floating_context_aware_assistant"
+
+# Phase 8 extends the existing Admin Assistant (Phase 2's `admin_approvals`
+# table, wired to a governed propose->review->execute lifecycle by
+# migration 022) with richer preview/expiry/stale-detection columns --
+# never a second proposal/execution table. Phase 8's own richer
+# conceptual lifecycle (draft/preview_ready/awaiting_confirmation/
+# confirmed/executing/completed/failed/cancelled/expired/rejected) is a
+# derived, presentation-layer state computed from the existing `status`
+# + `execution_status` + the new `expires_at` -- the existing 5-value
+# `status` CHECK constraint is never touched. See
+# docs/admin_assistant/phase8_floating_context_aware_admin_assistant_plan.md
+# section 2-3 for the full rationale.
+PHASE29_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "admin_approvals": [
+        ("expires_at", "TEXT"),
+        ("risk_level", "TEXT NOT NULL DEFAULT 'moderate'"),
+        ("preview_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("stale_check_json", "TEXT NOT NULL DEFAULT '{}'"),
+    ],
+}
+
+# Only genuinely new capabilities get new tables: bounded page-context
+# snapshots (no equivalent exists anywhere), read-only tool-call logging
+# (no equivalent exists anywhere), and structured feedback (no
+# equivalent exists anywhere). Conversation storage itself reuses Phase
+# 17's `conversation_sessions`/`conversation_turns`/`memory_items` via a
+# new `participant_scope_key` convention rather than a new table.
+PHASE29_SCHEMA = """
+CREATE TABLE IF NOT EXISTS admin_assistant_context_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    conversation_session_id INTEGER,
+    page_id TEXT NOT NULL,
+    tab_id TEXT,
+    entity_type TEXT,
+    entity_public_id TEXT,
+    revision_public_id TEXT,
+    sanitized_context_json TEXT NOT NULL DEFAULT '{}',
+    registry_version TEXT NOT NULL,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_session_id) REFERENCES conversation_sessions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_admin_assistant_context_snapshots_session
+    ON admin_assistant_context_snapshots(conversation_session_id);
+CREATE INDEX IF NOT EXISTS ix_admin_assistant_context_snapshots_page
+    ON admin_assistant_context_snapshots(page_id);
+
+CREATE TABLE IF NOT EXISTS admin_assistant_tool_invocations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    conversation_session_id INTEGER,
+    proposal_public_id TEXT,
+    tool_name TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'guide' CHECK (mode IN (
+        'guide','data','governance','rag','model','system'
+    )),
+    input_summary_json TEXT NOT NULL DEFAULT '{}',
+    result_summary_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'succeeded' CHECK (status IN (
+        'succeeded','failed','denied','unavailable'
+    )),
+    error_code TEXT,
+    performed_by_admin_public_id TEXT NOT NULL,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    FOREIGN KEY (conversation_session_id) REFERENCES conversation_sessions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_admin_assistant_tool_invocations_session
+    ON admin_assistant_tool_invocations(conversation_session_id);
+CREATE INDEX IF NOT EXISTS ix_admin_assistant_tool_invocations_tool
+    ON admin_assistant_tool_invocations(tool_name);
+
+CREATE TABLE IF NOT EXISTS admin_assistant_feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    conversation_session_id INTEGER,
+    message_reference TEXT,
+    page_id TEXT,
+    action_id TEXT,
+    rating TEXT NOT NULL CHECK (rating IN (
+        'helpful','not_helpful','incorrect_guidance','action_failed'
+    )),
+    comment TEXT NOT NULL DEFAULT '',
+    registry_version TEXT NOT NULL,
+    submitted_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_session_id) REFERENCES conversation_sessions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_admin_assistant_feedback_session
+    ON admin_assistant_feedback(conversation_session_id);
+
+CREATE TRIGGER IF NOT EXISTS admin_assistant_context_snapshots_immutable_update
+    BEFORE UPDATE ON admin_assistant_context_snapshots
+    BEGIN SELECT RAISE(ABORT, 'admin assistant context snapshots are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS admin_assistant_context_snapshots_immutable_delete
+    BEFORE DELETE ON admin_assistant_context_snapshots
+    BEGIN SELECT RAISE(ABORT, 'admin assistant context snapshots are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS admin_assistant_tool_invocations_immutable_delete
+    BEFORE DELETE ON admin_assistant_tool_invocations
+    BEGIN SELECT RAISE(ABORT, 'admin assistant tool invocations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS admin_assistant_feedback_immutable_update
+    BEFORE UPDATE ON admin_assistant_feedback
+    BEGIN SELECT RAISE(ABORT, 'admin assistant feedback is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS admin_assistant_feedback_immutable_delete
+    BEFORE DELETE ON admin_assistant_feedback
+    BEGIN SELECT RAISE(ABORT, 'admin assistant feedback is append-only'); END;
+"""
+
+MIGRATION_030_NAME = "030_external_data_provider_registry"
+
+# Phase 9: a registry of *external data providers* (organizations,
+# websites, APIs Brud AI could potentially pull training/RAG source
+# material from) -- structurally separate from both the existing
+# Source & Rights Registry (`data_sources`, one row per piece of
+# content already inside Brud AI with rights decided) and Phase 15's
+# inference-model routing (`inference_model_assignments`, which model
+# answers a chat request). Registering, verifying, or enabling a
+# provider here never writes to `data_sources` or any governance/
+# lineage table -- provider approval structurally cannot imply dataset,
+# RAG, training, or commercial approval. See
+# docs/data_providers/phase9_external_data_provider_registry_plan.md.
+#
+# No encrypted/reversible secret storage exists anywhere in this
+# codebase (confirmed by direct inspection -- `pwdlib.PasswordHash` is
+# a one-way password hash, not usable for a credential that must later
+# be sent to an external API). `external_data_provider_credentials`
+# therefore stores only a `reference_key` (an environment variable
+# name) and derived status -- never a secret value. See plan.md
+# section 5 for the full, honestly-documented limitation.
+PHASE30_SCHEMA = """
+CREATE TABLE IF NOT EXISTS external_data_providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    provider_type TEXT NOT NULL CHECK (provider_type IN (
+        'dataset_catalogue','repository_host','government_portal',
+        'research_institution','university_library','public_api',
+        'file_repository','custom_api','manual_source'
+    )),
+    description TEXT NOT NULL DEFAULT '',
+    official_website TEXT,
+    catalogue_url TEXT,
+    access_mode TEXT NOT NULL CHECK (access_mode IN (
+        'public','gated','private','mixed','manual'
+    )),
+    authentication_type TEXT NOT NULL DEFAULT 'none' CHECK (authentication_type IN (
+        'none','api_key','bearer_token','oauth','username_password',
+        'custom_header','manual_login'
+    )),
+    trust_status TEXT NOT NULL DEFAULT 'unverified' CHECK (trust_status IN (
+        'unverified','domain_verified','organization_verified','government_verified',
+        'research_verified','community_reviewed','restricted','blocked'
+    )),
+    lifecycle_status TEXT NOT NULL DEFAULT 'draft' CHECK (lifecycle_status IN (
+        'draft','connection_tested','needs_review','approved','enabled',
+        'disabled','restricted','blocked','archived'
+    )),
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    supports_anonymous_read INTEGER NOT NULL DEFAULT 0 CHECK (supports_anonymous_read IN (0,1)),
+    supports_authenticated_read INTEGER NOT NULL DEFAULT 0 CHECK (supports_authenticated_read IN (0,1)),
+    supports_download INTEGER NOT NULL DEFAULT 0 CHECK (supports_download IN (0,1)),
+    supports_api_search INTEGER NOT NULL DEFAULT 0 CHECK (supports_api_search IN (0,1)),
+    supports_manual_discovery INTEGER NOT NULL DEFAULT 0 CHECK (supports_manual_discovery IN (0,1)),
+    supports_write INTEGER NOT NULL DEFAULT 0 CHECK (supports_write IN (0,1)),
+    rate_limit_notes TEXT NOT NULL DEFAULT '',
+    terms_url TEXT,
+    privacy_url TEXT,
+    support_url TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_external_data_providers_type
+    ON external_data_providers(provider_type);
+CREATE INDEX IF NOT EXISTS ix_external_data_providers_lifecycle
+    ON external_data_providers(lifecycle_status);
+
+CREATE TABLE IF NOT EXISTS external_data_provider_domains (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_id INTEGER NOT NULL,
+    domain TEXT NOT NULL,
+    domain_type TEXT NOT NULL CHECK (domain_type IN (
+        'official','api','download','documentation','authentication','mirror'
+    )),
+    verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (verification_status IN (
+        'unverified','verified','failed'
+    )),
+    verified_at TEXT,
+    verification_evidence TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id) ON DELETE CASCADE,
+    UNIQUE(provider_id, domain, domain_type)
+);
+CREATE INDEX IF NOT EXISTS ix_external_data_provider_domains_provider
+    ON external_data_provider_domains(provider_id);
+
+CREATE TABLE IF NOT EXISTS external_data_provider_capabilities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_id INTEGER NOT NULL,
+    capability_type TEXT NOT NULL CHECK (capability_type IN (
+        'search_datasets','read_metadata','read_dataset_card','read_licence',
+        'list_files','download_sample','download_full','upload','write_metadata'
+    )),
+    language_codes_json TEXT NOT NULL DEFAULT '[]',
+    dataset_categories_json TEXT NOT NULL DEFAULT '[]',
+    connector_type TEXT,
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id) ON DELETE CASCADE,
+    UNIQUE(provider_id, capability_type)
+);
+CREATE INDEX IF NOT EXISTS ix_external_data_provider_capabilities_provider
+    ON external_data_provider_capabilities(provider_id);
+
+CREATE TABLE IF NOT EXISTS external_data_provider_credentials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_id INTEGER NOT NULL,
+    credential_type TEXT NOT NULL CHECK (credential_type IN (
+        'api_key','bearer_token','oauth','username_password','custom_header','manual_login'
+    )),
+    reference_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'not_configured' CHECK (status IN (
+        'not_configured','configured','test_succeeded','test_failed','revoked'
+    )),
+    last_rotated_at TEXT,
+    last_tested_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    revoked_at TEXT,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id) ON DELETE CASCADE,
+    UNIQUE(provider_id, credential_type)
+);
+CREATE INDEX IF NOT EXISTS ix_external_data_provider_credentials_provider
+    ON external_data_provider_credentials(provider_id);
+
+CREATE TABLE IF NOT EXISTS external_data_provider_connection_tests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_id INTEGER NOT NULL,
+    result TEXT NOT NULL CHECK (result IN (
+        'success','partial','failed','authentication_required','rate_limited','unsupported'
+    )),
+    capability_type TEXT,
+    latency_ms INTEGER,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    error_code TEXT,
+    tested_by_admin_public_id TEXT NOT NULL,
+    tested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_data_provider_connection_tests_provider
+    ON external_data_provider_connection_tests(provider_id);
+
+CREATE TABLE IF NOT EXISTS external_data_provider_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'provider_registered','provider_updated','domain_added','domain_verified',
+        'capability_updated','credential_configured','credential_revoked',
+        'connection_tested','verification_evaluated','provider_enabled',
+        'provider_disabled','provider_restricted','provider_blocked','provider_archived'
+    )),
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_data_provider_events_provider
+    ON external_data_provider_events(provider_id);
+
+CREATE TRIGGER IF NOT EXISTS external_data_providers_immutable_delete
+    BEFORE DELETE ON external_data_providers
+    BEGIN SELECT RAISE(ABORT, 'external data providers are archived, never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_domains_immutable_delete
+    BEFORE DELETE ON external_data_provider_domains
+    BEGIN SELECT RAISE(ABORT, 'external data provider domains are never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_capabilities_immutable_delete
+    BEFORE DELETE ON external_data_provider_capabilities
+    BEGIN SELECT RAISE(ABORT, 'external data provider capabilities are never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_credentials_immutable_delete
+    BEFORE DELETE ON external_data_provider_credentials
+    BEGIN SELECT RAISE(ABORT, 'external data provider credentials are revoked, never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_connection_tests_immutable_update
+    BEFORE UPDATE ON external_data_provider_connection_tests
+    BEGIN SELECT RAISE(ABORT, 'connection test results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_connection_tests_immutable_delete
+    BEFORE DELETE ON external_data_provider_connection_tests
+    BEGIN SELECT RAISE(ABORT, 'connection test results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_events_immutable_update
+    BEFORE UPDATE ON external_data_provider_events
+    BEGIN SELECT RAISE(ABORT, 'provider events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_data_provider_events_immutable_delete
+    BEFORE DELETE ON external_data_provider_events
+    BEGIN SELECT RAISE(ABORT, 'provider events are append-only'); END;
+"""
+
+MIGRATION_031_NAME = "031_live_dataset_discovery_normalization_comparison"
+
+# Phase 10: live, read-only dataset discovery and comparison across the
+# Phase 9 provider registry. No dataset is ever downloaded, imported,
+# licence-verified, or approved by anything in this schema block --
+# `licence_status`/`commercial_use_status`/`training_use_status`/
+# `rag_use_status`/`evaluation_use_status` are structurally incapable of
+# reaching an "approved"/"verified" value here (see
+# core_model.data_discovery.USE_APPROVAL_STATUSES /
+# LICENCE_STATUSES -- neither CHECK constraint below includes one). See
+# docs/data_discovery/phase10_live_dataset_discovery_plan.md.
+PHASE31_SCHEMA = """
+CREATE TABLE IF NOT EXISTS external_dataset_search_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_code TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','ready','running','partial','completed','failed','cancelled','expired'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    assistant_conversation_session_id INTEGER,
+    current_stage TEXT NOT NULL DEFAULT 'requirement',
+    result_count INTEGER NOT NULL DEFAULT 0,
+    provider_count INTEGER NOT NULL DEFAULT 0,
+    successful_provider_count INTEGER NOT NULL DEFAULT 0,
+    failed_provider_count INTEGER NOT NULL DEFAULT 0,
+    warning_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    expires_at TEXT,
+    FOREIGN KEY (assistant_conversation_session_id)
+        REFERENCES conversation_sessions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_search_sessions_status
+    ON external_dataset_search_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_search_sessions_requester
+    ON external_dataset_search_sessions(requested_by_admin_public_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_search_requirements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_session_id INTEGER NOT NULL UNIQUE,
+    modality TEXT NOT NULL DEFAULT 'text' CHECK (modality IN (
+        'text','image','audio','video','multimodal'
+    )),
+    languages_json TEXT NOT NULL DEFAULT '[]',
+    tasks_json TEXT NOT NULL DEFAULT '[]',
+    intended_uses_json TEXT NOT NULL DEFAULT '[]',
+    commercial_requirement TEXT NOT NULL DEFAULT 'unknown' CHECK (commercial_requirement IN (
+        'required','preferred','not_required','unknown'
+    )),
+    domain_tags_json TEXT NOT NULL DEFAULT '[]',
+    preferred_providers_json TEXT NOT NULL DEFAULT '[]',
+    excluded_providers_json TEXT NOT NULL DEFAULT '[]',
+    minimum_records INTEGER,
+    maximum_download_size_bytes INTEGER,
+    preferred_file_formats_json TEXT NOT NULL DEFAULT '[]',
+    quality_preferences_json TEXT NOT NULL DEFAULT '{}',
+    licence_preferences_json TEXT NOT NULL DEFAULT '{}',
+    free_text_requirement TEXT NOT NULL DEFAULT '',
+    inferred_fields_json TEXT NOT NULL DEFAULT '{}',
+    confirmed_fields_json TEXT NOT NULL DEFAULT '{}',
+    unknown_fields_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (search_session_id)
+        REFERENCES external_dataset_search_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS external_dataset_search_provider_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_session_id INTEGER NOT NULL,
+    provider_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'success' CHECK (status IN (
+        'success','partial','authentication_required','rate_limited','timeout',
+        'unsupported','failed'
+    )),
+    query_used TEXT NOT NULL DEFAULT '',
+    result_count INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT,
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    latency_ms INTEGER,
+    FOREIGN KEY (search_session_id)
+        REFERENCES external_dataset_search_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_search_provider_runs_session
+    ON external_dataset_search_provider_runs(search_session_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_session_id INTEGER NOT NULL,
+    canonical_name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL,
+    provider_count INTEGER NOT NULL DEFAULT 1,
+    primary_provider_id INTEGER,
+    modality TEXT CHECK (modality IN ('text','image','audio','video','multimodal')),
+    languages_json TEXT NOT NULL DEFAULT '[]',
+    tasks_json TEXT NOT NULL DEFAULT '[]',
+    intended_use_fit_json TEXT NOT NULL DEFAULT '{}',
+    description TEXT NOT NULL DEFAULT '',
+    organization TEXT,
+    authors_json TEXT NOT NULL DEFAULT '[]',
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    declared_licence TEXT,
+    licence_status TEXT NOT NULL DEFAULT 'unknown' CHECK (licence_status IN (
+        'unknown','declared','missing','conflicting','needs_verification'
+    )),
+    commercial_use_status TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (commercial_use_status IN ('not_approved','unknown')),
+    training_use_status TEXT NOT NULL DEFAULT 'not_approved'
+        CHECK (training_use_status IN ('not_approved','unknown')),
+    rag_use_status TEXT NOT NULL DEFAULT 'not_approved'
+        CHECK (rag_use_status IN ('not_approved','unknown')),
+    evaluation_use_status TEXT NOT NULL DEFAULT 'not_approved'
+        CHECK (evaluation_use_status IN ('not_approved','unknown')),
+    record_count INTEGER,
+    download_size_bytes INTEGER,
+    file_formats_json TEXT NOT NULL DEFAULT '[]',
+    dataset_card_present INTEGER NOT NULL DEFAULT 0 CHECK (dataset_card_present IN (0,1)),
+    dataset_card_url TEXT,
+    homepage_url TEXT,
+    repository_url TEXT,
+    gated INTEGER NOT NULL DEFAULT 0 CHECK (gated IN (0,1)),
+    private INTEGER NOT NULL DEFAULT 0 CHECK (private IN (0,1)),
+    authentication_required INTEGER NOT NULL DEFAULT 0 CHECK (authentication_required IN (0,1)),
+    version TEXT,
+    revision TEXT,
+    last_modified_at TEXT,
+    freshness_status TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (freshness_status IN ('fresh','aging','stale','unknown')),
+    metadata_completeness_score REAL,
+    quality_signal_score REAL,
+    suitability_score REAL,
+    risk_score REAL,
+    recommendation_status TEXT NOT NULL DEFAULT 'insufficient_metadata' CHECK (recommendation_status IN (
+        'recommended_for_review','possible','low_fit','high_risk','insufficient_metadata','excluded'
+    )),
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    excluded INTEGER NOT NULL DEFAULT 0 CHECK (excluded IN (0,1)),
+    possible_duplicate_of_candidate_id INTEGER,
+    candidate_entry_method TEXT NOT NULL DEFAULT 'provider_search'
+        CHECK (candidate_entry_method IN ('provider_search','manual')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (search_session_id)
+        REFERENCES external_dataset_search_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (primary_provider_id) REFERENCES external_data_providers(id),
+    FOREIGN KEY (possible_duplicate_of_candidate_id)
+        REFERENCES external_dataset_candidates(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_candidates_session
+    ON external_dataset_candidates(search_session_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_candidates_recommendation
+    ON external_dataset_candidates(recommendation_status);
+
+CREATE TABLE IF NOT EXISTS external_dataset_candidate_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    provider_id INTEGER NOT NULL,
+    provider_dataset_id TEXT NOT NULL,
+    source_url TEXT,
+    dataset_card_url TEXT,
+    metadata_url TEXT,
+    version TEXT,
+    revision TEXT,
+    raw_metadata_json TEXT NOT NULL DEFAULT '{}',
+    raw_metadata_checksum TEXT,
+    retrieved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    response_status TEXT NOT NULL DEFAULT 'success',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id) ON DELETE CASCADE,
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id),
+    UNIQUE(candidate_id, provider_id, provider_dataset_id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_candidate_sources_candidate
+    ON external_dataset_candidate_sources(candidate_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_candidate_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    dimension TEXT NOT NULL CHECK (dimension IN (
+        'requirement_fit','language_fit','task_fit','modality_fit','intended_use_fit',
+        'metadata_completeness','provider_trust','dataset_card_presence','version_traceability',
+        'size_suitability','format_suitability','recency','accessibility','risk_penalty',
+        'unknown_licence_penalty','gated_access_penalty','conflict_penalty'
+    )),
+    raw_value REAL NOT NULL,
+    weight REAL NOT NULL,
+    score REAL NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id) ON DELETE CASCADE,
+    UNIQUE(candidate_id, dimension)
+);
+
+CREATE TABLE IF NOT EXISTS external_dataset_candidate_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_session_id INTEGER NOT NULL,
+    candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (search_session_id)
+        REFERENCES external_dataset_search_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_candidate_comparisons_session
+    ON external_dataset_candidate_comparisons(search_session_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_search_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'session_created','requirements_updated','requirements_confirmed','search_started',
+        'provider_run_completed','provider_run_failed','search_completed','search_partial',
+        'search_failed','search_cancelled','candidate_excluded','candidate_restored',
+        'manual_candidate_added','comparison_created','report_finalized'
+    )),
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (search_session_id)
+        REFERENCES external_dataset_search_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_search_events_session
+    ON external_dataset_search_events(search_session_id);
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_search_sessions_immutable_delete
+    BEFORE DELETE ON external_dataset_search_sessions
+    BEGIN SELECT RAISE(ABORT, 'search sessions are never deleted, only cancelled/expired'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_search_provider_runs_immutable_delete
+    BEFORE DELETE ON external_dataset_search_provider_runs
+    BEGIN SELECT RAISE(ABORT, 'provider run history is never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_candidates_immutable_delete
+    BEFORE DELETE ON external_dataset_candidates
+    BEGIN SELECT RAISE(ABORT, 'candidates are excluded, never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_candidate_sources_immutable_delete
+    BEFORE DELETE ON external_dataset_candidate_sources
+    BEGIN SELECT RAISE(ABORT, 'candidate source evidence is never deleted'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_search_events_immutable_update
+    BEFORE UPDATE ON external_dataset_search_events
+    BEGIN SELECT RAISE(ABORT, 'search events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_search_events_immutable_delete
+    BEFORE DELETE ON external_dataset_search_events
+    BEGIN SELECT RAISE(ABORT, 'search events are append-only'); END;
+"""
+
+MIGRATION_032_NAME = "032_admin_assistant_response_language_preference"
+
+# Phase 10A: a single, additive column on the existing `admin_accounts`
+# table (one row per admin already) -- never a new preferences table,
+# per plan.md section 2. Every existing admin row backfills to 'auto'
+# via the NOT NULL DEFAULT, so no admin created in any earlier phase
+# needs a data migration of its own.
+PHASE32_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "admin_accounts": [
+        (
+            "admin_assistant_response_language",
+            "TEXT NOT NULL DEFAULT 'auto' CHECK (admin_assistant_response_language "
+            "IN ('tamil','english','tanglish','auto'))",
+        ),
+    ],
+}
+
+MIGRATION_033_NAME = "033_licence_evidence_terms_snapshot_dataset_verification"
+
+# Phase 11: a governed, evidence-backed licence/terms/rights verification
+# workflow layered on top of the read-only Phase 10 candidate rows --
+# never a rewrite of dataset discovery, the provider registry, the
+# Source & Rights Registry, or governance. Nothing in this schema block
+# can ever download a dataset payload file, import records, activate
+# RAG, create a training dataset version, or release a model -- there
+# is no column here for any of those actions. `external_dataset_
+# permission_assessments.status` accepts all 10 values structurally
+# (Step 8), but only an explicit, reasoned Admin review may write one of
+# the 4 admin-only values (`approved`/`approved_with_conditions`/
+# `not_approved`/`prohibited`); this is enforced in the service layer
+# (only `.review()`, never `.assess()`, may pass one) and reinforced
+# here by a dedicated trigger requiring `reviewed_by`/`reviewed_at`/a
+# non-empty `reason` in the same statement -- defense in depth, not the
+# sole guard. 9 additive tables: Step 3's exact list of 8, plus one
+# documented deviation -- `external_dataset_upstream_sources`, added
+# because Step 10's own upstream field list does not fit any of the
+# other 8 named tables (`external_dataset_evidence_links` is instead
+# used for its more literal, general purpose: a polymorphic link from
+# an evidence snapshot to whichever permission assessment/identity
+# check/upstream source/licence determination/conflict event it
+# supports). Conflicts (Step 12) are not a 10th table -- they are
+# `external_dataset_verification_events` rows with
+# `event_type='conflict_detected'` plus dedicated `conflict_type`/
+# `conflict_severity`/`resolution_status` columns on that same event
+# row, since Step 3's table list has no separate conflicts table. See
+# docs/data_verification/phase11_licence_evidence_verification_plan.md.
+PHASE33_SCHEMA = """
+CREATE TABLE IF NOT EXISTS external_dataset_verification_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_code TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    search_session_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','collecting_evidence','needs_review','in_review','verified',
+        'verified_with_conditions','insufficient_evidence','conflicting_evidence',
+        'blocked','cancelled','expired','withdrawn'
+    )),
+    verification_scope TEXT NOT NULL DEFAULT '',
+    requested_by_admin_public_id TEXT NOT NULL,
+    assigned_reviewer_admin_public_id TEXT,
+    current_stage TEXT NOT NULL DEFAULT 'evidence_collection',
+    identity_status TEXT NOT NULL DEFAULT 'not_verified' CHECK (identity_status IN (
+        'verified','likely_match','partial','conflicting','not_verified'
+    )),
+    evidence_status TEXT NOT NULL DEFAULT 'not_started' CHECK (evidence_status IN (
+        'not_started','in_progress','complete','incomplete','conflicting'
+    )),
+    licence_status TEXT NOT NULL DEFAULT 'unknown' CHECK (licence_status IN (
+        'unknown','declared_only','evidence_captured','verified','custom_needs_review',
+        'missing','conflicting','restricted','withdrawn'
+    )),
+    terms_status TEXT NOT NULL DEFAULT 'not_started' CHECK (terms_status IN (
+        'not_started','in_progress','complete','incomplete','conflicting'
+    )),
+    upstream_status TEXT NOT NULL DEFAULT 'not_started' CHECK (upstream_status IN (
+        'not_started','in_progress','complete','incomplete','conflicting'
+    )),
+    permission_status TEXT NOT NULL DEFAULT 'not_started' CHECK (permission_status IN (
+        'not_started','in_progress','complete','incomplete','conflicting'
+    )),
+    conflict_count INTEGER NOT NULL DEFAULT 0 CHECK (conflict_count >= 0),
+    warning_count INTEGER NOT NULL DEFAULT 0 CHECK (warning_count >= 0),
+    blocking_reason_count INTEGER NOT NULL DEFAULT 0 CHECK (blocking_reason_count >= 0),
+    approved_upstream_domains_json TEXT NOT NULL DEFAULT '[]',
+    report_json TEXT NOT NULL DEFAULT '{}',
+    verification_expiry_status TEXT NOT NULL DEFAULT 'current'
+        CHECK (verification_expiry_status IN (
+            'current','due_soon','expired','source_changed','withdrawn'
+        )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    expired_at TEXT,
+    last_verified_at TEXT,
+    next_reverification_at TEXT,
+    locked_at TEXT,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id),
+    FOREIGN KEY (search_session_id) REFERENCES external_dataset_search_sessions(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_verification_cases_candidate
+    ON external_dataset_verification_cases(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_verification_cases_status
+    ON external_dataset_verification_cases(status);
+
+CREATE TABLE IF NOT EXISTS external_dataset_evidence_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    provider_id INTEGER,
+    evidence_type TEXT NOT NULL CHECK (evidence_type IN (
+        'official_dataset_page','dataset_card','licence_file','licence_url',
+        'repository_licence_metadata','terms_of_use','privacy_policy',
+        'consent_statement','upstream_source','citation_file','readme',
+        'provider_api_metadata','government_notice','institutional_policy',
+        'manual_admin_evidence'
+    )),
+    authority_level TEXT NOT NULL CHECK (authority_level IN (
+        'primary','official_supporting','secondary','provider_declared',
+        'community_supplied','manual_unverified'
+    )),
+    source_url TEXT,
+    resolved_url TEXT,
+    source_domain TEXT,
+    source_title TEXT,
+    content_type TEXT NOT NULL CHECK (content_type IN (
+        'text/plain','text/markdown','text/html','application/json','application/pdf'
+    )),
+    language TEXT,
+    retrieval_status TEXT NOT NULL DEFAULT 'success' CHECK (retrieval_status IN (
+        'success','partial','failed','unavailable','manual'
+    )),
+    http_status INTEGER,
+    retrieved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    effective_date TEXT,
+    last_modified_at TEXT,
+    content_text TEXT NOT NULL DEFAULT '',
+    content_excerpt TEXT NOT NULL DEFAULT '',
+    content_checksum TEXT NOT NULL,
+    response_headers_json TEXT NOT NULL DEFAULT '{}',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    redaction_summary_json TEXT NOT NULL DEFAULT '{}',
+    size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
+    is_current INTEGER NOT NULL DEFAULT 1 CHECK (is_current IN (0,1)),
+    supersedes_evidence_id INTEGER,
+    ocr_derived INTEGER NOT NULL DEFAULT 0 CHECK (ocr_derived IN (0,1)),
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id),
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id),
+    FOREIGN KEY (supersedes_evidence_id) REFERENCES external_dataset_evidence_snapshots(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_evidence_snapshots_case
+    ON external_dataset_evidence_snapshots(verification_case_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_evidence_snapshots_type
+    ON external_dataset_evidence_snapshots(evidence_type);
+
+CREATE TABLE IF NOT EXISTS external_dataset_evidence_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evidence_snapshot_id INTEGER NOT NULL,
+    linked_entity_type TEXT NOT NULL CHECK (linked_entity_type IN (
+        'permission_assessment','identity_check','upstream_source',
+        'licence_determination','conflict_event'
+    )),
+    linked_entity_id INTEGER NOT NULL,
+    link_role TEXT NOT NULL DEFAULT 'supports' CHECK (link_role IN (
+        'supports','contradicts','superseded_by','reference'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evidence_snapshot_id)
+        REFERENCES external_dataset_evidence_snapshots(id) ON DELETE CASCADE,
+    UNIQUE(evidence_snapshot_id, linked_entity_type, linked_entity_id, link_role)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_evidence_links_entity
+    ON external_dataset_evidence_links(linked_entity_type, linked_entity_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_identity_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    signal_type TEXT NOT NULL CHECK (signal_type IN (
+        'provider_dataset_id','canonical_dataset_url','organization','repository_owner',
+        'official_domain','dataset_name','version','revision','dataset_card_identifier',
+        'upstream_citation','checksum_or_release_tag'
+    )),
+    expected_value TEXT,
+    observed_value TEXT,
+    matched INTEGER NOT NULL DEFAULT 0 CHECK (matched IN (0,1)),
+    reason TEXT NOT NULL DEFAULT '',
+    evidence_snapshot_id INTEGER,
+    assessed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id),
+    FOREIGN KEY (evidence_snapshot_id) REFERENCES external_dataset_evidence_snapshots(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_identity_checks_case
+    ON external_dataset_identity_checks(verification_case_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_permission_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    permission_type TEXT NOT NULL CHECK (permission_type IN (
+        'rag_use','training_use','evaluation_use','commercial_use','redistribution',
+        'modification','derivative_works','attribution_required','share_alike_required',
+        'notice_required','source_disclosure_required','personal_data_restriction',
+        'research_only','non_commercial_only','geographic_restriction',
+        'gated_access_restriction'
+    )),
+    status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN (
+        'unknown','not_applicable','likely_allowed','likely_restricted','needs_legal_review',
+        'approved','approved_with_conditions','not_approved','prohibited','withdrawn'
+    )),
+    decision_basis TEXT NOT NULL DEFAULT '',
+    evidence_snapshot_ids_json TEXT NOT NULL DEFAULT '[]',
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    assessed_by TEXT NOT NULL DEFAULT 'system',
+    assessed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    reason TEXT,
+    evidence_checksum_set_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id),
+    UNIQUE(verification_case_id, permission_type)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_permission_assessments_case
+    ON external_dataset_permission_assessments(verification_case_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_verification_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    permission_assessment_id INTEGER,
+    permission_type TEXT,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'approved','approved_with_conditions','not_approved','prohibited'
+    )),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    evidence_checksum_set_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (permission_assessment_id)
+        REFERENCES external_dataset_permission_assessments(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_verification_reviews_case
+    ON external_dataset_verification_reviews(verification_case_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_verification_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'case_created','evidence_collected','evidence_collection_failed',
+        'manual_evidence_added','evidence_refreshed','identity_assessed',
+        'licence_normalized','permission_assessed','permission_reviewed',
+        'upstream_added','upstream_verified','conflict_detected','conflict_resolved',
+        'case_finalized','case_cancelled','case_expired','reverification_checked',
+        'source_changed_detected','withdrawal_notice_recorded'
+    )),
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    conflict_type TEXT CHECK (conflict_type IS NULL OR conflict_type IN (
+        'declared_vs_licence_file','provider_vs_repository_metadata',
+        'permissive_language_vs_restrictive_terms','licence_vs_upstream_unknown',
+        'commercial_use_vs_consent_missing','other'
+    )),
+    conflict_severity TEXT CHECK (conflict_severity IS NULL OR conflict_severity IN (
+        'informational','low','moderate','high','blocking'
+    )),
+    evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+    resolution_status TEXT CHECK (resolution_status IS NULL OR resolution_status IN (
+        'unresolved','resolved','accepted_risk','dismissed'
+    )),
+    resolution_reason TEXT,
+    resolved_by_admin_public_id TEXT,
+    resolved_at TEXT,
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_verification_events_case
+    ON external_dataset_verification_events(verification_case_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_verification_events_type
+    ON external_dataset_verification_events(event_type);
+
+CREATE TABLE IF NOT EXISTS external_dataset_withdrawal_notices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    notice_type TEXT NOT NULL CHECK (notice_type IN (
+        'dataset_withdrawn','licence_changed','terms_changed','rights_holder_request',
+        'privacy_request','provider_removed','other'
+    )),
+    source_url TEXT,
+    notice_text TEXT NOT NULL DEFAULT '',
+    received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    effective_at TEXT,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    impact_status TEXT NOT NULL DEFAULT 'pending_assessment' CHECK (impact_status IN (
+        'pending_assessment','assessed'
+    )),
+    impact_summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_withdrawal_notices_case
+    ON external_dataset_withdrawal_notices(verification_case_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_upstream_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    upstream_name TEXT NOT NULL,
+    upstream_url TEXT,
+    upstream_organization TEXT,
+    upstream_licence TEXT,
+    upstream_terms TEXT,
+    upstream_permission_status TEXT NOT NULL DEFAULT 'unknown' CHECK (
+        upstream_permission_status IN (
+            'unknown','not_applicable','likely_allowed','likely_restricted',
+            'needs_legal_review','approved','approved_with_conditions','not_approved',
+            'prohibited','withdrawn'
+        )
+    ),
+    relationship_type TEXT NOT NULL DEFAULT 'unknown' CHECK (relationship_type IN (
+        'derived_from','aggregated_from','mirrored_from','translated_from',
+        'annotated_from','converted_from','subset_of','unknown'
+    )),
+    coverage_notes TEXT NOT NULL DEFAULT '',
+    verification_status TEXT NOT NULL DEFAULT 'not_verified' CHECK (verification_status IN (
+        'not_verified','partial','verified','conflicting'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (verification_case_id)
+        REFERENCES external_dataset_verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_upstream_sources_case
+    ON external_dataset_upstream_sources(verification_case_id);
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_evidence_snapshots_immutable_delete
+    BEFORE DELETE ON external_dataset_evidence_snapshots
+    BEGIN SELECT RAISE(ABORT, 'evidence snapshots are never deleted, only superseded'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_verification_reviews_immutable_update
+    BEFORE UPDATE ON external_dataset_verification_reviews
+    BEGIN SELECT RAISE(ABORT, 'verification reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_verification_reviews_immutable_delete
+    BEFORE DELETE ON external_dataset_verification_reviews
+    BEGIN SELECT RAISE(ABORT, 'verification reviews are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_verification_events_immutable_update
+    BEFORE UPDATE ON external_dataset_verification_events
+    BEGIN SELECT RAISE(ABORT, 'verification events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_verification_events_immutable_delete
+    BEFORE DELETE ON external_dataset_verification_events
+    BEGIN SELECT RAISE(ABORT, 'verification events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_withdrawal_notices_immutable_update
+    BEFORE UPDATE ON external_dataset_withdrawal_notices
+    BEGIN SELECT RAISE(ABORT, 'withdrawal notices are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_withdrawal_notices_immutable_delete
+    BEFORE DELETE ON external_dataset_withdrawal_notices
+    BEGIN SELECT RAISE(ABORT, 'withdrawal notices are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_permission_assessments_admin_only_guard_insert
+    BEFORE INSERT ON external_dataset_permission_assessments
+    WHEN NEW.status IN ('approved','approved_with_conditions','not_approved','prohibited')
+        AND (NEW.reviewed_by IS NULL OR NEW.reviewed_at IS NULL
+             OR NEW.reason IS NULL OR length(trim(NEW.reason)) = 0)
+    BEGIN
+        SELECT RAISE(ABORT,
+            'admin-only permission status requires reviewed_by, reviewed_at, and a reason');
+    END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_permission_assessments_admin_only_guard_update
+    BEFORE UPDATE ON external_dataset_permission_assessments
+    WHEN NEW.status IN ('approved','approved_with_conditions','not_approved','prohibited')
+        AND (NEW.reviewed_by IS NULL OR NEW.reviewed_at IS NULL
+             OR NEW.reason IS NULL OR length(trim(NEW.reason)) = 0)
+    BEGIN
+        SELECT RAISE(ABORT,
+            'admin-only permission status requires reviewed_by, reviewed_at, and a reason');
+    END;
+"""
+
+MIGRATION_034_NAME = "034_dataset_verification_licence_normalization_columns"
+
+# Phase 11 (Step 7): two additive columns discovered as genuinely
+# needed only once the licence-normalization service was being
+# designed -- `declared_licence` (the value under independent Phase 11
+# review, copied read-only from the Phase 10 candidate at case-
+# creation time so it survives even if the candidate's own field is
+# later reinterpreted) and `normalized_licence_identifier` (populated
+# only via `core_model.data_verification.normalize_spdx_identifier()`'s
+# exact-match table -- never guessed). Both live on the mutable case
+# row (updatable only while `locked_at IS NULL`, same as every other
+# case column), not migration 033's already-shipped table shape.
+PHASE34_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "external_dataset_verification_cases": [
+        ("declared_licence", "TEXT"),
+        ("normalized_licence_identifier", "TEXT"),
+    ],
+}
+
+
+MIGRATION_035_NAME = "035_approved_sample_import_quarantine_file_safety_validation"
+
+# Phase 12: a governed, bounded-sample import and quarantine workflow
+# layered on top of a *finalized* Phase 11 verification case -- never a
+# rewrite of dataset verification, the Provider Registry, Dataset
+# Discovery, the Source & Rights Registry, the existing dataset import
+# pipeline, or governance. Nothing in this schema block can ever
+# download a full external dataset, clone a repository, execute
+# downloaded content, extract an unbounded archive, insert a
+# quarantined record into `dataset_records`/RAG/training tables,
+# activate RAG, create a training dataset version, or release a model
+# -- there is no column here for any of those actions, and no status
+# value anywhere in this block spells "training_approved". All 12
+# tables Step 3 names are used as named -- no collapsing, no 13th
+# table. Steps 16-21's PII/safety/quality/duplicate/conflict/
+# contamination/poisoning findings all share one generically-shaped
+# `external_dataset_sample_record_issues` table (an `issue_category`
+# column distinguishes them), matching Step 3's singular table name;
+# Step 12's file-level malware/executable scan gets its own
+# `external_dataset_sample_scan_results` table. Human-review
+# corrections to derived content (Step 22: "corrections must be
+# revisioned") are stored as new append-only rows directly on
+# `external_dataset_sample_reviews` (`derived_content_text`/
+# `derived_content_checksum`) rather than a 13th "derived revisions"
+# table -- reviews are already append-only, so each edit is already its
+# own immutable version; the original file/record is never touched by
+# any review row. See
+# docs/sample_import/phase12_sample_import_quarantine_plan.md.
+PHASE35_SCHEMA = """
+CREATE TABLE IF NOT EXISTS external_dataset_sample_imports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_code TEXT NOT NULL UNIQUE,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    provider_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','awaiting_approval','approved','downloading','downloaded',
+        'quarantined','scanning','parsing','needs_review','validated',
+        'validated_with_conditions','rejected','failed','cancelled','expired',
+        'withdrawn','deleted'
+    )),
+    current_stage TEXT NOT NULL DEFAULT 'eligibility_check' CHECK (current_stage IN (
+        'eligibility_check','approval','download','file_validation','archive_extraction',
+        'security_scan','content_parsing','pii_scan','quality_scan','duplicate_scan',
+        'contamination_scan','human_review','final_report'
+    )),
+    purpose TEXT NOT NULL CHECK (purpose IN (
+        'manual_review','quality_evaluation','rag_sandbox_preparation',
+        'format_validation','language_validation','security_validation'
+    )),
+    dataset_version TEXT,
+    revision TEXT,
+    selection_method TEXT NOT NULL CHECK (selection_method IN (
+        'provider_sample_endpoint','provider_file_metadata','bounded_row_range',
+        'bounded_split_subset','specific_approved_files','deterministic_first_n',
+        'deterministic_seeded_sample','manual_file_selection'
+    )),
+    selection_seed TEXT,
+    source_split TEXT,
+    source_file TEXT,
+    row_start INTEGER,
+    row_end INTEGER,
+    requested_count INTEGER NOT NULL DEFAULT 0 CHECK (requested_count >= 0),
+    actual_count INTEGER NOT NULL DEFAULT 0 CHECK (actual_count >= 0),
+    expected_modality TEXT NOT NULL DEFAULT 'text' CHECK (expected_modality IN (
+        'text','image','audio','video','multimodal'
+    )),
+    quarantine_relative_path TEXT,
+    quarantine_bytes_used INTEGER NOT NULL DEFAULT 0 CHECK (quarantine_bytes_used >= 0),
+    rag_sandbox_eligible INTEGER CHECK (rag_sandbox_eligible IS NULL
+        OR rag_sandbox_eligible IN (0,1)),
+    training_assessment_status TEXT CHECK (training_assessment_status IS NULL
+        OR training_assessment_status IN (
+            'not_assessed','potentially_suitable','needs_more_review','not_suitable','blocked'
+        )),
+    report_json TEXT NOT NULL DEFAULT '{}',
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at TEXT,
+    finalized_at TEXT,
+    cancelled_at TEXT,
+    expired_at TEXT,
+    deleted_at TEXT,
+    locked_at TEXT,
+    FOREIGN KEY (verification_case_id) REFERENCES external_dataset_verification_cases(id),
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id),
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_imports_case
+    ON external_dataset_sample_imports(verification_case_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_imports_status
+    ON external_dataset_sample_imports(status);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_import_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    verification_case_id INTEGER NOT NULL,
+    candidate_id INTEGER NOT NULL,
+    provider_id INTEGER,
+    approved_by_admin_id TEXT,
+    approved_at TEXT,
+    expires_at TEXT,
+    purpose TEXT NOT NULL CHECK (purpose IN (
+        'manual_review','quality_evaluation','rag_sandbox_preparation',
+        'format_validation','language_validation','security_validation'
+    )),
+    requested_record_limit INTEGER NOT NULL CHECK (requested_record_limit > 0),
+    approved_record_limit INTEGER CHECK (approved_record_limit IS NULL
+        OR approved_record_limit > 0),
+    requested_byte_limit INTEGER NOT NULL CHECK (requested_byte_limit > 0),
+    approved_byte_limit INTEGER CHECK (approved_byte_limit IS NULL OR approved_byte_limit > 0),
+    allowed_file_ids_json TEXT NOT NULL DEFAULT '[]',
+    allowed_file_patterns_json TEXT NOT NULL DEFAULT '[]',
+    allowed_formats_json TEXT NOT NULL DEFAULT '[]',
+    expected_modality TEXT NOT NULL DEFAULT 'text' CHECK (expected_modality IN (
+        'text','image','audio','video','multimodal'
+    )),
+    expected_languages_json TEXT NOT NULL DEFAULT '[]',
+    expected_tasks_json TEXT NOT NULL DEFAULT '[]',
+    dataset_version TEXT,
+    revision TEXT,
+    source_checksum TEXT,
+    target_fingerprint TEXT NOT NULL,
+    approval_reason TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','approved','rejected','expired','superseded'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE,
+    FOREIGN KEY (verification_case_id) REFERENCES external_dataset_verification_cases(id),
+    FOREIGN KEY (candidate_id) REFERENCES external_dataset_candidates(id),
+    FOREIGN KEY (provider_id) REFERENCES external_data_providers(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_import_approvals_import
+    ON external_dataset_sample_import_approvals(sample_import_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    source_file_id TEXT,
+    original_filename TEXT NOT NULL,
+    safe_filename TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    declared_format TEXT,
+    detected_mime TEXT,
+    detected_signature TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
+    checksum TEXT,
+    encoding TEXT,
+    compression_type TEXT,
+    container_format TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','safe_for_scan','unsupported','suspicious','blocked','corrupt',
+        'oversized','validated'
+    )),
+    blocked_class TEXT CHECK (blocked_class IS NULL OR blocked_class IN (
+        'executable','shared_library','shell_script','batch_script','powershell_script',
+        'macro_document','java_archive','android_package','disk_image','device_file',
+        'encrypted_archive','password_protected_archive','unknown_binary_blob',
+        'model_weight_file'
+    )),
+    rejection_reason TEXT,
+    is_archive INTEGER NOT NULL DEFAULT 0 CHECK (is_archive IN (0,1)),
+    archive_format TEXT CHECK (archive_format IS NULL OR archive_format IN ('zip','tar','tar.gz')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_files_import
+    ON external_dataset_sample_files(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_files_status
+    ON external_dataset_sample_files(status);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_download_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    file_id INTEGER,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'started','progress','completed','failed','aborted_byte_limit','cancelled'
+    )),
+    source_url TEXT,
+    resolved_domain TEXT,
+    bytes_downloaded INTEGER NOT NULL DEFAULT 0 CHECK (bytes_downloaded >= 0),
+    byte_limit INTEGER,
+    checksum TEXT,
+    http_status INTEGER,
+    error_reason TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES external_dataset_sample_files(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_download_events_import
+    ON external_dataset_sample_download_events(sample_import_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_extraction_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    archive_file_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'started','member_extracted','member_rejected','completed','failed',
+        'aborted_bomb_detected','aborted_timeout','cancelled'
+    )),
+    member_path TEXT,
+    rejection_reason TEXT CHECK (rejection_reason IS NULL OR rejection_reason IN (
+        'path_traversal','absolute_path','symlink','hard_link','device_file',
+        'encrypted_entry','duplicate_path','depth_exceeded','nested_archive_depth_exceeded'
+    )),
+    expanded_bytes INTEGER,
+    member_count INTEGER,
+    depth INTEGER,
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE,
+    FOREIGN KEY (archive_file_id) REFERENCES external_dataset_sample_files(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_extraction_events_import
+    ON external_dataset_sample_extraction_events(sample_import_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_scan_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    file_id INTEGER NOT NULL,
+    verdict TEXT NOT NULL CHECK (verdict IN (
+        'clean_by_policy','suspicious','blocked','unsupported','scanner_unavailable',
+        'needs_review'
+    )),
+    matched_signals_json TEXT NOT NULL DEFAULT '[]',
+    reason TEXT NOT NULL DEFAULT '',
+    scanner_version TEXT NOT NULL DEFAULT '',
+    scanned_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES external_dataset_sample_files(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_scan_results_import
+    ON external_dataset_sample_scan_results(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_scan_results_file
+    ON external_dataset_sample_scan_results(file_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    source_file_id INTEGER NOT NULL,
+    source_row_or_page TEXT,
+    modality TEXT NOT NULL DEFAULT 'text' CHECK (modality IN (
+        'text','image','audio','video','multimodal'
+    )),
+    language TEXT CHECK (language IS NULL OR language IN (
+        'tamil','english','tanglish','mixed','other','unknown'
+    )),
+    task TEXT,
+    raw_content TEXT NOT NULL DEFAULT '',
+    normalized_content TEXT NOT NULL DEFAULT '',
+    structured_payload_json TEXT NOT NULL DEFAULT '{}',
+    source_checksum TEXT NOT NULL,
+    record_checksum TEXT NOT NULL,
+    parser_version TEXT NOT NULL DEFAULT '',
+    normalizer_version TEXT NOT NULL DEFAULT '',
+    ocr_derived INTEGER NOT NULL DEFAULT 0 CHECK (ocr_derived IN (0,1)),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','normalized','flagged','excluded','accepted','rejected'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_file_id) REFERENCES external_dataset_sample_files(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_records_import
+    ON external_dataset_sample_records(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_records_file
+    ON external_dataset_sample_records(source_file_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_record_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    record_id INTEGER,
+    file_id INTEGER,
+    issue_category TEXT NOT NULL CHECK (issue_category IN (
+        'pii','safety','quality','duplicate','conflict','contamination','poisoning'
+    )),
+    issue_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    severity TEXT,
+    confidence TEXT,
+    location_json TEXT NOT NULL DEFAULT '{}',
+    related_group_id TEXT,
+    contamination_reference TEXT,
+    reviewer_decision TEXT CHECK (reviewer_decision IS NULL OR reviewer_decision IN (
+        'accept','accept_with_conditions','edit_derived_copy','redact_derived_copy',
+        'exclude','reject_file','reject_sample','needs_more_evidence'
+    )),
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    review_reason TEXT,
+    detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE,
+    FOREIGN KEY (record_id) REFERENCES external_dataset_sample_records(id),
+    FOREIGN KEY (file_id) REFERENCES external_dataset_sample_files(id)
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_record_issues_import
+    ON external_dataset_sample_record_issues(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_record_issues_record
+    ON external_dataset_sample_record_issues(record_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_record_issues_category
+    ON external_dataset_sample_record_issues(issue_category);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    target_type TEXT NOT NULL CHECK (target_type IN (
+        'file','record','issue','duplicate_group','conflict','pii','safety','quality',
+        'contamination','language','ocr_correction'
+    )),
+    target_id INTEGER,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'accept','accept_with_conditions','edit_derived_copy','redact_derived_copy',
+        'exclude','reject_file','reject_sample','needs_more_evidence'
+    )),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    derived_content_text TEXT,
+    derived_content_checksum TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_reviews_import
+    ON external_dataset_sample_reviews(sample_import_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    report_version INTEGER NOT NULL DEFAULT 1 CHECK (report_version > 0),
+    rag_sandbox_eligible INTEGER NOT NULL CHECK (rag_sandbox_eligible IN (0,1)),
+    training_assessment_status TEXT NOT NULL CHECK (training_assessment_status IN (
+        'not_assessed','potentially_suitable','needs_more_review','not_suitable','blocked'
+    )),
+    report_json TEXT NOT NULL DEFAULT '{}',
+    finalized_by_admin_public_id TEXT NOT NULL,
+    finalized_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(sample_import_id, report_version),
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_reports_import
+    ON external_dataset_sample_reports(sample_import_id);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'import_created','eligibility_checked','eligibility_blocked','approval_requested',
+        'approved','approval_rejected','approval_expired','download_started',
+        'download_completed','download_failed','quarantined','extraction_completed',
+        'security_scan_completed','parsing_completed','pii_scan_completed',
+        'safety_scan_completed','quality_scan_completed','duplicate_scan_completed',
+        'contamination_scan_completed','poisoning_scan_completed','review_recorded',
+        'finalized','deletion_requested','deletion_executed','deletion_cancelled',
+        'cancelled','expired','withdrawal_blocked'
+    )),
+    from_status TEXT,
+    to_status TEXT,
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL DEFAULT 'system',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_events_import
+    ON external_dataset_sample_events(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_events_type
+    ON external_dataset_sample_events(event_type);
+
+CREATE TABLE IF NOT EXISTS external_dataset_sample_deletion_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    deletion_request_code TEXT NOT NULL,
+    sample_import_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN (
+        'requested','confirmed','executed','cancelled'
+    )),
+    lineage_impact_summary_json TEXT NOT NULL DEFAULT '{}',
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    requested_by_admin_public_id TEXT NOT NULL,
+    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    confirmed_by_admin_public_id TEXT,
+    confirmed_at TEXT,
+    executed_at TEXT,
+    cancelled_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id)
+        REFERENCES external_dataset_sample_imports(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_deletion_requests_import
+    ON external_dataset_sample_deletion_requests(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_external_dataset_sample_deletion_requests_code
+    ON external_dataset_sample_deletion_requests(deletion_request_code);
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_download_events_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_download_events
+    BEGIN SELECT RAISE(ABORT, 'download events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_download_events_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_download_events
+    BEGIN SELECT RAISE(ABORT, 'download events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_extraction_events_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_extraction_events
+    BEGIN SELECT RAISE(ABORT, 'extraction events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_extraction_events_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_extraction_events
+    BEGIN SELECT RAISE(ABORT, 'extraction events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_scan_results_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_scan_results
+    BEGIN SELECT RAISE(ABORT, 'scan results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_scan_results_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_scan_results
+    BEGIN SELECT RAISE(ABORT, 'scan results are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_reviews_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_reviews
+    BEGIN SELECT RAISE(ABORT, 'sample reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_reviews_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_reviews
+    BEGIN SELECT RAISE(ABORT, 'sample reviews are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_reports_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_reports
+    BEGIN SELECT RAISE(ABORT, 'sample reports are append-only and immutable once finalized'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_reports_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_reports
+    BEGIN SELECT RAISE(ABORT, 'sample reports are append-only and immutable once finalized'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_events_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_events
+    BEGIN SELECT RAISE(ABORT, 'sample events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_events_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_events
+    BEGIN SELECT RAISE(ABORT, 'sample events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_deletion_requests_immutable_update
+    BEFORE UPDATE ON external_dataset_sample_deletion_requests
+    BEGIN SELECT RAISE(ABORT, 'deletion request events are append-only -- each transition is a new row'); END;
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_deletion_requests_immutable_delete
+    BEFORE DELETE ON external_dataset_sample_deletion_requests
+    BEGIN SELECT RAISE(ABORT, 'deletion request events are append-only -- each transition is a new row'); END;
+
+CREATE TRIGGER IF NOT EXISTS external_dataset_sample_import_approvals_immutable_once_approved
+    BEFORE UPDATE ON external_dataset_sample_import_approvals
+    WHEN OLD.status = 'approved' AND (
+        NEW.status NOT IN ('approved','expired','superseded')
+        OR NEW.approved_record_limit IS NOT OLD.approved_record_limit
+        OR NEW.approved_byte_limit IS NOT OLD.approved_byte_limit
+        OR NEW.allowed_file_ids_json IS NOT OLD.allowed_file_ids_json
+        OR NEW.allowed_file_patterns_json IS NOT OLD.allowed_file_patterns_json
+        OR NEW.allowed_formats_json IS NOT OLD.allowed_formats_json
+        OR NEW.dataset_version IS NOT OLD.dataset_version
+        OR NEW.revision IS NOT OLD.revision
+        OR NEW.source_checksum IS NOT OLD.source_checksum
+        OR NEW.target_fingerprint IS NOT OLD.target_fingerprint
+    )
+    BEGIN
+        SELECT RAISE(ABORT,
+            'an approved sample-import approval is immutable except transitioning to expired/superseded');
+    END;
+"""
+
+MIGRATION_036_NAME = "036_isolated_rag_sandbox_retrieval_evaluation_grounded_answer_testing"
+
+# Phase 13: a governed, structurally-isolated RAG sandbox layered on top
+# of *finalized, accepted* Phase 12 sample records -- never a rewrite of
+# Phase 16's RAG ingestion/retrieval/generation/evaluation, and never a
+# production-activation path. Isolation is expressed by reusing the
+# existing `rag_knowledge_spaces` table itself as the sandbox namespace:
+# every experiment creates its own dedicated knowledge_space row (see
+# `rag_sandbox_corpora.knowledge_space_id`), and every retrieval/
+# generation call for that experiment goes through the *existing*,
+# unmodified Phase 16 services scoped to that one space -- structurally
+# impossible to cross-contaminate with the admin-only production RAG
+# lab, and unreachable from the public chatbot (which has no RAG wiring
+# at all -- see docs/rag_sandbox/phase13_isolated_rag_sandbox_plan.md
+# section 2). `rag_sandbox_corpora.production_visible` is hard-CHECKed
+# to 0 -- there is no column, status value, or code path anywhere in
+# this schema block that can ever flip it. Nothing here can create a
+# training dataset version, start training, release a model, or
+# activate anything -- there is no such column or status value. All 17
+# tables (16 recommended + `rag_sandbox_acceptances`, justified in the
+# plan doc) are used as named.
+PHASE36_SCHEMA = """
+CREATE TABLE IF NOT EXISTS rag_sandbox_experiments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_code TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER NOT NULL,
+    sample_report_id INTEGER,
+    verification_case_id INTEGER NOT NULL,
+    knowledge_space_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','awaiting_approval','approved','preparing_corpus','building_index','ready',
+        'running_retrieval','running_generation','needs_review','accepted',
+        'accepted_with_conditions','rejected','failed','cancelled','expired','withdrawn','deleted'
+    )),
+    current_stage TEXT NOT NULL DEFAULT 'eligibility' CHECK (current_stage IN (
+        'eligibility','approval','record_selection','corpus_creation','index_build',
+        'query_preparation','retrieval_evaluation','answer_generation','citation_evaluation',
+        'safety_evaluation','human_review','final_report','acceptance'
+    )),
+    purpose TEXT NOT NULL CHECK (purpose IN (
+        'retrieval_validation','grounded_answer_validation','multilingual_validation',
+        'citation_validation','conflict_handling_validation','injection_resistance_validation',
+        'production_rag_readiness','training_data_suitability_research'
+    )),
+    sample_report_checksum TEXT,
+    accepted_record_checksum_set_hash TEXT,
+    maximum_records INTEGER NOT NULL DEFAULT 500 CHECK (maximum_records > 0),
+    maximum_total_characters INTEGER NOT NULL DEFAULT 2000000 CHECK (maximum_total_characters > 0),
+    maximum_total_tokens INTEGER NOT NULL DEFAULT 500000 CHECK (maximum_total_tokens > 0),
+    threshold_version TEXT NOT NULL DEFAULT 'v1',
+    evaluation_version TEXT NOT NULL DEFAULT 'v1',
+    production_rag_readiness TEXT NOT NULL DEFAULT 'not_assessed' CHECK (production_rag_readiness IN (
+        'not_assessed','potentially_ready','ready_with_conditions','not_ready','blocked'
+    )),
+    training_data_observation TEXT NOT NULL DEFAULT 'not_assessed' CHECK (training_data_observation IN (
+        'not_assessed','potentially_useful','needs_transformation','not_suitable','blocked'
+    )),
+    eligible_for_production_rag_proposal INTEGER CHECK (eligible_for_production_rag_proposal IS NULL
+        OR eligible_for_production_rag_proposal IN (0,1)),
+    eligible_for_training_assessment INTEGER CHECK (eligible_for_training_assessment IS NULL
+        OR eligible_for_training_assessment IN (0,1)),
+    expires_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TEXT,
+    FOREIGN KEY (sample_import_id) REFERENCES external_dataset_sample_imports(id),
+    FOREIGN KEY (sample_report_id) REFERENCES external_dataset_sample_reports(id),
+    FOREIGN KEY (verification_case_id) REFERENCES external_dataset_verification_cases(id),
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_experiments_sample_import
+    ON rag_sandbox_experiments(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_experiments_status
+    ON rag_sandbox_experiments(status);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_query_sets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','finalized')),
+    query_count INTEGER NOT NULL DEFAULT 0 CHECK (query_count >= 0),
+    finalized_by_admin_public_id TEXT,
+    finalized_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_query_sets_experiment
+    ON rag_sandbox_query_sets(experiment_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    query_set_id INTEGER NOT NULL,
+    query_text TEXT NOT NULL CHECK (length(trim(query_text)) > 0),
+    language TEXT NOT NULL DEFAULT 'unknown' CHECK (language IN (
+        'tamil','english','tanglish','mixed','other','unknown'
+    )),
+    query_type TEXT NOT NULL CHECK (query_type IN (
+        'fact_lookup','explanation','comparison','summary','translation','definition',
+        'multi_hop','insufficient_evidence','conflicting_sources','prompt_injection',
+        'language_routing','citation_required'
+    )),
+    expected_source_ids_json TEXT NOT NULL DEFAULT '[]',
+    expected_answer_notes TEXT NOT NULL DEFAULT '',
+    must_refuse_if_insufficient INTEGER NOT NULL DEFAULT 0 CHECK (must_refuse_if_insufficient IN (0,1)),
+    conflict_expected INTEGER NOT NULL DEFAULT 0 CHECK (conflict_expected IN (0,1)),
+    injection_test INTEGER NOT NULL DEFAULT 0 CHECK (injection_test IN (0,1)),
+    human_authored INTEGER NOT NULL DEFAULT 1 CHECK (human_authored IN (0,1)),
+    reviewed_by_admin_public_id TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (query_set_id) REFERENCES rag_sandbox_query_sets(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_queries_query_set
+    ON rag_sandbox_queries(query_set_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_queries_type
+    ON rag_sandbox_queries(query_type);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    sample_import_id INTEGER NOT NULL,
+    sample_report_id INTEGER NOT NULL,
+    verification_case_id INTEGER NOT NULL,
+    approved_by_admin_id TEXT,
+    approved_at TEXT,
+    expires_at TEXT,
+    purpose TEXT NOT NULL CHECK (purpose IN (
+        'retrieval_validation','grounded_answer_validation','multilingual_validation',
+        'citation_validation','conflict_handling_validation','injection_resistance_validation',
+        'production_rag_readiness','training_data_suitability_research'
+    )),
+    accepted_record_ids_json TEXT NOT NULL DEFAULT '[]',
+    accepted_record_checksums_json TEXT NOT NULL DEFAULT '[]',
+    maximum_records INTEGER NOT NULL CHECK (maximum_records > 0),
+    maximum_total_characters INTEGER NOT NULL CHECK (maximum_total_characters > 0),
+    maximum_total_tokens INTEGER NOT NULL CHECK (maximum_total_tokens > 0),
+    chunking_configuration_json TEXT NOT NULL DEFAULT '{}',
+    retrieval_configuration_json TEXT NOT NULL DEFAULT '{}',
+    embedding_assignment_key TEXT,
+    generation_assignment_key TEXT,
+    query_set_id INTEGER,
+    target_fingerprint TEXT NOT NULL,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','approved','rejected','expired','superseded'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (sample_import_id) REFERENCES external_dataset_sample_imports(id),
+    FOREIGN KEY (sample_report_id) REFERENCES external_dataset_sample_reports(id),
+    FOREIGN KEY (verification_case_id) REFERENCES external_dataset_verification_cases(id),
+    FOREIGN KEY (query_set_id) REFERENCES rag_sandbox_query_sets(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_approvals_experiment
+    ON rag_sandbox_approvals(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_approvals_status
+    ON rag_sandbox_approvals(status);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_corpora (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL UNIQUE,
+    knowledge_space_id INTEGER NOT NULL UNIQUE,
+    sandbox_scope_key TEXT NOT NULL UNIQUE,
+    production_visible INTEGER NOT NULL DEFAULT 0 CHECK (production_visible = 0),
+    status TEXT NOT NULL DEFAULT 'preparing' CHECK (status IN (
+        'preparing','ready','failed','deleted'
+    )),
+    record_count INTEGER NOT NULL DEFAULT 0 CHECK (record_count >= 0),
+    total_characters INTEGER NOT NULL DEFAULT 0 CHECK (total_characters >= 0),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id)
+);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    corpus_id INTEGER NOT NULL,
+    sample_record_id INTEGER NOT NULL,
+    selected_revision_id INTEGER,
+    content TEXT NOT NULL,
+    content_checksum TEXT NOT NULL,
+    language TEXT CHECK (language IS NULL OR language IN (
+        'tamil','english','tanglish','mixed','other','unknown'
+    )),
+    task TEXT,
+    source_file_id INTEGER,
+    source_location TEXT NOT NULL DEFAULT '',
+    rights_reference TEXT NOT NULL DEFAULT '',
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    contamination_flagged INTEGER NOT NULL DEFAULT 0 CHECK (contamination_flagged IN (0,1)),
+    rag_source_id INTEGER,
+    rag_source_version_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (corpus_id) REFERENCES rag_sandbox_corpora(id) ON DELETE CASCADE,
+    FOREIGN KEY (sample_record_id) REFERENCES external_dataset_sample_records(id),
+    FOREIGN KEY (selected_revision_id) REFERENCES external_dataset_sample_reviews(id),
+    FOREIGN KEY (source_file_id) REFERENCES external_dataset_sample_files(id),
+    FOREIGN KEY (rag_source_id) REFERENCES rag_knowledge_sources(id),
+    FOREIGN KEY (rag_source_version_id) REFERENCES rag_source_versions(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_records_experiment
+    ON rag_sandbox_records(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_records_sample_record
+    ON rag_sandbox_records(sample_record_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_indexes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    corpus_id INTEGER NOT NULL,
+    index_kind TEXT NOT NULL CHECK (index_kind IN ('bm25','vector','hybrid')),
+    chunk_set_id INTEGER,
+    embedding_model_id INTEGER,
+    rag_vector_index_id INTEGER,
+    rag_keyword_index_id INTEGER,
+    retrieval_profile_id INTEGER,
+    build_config_json TEXT NOT NULL DEFAULT '{}',
+    chunk_count INTEGER NOT NULL DEFAULT 0 CHECK (chunk_count >= 0),
+    record_count INTEGER NOT NULL DEFAULT 0 CHECK (record_count >= 0),
+    build_checksum TEXT,
+    resource_usage_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'building' CHECK (status IN (
+        'building','validated','active','failed','deleted'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (corpus_id) REFERENCES rag_sandbox_corpora(id) ON DELETE CASCADE,
+    FOREIGN KEY (chunk_set_id) REFERENCES rag_chunk_sets(id),
+    FOREIGN KEY (embedding_model_id) REFERENCES rag_embedding_models(id),
+    FOREIGN KEY (rag_vector_index_id) REFERENCES rag_vector_indexes(id),
+    FOREIGN KEY (rag_keyword_index_id) REFERENCES rag_keyword_indexes(id),
+    FOREIGN KEY (retrieval_profile_id) REFERENCES rag_retrieval_profiles(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_indexes_experiment
+    ON rag_sandbox_indexes(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_indexes_status
+    ON rag_sandbox_indexes(status);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_retrieval_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    index_id INTEGER NOT NULL,
+    query_set_id INTEGER NOT NULL,
+    config_label TEXT NOT NULL DEFAULT '',
+    total_queries INTEGER NOT NULL DEFAULT 0 CHECK (total_queries >= 0),
+    status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('completed','failed','cancelled')),
+    performed_by_admin_public_id TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (index_id) REFERENCES rag_sandbox_indexes(id),
+    FOREIGN KEY (query_set_id) REFERENCES rag_sandbox_query_sets(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_retrieval_runs_experiment
+    ON rag_sandbox_retrieval_runs(experiment_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_retrieval_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    retrieval_run_id INTEGER NOT NULL,
+    query_id INTEGER NOT NULL,
+    rag_retrieval_run_id INTEGER,
+    metric_availability TEXT NOT NULL DEFAULT 'not_available' CHECK (metric_availability IN (
+        'full','partial','not_available'
+    )),
+    expected_source_hit INTEGER CHECK (expected_source_hit IS NULL OR expected_source_hit IN (0,1)),
+    source_rank INTEGER,
+    recall_at_k REAL,
+    precision_at_k REAL,
+    reciprocal_rank REAL,
+    language_match INTEGER CHECK (language_match IS NULL OR language_match IN (0,1)),
+    duplicate_result_rate REAL,
+    conflicting_source_retrieved INTEGER NOT NULL DEFAULT 0
+        CHECK (conflicting_source_retrieved IN (0,1)),
+    insufficient_evidence_behavior TEXT CHECK (insufficient_evidence_behavior IS NULL
+        OR insufficient_evidence_behavior IN ('correct_no_results','unexpected_results')),
+    latency_milliseconds INTEGER,
+    result_count INTEGER NOT NULL DEFAULT 0 CHECK (result_count >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (retrieval_run_id) REFERENCES rag_sandbox_retrieval_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (query_id) REFERENCES rag_sandbox_queries(id),
+    FOREIGN KEY (rag_retrieval_run_id) REFERENCES rag_retrieval_runs(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_retrieval_results_run
+    ON rag_sandbox_retrieval_results(retrieval_run_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_retrieval_results_query
+    ON rag_sandbox_retrieval_results(query_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_answer_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    retrieval_result_id INTEGER NOT NULL,
+    query_id INTEGER NOT NULL,
+    rag_grounded_request_id INTEGER,
+    generation_assignment_key TEXT,
+    prompt_version TEXT NOT NULL DEFAULT 'v1',
+    answer_text TEXT NOT NULL DEFAULT '',
+    answer_checksum TEXT,
+    answer_language TEXT NOT NULL DEFAULT 'unknown',
+    used_source_ids_json TEXT NOT NULL DEFAULT '[]',
+    citation_count INTEGER NOT NULL DEFAULT 0 CHECK (citation_count >= 0),
+    unsupported_claim_count INTEGER NOT NULL DEFAULT 0 CHECK (unsupported_claim_count >= 0),
+    insufficient_evidence_detected INTEGER NOT NULL DEFAULT 0
+        CHECK (insufficient_evidence_detected IN (0,1)),
+    conflict_detected INTEGER NOT NULL DEFAULT 0 CHECK (conflict_detected IN (0,1)),
+    refusal_used INTEGER NOT NULL DEFAULT 0 CHECK (refusal_used IN (0,1)),
+    latency_milliseconds INTEGER,
+    token_usage_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK (status IN (
+        'grounded_answer','insufficient_evidence','retrieval_failed','generation_failed',
+        'blocked_evidence'
+    )),
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (retrieval_result_id) REFERENCES rag_sandbox_retrieval_results(id),
+    FOREIGN KEY (query_id) REFERENCES rag_sandbox_queries(id),
+    FOREIGN KEY (rag_grounded_request_id) REFERENCES rag_grounded_requests(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_answer_runs_experiment
+    ON rag_sandbox_answer_runs(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_answer_runs_query
+    ON rag_sandbox_answer_runs(query_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_citations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    answer_run_id INTEGER NOT NULL,
+    citation_label TEXT NOT NULL,
+    rag_citation_id INTEGER,
+    references_retrieved_source INTEGER NOT NULL DEFAULT 0
+        CHECK (references_retrieved_source IN (0,1)),
+    source_exists INTEGER NOT NULL DEFAULT 0 CHECK (source_exists IN (0,1)),
+    checksum_matches INTEGER CHECK (checksum_matches IS NULL OR checksum_matches IN (0,1)),
+    supports_nearby_claim INTEGER CHECK (supports_nearby_claim IS NULL OR supports_nearby_claim IN (0,1)),
+    is_duplicate INTEGER NOT NULL DEFAULT 0 CHECK (is_duplicate IN (0,1)),
+    is_orphan INTEGER NOT NULL DEFAULT 0 CHECK (is_orphan IN (0,1)),
+    validation_status TEXT NOT NULL CHECK (validation_status IN (
+        'valid','partially_supporting','unsupported','missing','invalid','conflicting'
+    )),
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (answer_run_id) REFERENCES rag_sandbox_answer_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (rag_citation_id) REFERENCES rag_answer_citations(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_citations_answer_run
+    ON rag_sandbox_citations(answer_run_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    answer_run_id INTEGER,
+    query_id INTEGER,
+    evaluation_type TEXT NOT NULL CHECK (evaluation_type IN (
+        'unsupported_claim','insufficient_evidence','conflict_handling','prompt_injection',
+        'language_compliance','answer_quality'
+    )),
+    result_status TEXT NOT NULL,
+    automated INTEGER NOT NULL DEFAULT 1 CHECK (automated IN (0,1)),
+    score REAL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_version TEXT NOT NULL DEFAULT 'v1',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (answer_run_id) REFERENCES rag_sandbox_answer_runs(id),
+    FOREIGN KEY (query_id) REFERENCES rag_sandbox_queries(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_evaluations_experiment
+    ON rag_sandbox_evaluations(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_evaluations_type
+    ON rag_sandbox_evaluations(evaluation_type);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_human_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    query_id INTEGER NOT NULL,
+    answer_run_id INTEGER,
+    retrieval_relevant INTEGER CHECK (retrieval_relevant IS NULL OR retrieval_relevant IN (0,1)),
+    answer_grounded INTEGER CHECK (answer_grounded IS NULL OR answer_grounded IN (0,1)),
+    citations_correct INTEGER CHECK (citations_correct IS NULL OR citations_correct IN (0,1)),
+    language_appropriate INTEGER CHECK (language_appropriate IS NULL OR language_appropriate IN (0,1)),
+    refusal_correct INTEGER CHECK (refusal_correct IS NULL OR refusal_correct IN (0,1)),
+    conflict_handled INTEGER CHECK (conflict_handled IS NULL OR conflict_handled IN (0,1)),
+    injection_resisted INTEGER CHECK (injection_resisted IS NULL OR injection_resisted IN (0,1)),
+    decision TEXT NOT NULL CHECK (decision IN (
+        'pass','pass_with_conditions','fail','needs_revision','exclude_query','needs_more_evidence'
+    )),
+    notes TEXT NOT NULL DEFAULT '',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (query_id) REFERENCES rag_sandbox_queries(id),
+    FOREIGN KEY (answer_run_id) REFERENCES rag_sandbox_answer_runs(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_human_reviews_experiment
+    ON rag_sandbox_human_reviews(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_human_reviews_query
+    ON rag_sandbox_human_reviews(query_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    report_version INTEGER NOT NULL DEFAULT 1 CHECK (report_version > 0),
+    report_json TEXT NOT NULL DEFAULT '{}',
+    report_checksum_sha256 TEXT NOT NULL,
+    production_rag_readiness TEXT NOT NULL CHECK (production_rag_readiness IN (
+        'not_assessed','potentially_ready','ready_with_conditions','not_ready','blocked'
+    )),
+    training_data_observation TEXT NOT NULL CHECK (training_data_observation IN (
+        'not_assessed','potentially_useful','needs_transformation','not_suitable','blocked'
+    )),
+    recommended_next_action TEXT NOT NULL DEFAULT '',
+    finalized_by_admin_public_id TEXT NOT NULL,
+    finalized_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(experiment_id, report_version),
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_reports_experiment
+    ON rag_sandbox_reports(experiment_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_acceptances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    report_id INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'accepted','accepted_with_conditions','rejected','needs_more_testing'
+    )),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    report_checksum_sha256 TEXT NOT NULL,
+    target_fingerprint TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE,
+    FOREIGN KEY (report_id) REFERENCES rag_sandbox_reports(id)
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_acceptances_experiment
+    ON rag_sandbox_acceptances(experiment_id);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    experiment_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'experiment_created','eligibility_checked','eligibility_blocked','approval_requested',
+        'approved','approval_rejected','approval_expired','corpus_prepared',
+        'record_promoted','record_promotion_blocked','index_build_started','index_build_completed',
+        'index_build_failed','index_deleted','query_set_created','query_set_finalized',
+        'retrieval_run_completed','answer_run_completed','evaluation_completed',
+        'human_review_recorded','report_finalized','accepted','rejected',
+        'deletion_requested','deletion_executed','deletion_cancelled',
+        'cancelled','expired','withdrawal_blocked'
+    )),
+    from_status TEXT,
+    to_status TEXT,
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL DEFAULT 'system',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_events_experiment
+    ON rag_sandbox_events(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_events_type
+    ON rag_sandbox_events(event_type);
+
+CREATE TABLE IF NOT EXISTS rag_sandbox_deletion_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    deletion_request_code TEXT NOT NULL,
+    experiment_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN (
+        'requested','confirmed','executed','cancelled'
+    )),
+    impact_preview_json TEXT NOT NULL DEFAULT '{}',
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    requested_by_admin_public_id TEXT NOT NULL,
+    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    confirmed_by_admin_public_id TEXT,
+    confirmed_at TEXT,
+    executed_at TEXT,
+    cancelled_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (experiment_id) REFERENCES rag_sandbox_experiments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_deletion_requests_experiment
+    ON rag_sandbox_deletion_requests(experiment_id);
+CREATE INDEX IF NOT EXISTS ix_rag_sandbox_deletion_requests_code
+    ON rag_sandbox_deletion_requests(deletion_request_code);
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_records_immutable_update
+    BEFORE UPDATE ON rag_sandbox_records
+    BEGIN SELECT RAISE(ABORT, 'sandbox records are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_records_immutable_delete
+    BEFORE DELETE ON rag_sandbox_records
+    BEGIN SELECT RAISE(ABORT, 'sandbox records are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_retrieval_runs_immutable_update
+    BEFORE UPDATE ON rag_sandbox_retrieval_runs
+    BEGIN SELECT RAISE(ABORT, 'sandbox retrieval runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_retrieval_runs_immutable_delete
+    BEFORE DELETE ON rag_sandbox_retrieval_runs
+    BEGIN SELECT RAISE(ABORT, 'sandbox retrieval runs are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_retrieval_results_immutable_update
+    BEFORE UPDATE ON rag_sandbox_retrieval_results
+    BEGIN SELECT RAISE(ABORT, 'sandbox retrieval results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_retrieval_results_immutable_delete
+    BEFORE DELETE ON rag_sandbox_retrieval_results
+    BEGIN SELECT RAISE(ABORT, 'sandbox retrieval results are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_answer_runs_immutable_update
+    BEFORE UPDATE ON rag_sandbox_answer_runs
+    BEGIN SELECT RAISE(ABORT, 'sandbox answer runs are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_answer_runs_immutable_delete
+    BEFORE DELETE ON rag_sandbox_answer_runs
+    BEGIN SELECT RAISE(ABORT, 'sandbox answer runs are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_citations_immutable_update
+    BEFORE UPDATE ON rag_sandbox_citations
+    BEGIN SELECT RAISE(ABORT, 'sandbox citations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_citations_immutable_delete
+    BEFORE DELETE ON rag_sandbox_citations
+    BEGIN SELECT RAISE(ABORT, 'sandbox citations are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_evaluations_immutable_update
+    BEFORE UPDATE ON rag_sandbox_evaluations
+    BEGIN SELECT RAISE(ABORT, 'sandbox evaluations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_evaluations_immutable_delete
+    BEFORE DELETE ON rag_sandbox_evaluations
+    BEGIN SELECT RAISE(ABORT, 'sandbox evaluations are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_human_reviews_immutable_update
+    BEFORE UPDATE ON rag_sandbox_human_reviews
+    BEGIN SELECT RAISE(ABORT, 'sandbox human reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_human_reviews_immutable_delete
+    BEFORE DELETE ON rag_sandbox_human_reviews
+    BEGIN SELECT RAISE(ABORT, 'sandbox human reviews are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_reports_immutable_update
+    BEFORE UPDATE ON rag_sandbox_reports
+    BEGIN SELECT RAISE(ABORT, 'sandbox reports are append-only and immutable once finalized'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_reports_immutable_delete
+    BEFORE DELETE ON rag_sandbox_reports
+    BEGIN SELECT RAISE(ABORT, 'sandbox reports are append-only and immutable once finalized'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_acceptances_immutable_update
+    BEFORE UPDATE ON rag_sandbox_acceptances
+    BEGIN SELECT RAISE(ABORT, 'sandbox acceptance decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_acceptances_immutable_delete
+    BEFORE DELETE ON rag_sandbox_acceptances
+    BEGIN SELECT RAISE(ABORT, 'sandbox acceptance decisions are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_events_immutable_update
+    BEFORE UPDATE ON rag_sandbox_events
+    BEGIN SELECT RAISE(ABORT, 'sandbox events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_events_immutable_delete
+    BEFORE DELETE ON rag_sandbox_events
+    BEGIN SELECT RAISE(ABORT, 'sandbox events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_deletion_requests_immutable_update
+    BEFORE UPDATE ON rag_sandbox_deletion_requests
+    BEGIN SELECT RAISE(ABORT, 'deletion request events are append-only -- each transition is a new row'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_deletion_requests_immutable_delete
+    BEFORE DELETE ON rag_sandbox_deletion_requests
+    BEGIN SELECT RAISE(ABORT, 'deletion request events are append-only -- each transition is a new row'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_queries_immutable_insert_after_finalize
+    BEFORE INSERT ON rag_sandbox_queries
+    WHEN (SELECT status FROM rag_sandbox_query_sets WHERE id = NEW.query_set_id) = 'finalized'
+    BEGIN SELECT RAISE(ABORT, 'query set is finalized -- no new queries may be added'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_queries_immutable_update_after_finalize
+    BEFORE UPDATE ON rag_sandbox_queries
+    WHEN (SELECT status FROM rag_sandbox_query_sets WHERE id = OLD.query_set_id) = 'finalized'
+    BEGIN SELECT RAISE(ABORT, 'query set is finalized -- queries are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_queries_immutable_delete_after_finalize
+    BEFORE DELETE ON rag_sandbox_queries
+    WHEN (SELECT status FROM rag_sandbox_query_sets WHERE id = OLD.query_set_id) = 'finalized'
+    BEGIN SELECT RAISE(ABORT, 'query set is finalized -- queries are immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_query_sets_immutable_after_finalize
+    BEFORE UPDATE ON rag_sandbox_query_sets
+    WHEN OLD.status = 'finalized' AND NEW.status = 'finalized'
+    BEGIN SELECT RAISE(ABORT, 'query set is finalized and immutable'); END;
+
+CREATE TRIGGER IF NOT EXISTS rag_sandbox_approvals_immutable_once_approved
+    BEFORE UPDATE ON rag_sandbox_approvals
+    WHEN OLD.status = 'approved' AND (
+        NEW.status NOT IN ('approved','expired','superseded')
+        OR NEW.accepted_record_ids_json IS NOT OLD.accepted_record_ids_json
+        OR NEW.accepted_record_checksums_json IS NOT OLD.accepted_record_checksums_json
+        OR NEW.maximum_records IS NOT OLD.maximum_records
+        OR NEW.maximum_total_characters IS NOT OLD.maximum_total_characters
+        OR NEW.maximum_total_tokens IS NOT OLD.maximum_total_tokens
+        OR NEW.chunking_configuration_json IS NOT OLD.chunking_configuration_json
+        OR NEW.retrieval_configuration_json IS NOT OLD.retrieval_configuration_json
+        OR NEW.embedding_assignment_key IS NOT OLD.embedding_assignment_key
+        OR NEW.generation_assignment_key IS NOT OLD.generation_assignment_key
+        OR NEW.query_set_id IS NOT OLD.query_set_id
+        OR NEW.target_fingerprint IS NOT OLD.target_fingerprint
+    )
+    BEGIN
+        SELECT RAISE(ABORT,
+            'an approved rag-sandbox approval is immutable except transitioning to expired/superseded');
+    END;
+"""
+
+
+
+MIGRATION_037_NAME = "037_training_dataset_promotion_incremental_training_checkpoint_evaluation"
+
+# Phase 14: governed training-dataset promotion and incremental
+# language training built entirely on Phase 7-15's existing
+# tokenizer/pretraining/instruction-tuning/training-reliability/
+# checkpoint/evaluation/model-registry systems -- never a rewrite or
+# duplicate of any of them. New data enters `dataset_records` (the
+# existing Phase 1/2 table) only through governed, reviewed,
+# lineage-preserving transformation of *accepted* Phase 12/13 records;
+# from there, `DatasetVersioningService`'s existing, unmodified
+# build/split/leakage/manifest/checksum pipeline produces the
+# immutable training dataset version. Incremental training itself
+# always creates a real `instruction_tuning_experiment` or
+# `pretraining_job` through the existing, unmodified services -- this
+# schema only adds the governance layer around them (separate dataset-
+# promotion and training-run approvals, checkpoint acceptance,
+# regression/memorization checks). No table or trigger here can ever
+# set `core_model_versions.lifecycle_status='active'`, and nothing
+# here calls into `ModelReleaseService` -- production release and
+# production activation remain entirely outside this phase. See
+# docs/training/phase14_incremental_language_training_plan.md.
+PHASE37_SCHEMA = """
+CREATE TABLE IF NOT EXISTS training_data_assessments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    assessment_code TEXT NOT NULL UNIQUE,
+    sample_import_id INTEGER,
+    rag_sandbox_experiment_id INTEGER,
+    verification_case_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'not_assessed' CHECK (status IN (
+        'not_assessed','assessing','assessed','failed'
+    )),
+    current_stage TEXT NOT NULL DEFAULT 'lineage_check' CHECK (current_stage IN (
+        'lineage_check','permission_check','classification','contamination_check',
+        'candidate_review','replay_plan','dataset_promotion','complete'
+    )),
+    sample_report_checksum TEXT,
+    rag_sandbox_report_checksum TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sample_import_id) REFERENCES external_dataset_sample_imports(id),
+    FOREIGN KEY (rag_sandbox_experiment_id) REFERENCES rag_sandbox_experiments(id),
+    FOREIGN KEY (verification_case_id) REFERENCES external_dataset_verification_cases(id)
+);
+CREATE INDEX IF NOT EXISTS ix_training_data_assessments_sample_import
+    ON training_data_assessments(sample_import_id);
+CREATE INDEX IF NOT EXISTS ix_training_data_assessments_rag_sandbox_experiment
+    ON training_data_assessments(rag_sandbox_experiment_id);
+CREATE INDEX IF NOT EXISTS ix_training_data_assessments_status
+    ON training_data_assessments(status);
+
+CREATE TABLE IF NOT EXISTS training_data_assessment_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    assessment_id INTEGER NOT NULL,
+    sample_record_id INTEGER,
+    rag_sandbox_record_id INTEGER,
+    record_category TEXT NOT NULL CHECK (record_category IN (
+        'language_pattern','grammar','conversation','instruction_response','translation_pair',
+        'summarization_pair','correction_pair','classification_example','reasoning_example',
+        'general_text_corpus','stable_knowledge','volatile_knowledge','source_specific_fact',
+        'evaluation_example','unsafe_or_blocked'
+    )),
+    suitability_status TEXT NOT NULL DEFAULT 'not_assessed' CHECK (suitability_status IN (
+        'not_assessed','potentially_suitable','suitable_with_transformation','suitable_for_sft',
+        'suitable_for_pretraining','suitable_for_tokenizer','evaluation_only','rag_only',
+        'not_suitable','blocked'
+    )),
+    dimension_results_json TEXT NOT NULL DEFAULT '{}',
+    reason TEXT NOT NULL DEFAULT '',
+    contamination_flagged INTEGER NOT NULL DEFAULT 0 CHECK (contamination_flagged IN (0,1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (assessment_id) REFERENCES training_data_assessments(id) ON DELETE CASCADE,
+    FOREIGN KEY (sample_record_id) REFERENCES external_dataset_sample_records(id),
+    FOREIGN KEY (rag_sandbox_record_id) REFERENCES rag_sandbox_records(id)
+);
+CREATE INDEX IF NOT EXISTS ix_training_data_assessment_items_assessment
+    ON training_data_assessment_items(assessment_id);
+CREATE INDEX IF NOT EXISTS ix_training_data_assessment_items_category
+    ON training_data_assessment_items(record_category);
+CREATE INDEX IF NOT EXISTS ix_training_data_assessment_items_suitability
+    ON training_data_assessment_items(suitability_status);
+
+CREATE TABLE IF NOT EXISTS training_example_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    assessment_item_id INTEGER NOT NULL,
+    source_sample_record_id INTEGER,
+    source_rag_sandbox_record_id INTEGER,
+    transformation_type TEXT NOT NULL CHECK (transformation_type IN (
+        'clean_language_sample','question_answer_pair','summary_pair','translation_pair',
+        'tanglish_normalization_pair','correction_pair','instruction_response_pair',
+        'conversation_turn_sequence'
+    )),
+    prompt_text TEXT NOT NULL DEFAULT '',
+    assistant_text TEXT NOT NULL DEFAULT '',
+    language TEXT NOT NULL DEFAULT 'unknown',
+    task TEXT NOT NULL DEFAULT '',
+    source_checksum TEXT NOT NULL,
+    candidate_checksum TEXT NOT NULL,
+    transformation_version TEXT NOT NULL DEFAULT 'v1',
+    review_status TEXT NOT NULL DEFAULT 'pending_review' CHECK (review_status IN (
+        'pending_review','approved','rejected','needs_revision'
+    )),
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    dataset_record_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (assessment_item_id) REFERENCES training_data_assessment_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_sample_record_id) REFERENCES external_dataset_sample_records(id),
+    FOREIGN KEY (source_rag_sandbox_record_id) REFERENCES rag_sandbox_records(id),
+    FOREIGN KEY (dataset_record_id) REFERENCES dataset_records(id)
+);
+CREATE INDEX IF NOT EXISTS ix_training_example_candidates_assessment_item
+    ON training_example_candidates(assessment_item_id);
+CREATE INDEX IF NOT EXISTS ix_training_example_candidates_review_status
+    ON training_example_candidates(review_status);
+
+CREATE TABLE IF NOT EXISTS training_example_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN ('approved','rejected','needs_revision')),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    revised_prompt_text TEXT,
+    revised_assistant_text TEXT,
+    revised_checksum TEXT,
+    reviewer_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES training_example_candidates(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_training_example_revisions_candidate
+    ON training_example_revisions(candidate_id);
+
+CREATE TABLE IF NOT EXISTS training_replay_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    assessment_id INTEGER NOT NULL,
+    new_record_count INTEGER NOT NULL CHECK (new_record_count >= 0),
+    replay_record_count INTEGER NOT NULL CHECK (replay_record_count >= 0),
+    new_data_ratio REAL NOT NULL,
+    replay_data_ratio REAL NOT NULL,
+    replay_source_version_ids_json TEXT NOT NULL DEFAULT '[]',
+    replay_record_ids_json TEXT NOT NULL DEFAULT '[]',
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    task_distribution_json TEXT NOT NULL DEFAULT '{}',
+    domain_distribution_json TEXT NOT NULL DEFAULT '{}',
+    selection_method TEXT NOT NULL DEFAULT 'deterministic_representative_sample',
+    selection_seed INTEGER NOT NULL DEFAULT 42,
+    reason TEXT NOT NULL DEFAULT '',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (assessment_id) REFERENCES training_data_assessments(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_training_replay_plans_assessment
+    ON training_replay_plans(assessment_id);
+
+CREATE TABLE IF NOT EXISTS training_dataset_promotion_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    assessment_id INTEGER NOT NULL,
+    replay_plan_id INTEGER,
+    selected_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','awaiting_approval','approved','rejected','expired','superseded',
+        'building','ready','failed'
+    )),
+    approved_by_admin_id TEXT,
+    approved_at TEXT,
+    expires_at TEXT,
+    target_fingerprint TEXT,
+    dataset_version_id INTEGER,
+    train_split_checksum TEXT,
+    validation_split_checksum TEXT,
+    test_split_checksum TEXT,
+    lineage_manifest_json TEXT NOT NULL DEFAULT '{}',
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (assessment_id) REFERENCES training_data_assessments(id) ON DELETE CASCADE,
+    FOREIGN KEY (replay_plan_id) REFERENCES training_replay_plans(id),
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id)
+);
+CREATE INDEX IF NOT EXISTS ix_training_dataset_promotion_requests_assessment
+    ON training_dataset_promotion_requests(assessment_id);
+CREATE INDEX IF NOT EXISTS ix_training_dataset_promotion_requests_status
+    ON training_dataset_promotion_requests(status);
+
+CREATE TABLE IF NOT EXISTS incremental_training_run_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    promotion_request_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    base_checkpoint_id INTEGER,
+    tokenizer_version_id INTEGER,
+    training_strategy TEXT NOT NULL CHECK (training_strategy IN (
+        'incremental_sft','continued_pretraining','tokenizer_only_assessment','no_training_rag_only'
+    )),
+    configuration_json TEXT NOT NULL DEFAULT '{}',
+    configuration_checksum TEXT,
+    resource_preview_json TEXT NOT NULL DEFAULT '{}',
+    resource_preview_checksum TEXT,
+    execution_target TEXT NOT NULL DEFAULT 'local_cpu' CHECK (execution_target IN (
+        'local_cpu','cpu_vps','external_gpu_manual'
+    )),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','awaiting_approval','approved','rejected','expired','superseded','started',
+        'cancelled'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (promotion_request_id) REFERENCES training_dataset_promotion_requests(id),
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id),
+    FOREIGN KEY (base_checkpoint_id) REFERENCES pretraining_checkpoints(id),
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id)
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_run_requests_promotion
+    ON incremental_training_run_requests(promotion_request_id);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_run_requests_status
+    ON incremental_training_run_requests(status);
+
+CREATE TABLE IF NOT EXISTS incremental_training_run_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_request_id INTEGER NOT NULL,
+    dataset_version_id INTEGER NOT NULL,
+    base_checkpoint_id INTEGER,
+    tokenizer_version_id INTEGER,
+    training_strategy TEXT NOT NULL,
+    configuration_checksum TEXT NOT NULL,
+    resource_preview_checksum TEXT NOT NULL,
+    replay_plan_id INTEGER,
+    train_split_checksum TEXT,
+    validation_split_checksum TEXT,
+    test_split_checksum TEXT,
+    approved_by_admin_id TEXT,
+    approved_at TEXT,
+    expires_at TEXT,
+    target_fingerprint TEXT NOT NULL,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','approved','rejected','expired','superseded'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_request_id) REFERENCES incremental_training_run_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (dataset_version_id) REFERENCES dataset_versions(id),
+    FOREIGN KEY (base_checkpoint_id) REFERENCES pretraining_checkpoints(id),
+    FOREIGN KEY (tokenizer_version_id) REFERENCES tokenizer_versions(id),
+    FOREIGN KEY (replay_plan_id) REFERENCES training_replay_plans(id)
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_run_approvals_request
+    ON incremental_training_run_approvals(run_request_id);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_run_approvals_status
+    ON incremental_training_run_approvals(status);
+
+CREATE TABLE IF NOT EXISTS incremental_training_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_request_id INTEGER NOT NULL,
+    run_approval_id INTEGER NOT NULL,
+    underlying_run_kind TEXT NOT NULL CHECK (underlying_run_kind IN (
+        'instruction_tuning_run','pretraining_job'
+    )),
+    underlying_run_public_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN (
+        'queued','running','completed','completed_with_warnings','failed','cancelled'
+    )),
+    current_epoch INTEGER,
+    current_step INTEGER,
+    latest_training_loss REAL,
+    latest_validation_loss REAL,
+    started_at TEXT,
+    completed_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_request_id) REFERENCES incremental_training_run_requests(id),
+    FOREIGN KEY (run_approval_id) REFERENCES incremental_training_run_approvals(id)
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_runs_request
+    ON incremental_training_runs(run_request_id);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_runs_status
+    ON incremental_training_runs(status);
+
+CREATE TABLE IF NOT EXISTS incremental_training_run_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    from_status TEXT,
+    to_status TEXT,
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL DEFAULT 'system',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES incremental_training_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_run_events_run
+    ON incremental_training_run_events(run_id);
+
+CREATE TABLE IF NOT EXISTS incremental_training_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_id INTEGER NOT NULL,
+    underlying_checkpoint_public_id TEXT NOT NULL,
+    parent_checkpoint_id INTEGER,
+    epoch INTEGER,
+    step INTEGER,
+    tokens_seen INTEGER,
+    training_loss REAL,
+    validation_loss REAL,
+    checkpoint_checksum TEXT,
+    status TEXT NOT NULL DEFAULT 'created' CHECK (status IN (
+        'created','verified','evaluation_pending','evaluated','accepted_candidate','rejected',
+        'corrupt','superseded'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (run_id) REFERENCES incremental_training_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_checkpoint_id) REFERENCES incremental_training_checkpoints(id)
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_checkpoints_run
+    ON incremental_training_checkpoints(run_id);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_checkpoints_status
+    ON incremental_training_checkpoints(status);
+
+CREATE TABLE IF NOT EXISTS incremental_training_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    checkpoint_id INTEGER NOT NULL,
+    evaluation_type TEXT NOT NULL,
+    result_status TEXT NOT NULL,
+    automated INTEGER NOT NULL DEFAULT 1 CHECK (automated IN (0,1)),
+    score REAL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_version TEXT NOT NULL DEFAULT 'v1',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (checkpoint_id) REFERENCES incremental_training_checkpoints(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_evaluations_checkpoint
+    ON incremental_training_evaluations(checkpoint_id);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_evaluations_type
+    ON incremental_training_evaluations(evaluation_type);
+
+CREATE TABLE IF NOT EXISTS incremental_training_comparisons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    checkpoint_id INTEGER NOT NULL,
+    parent_checkpoint_id INTEGER,
+    comparison_type TEXT NOT NULL CHECK (comparison_type IN (
+        'general_comparison','forgetting_check'
+    )),
+    dimension TEXT NOT NULL DEFAULT 'overall',
+    result_status TEXT NOT NULL CHECK (result_status IN (
+        'improved','unchanged','minor_regression','major_regression','not_comparable'
+    )),
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    source_evaluation_ids_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (checkpoint_id) REFERENCES incremental_training_checkpoints(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_checkpoint_id) REFERENCES incremental_training_checkpoints(id)
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_comparisons_checkpoint
+    ON incremental_training_comparisons(checkpoint_id);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_comparisons_type
+    ON incremental_training_comparisons(comparison_type);
+
+CREATE TABLE IF NOT EXISTS incremental_training_human_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    checkpoint_id INTEGER NOT NULL,
+    prompt_text TEXT NOT NULL DEFAULT '',
+    tamil_fluency INTEGER CHECK (tamil_fluency IS NULL OR tamil_fluency IN (0,1)),
+    english_fluency INTEGER CHECK (english_fluency IS NULL OR english_fluency IN (0,1)),
+    tanglish_readability INTEGER CHECK (tanglish_readability IS NULL OR tanglish_readability IN (0,1)),
+    instruction_following INTEGER CHECK (instruction_following IS NULL OR instruction_following IN (0,1)),
+    helpfulness INTEGER CHECK (helpfulness IS NULL OR helpfulness IN (0,1)),
+    correct_refusal INTEGER CHECK (correct_refusal IS NULL OR correct_refusal IN (0,1)),
+    hallucination_risk INTEGER CHECK (hallucination_risk IS NULL OR hallucination_risk IN (0,1)),
+    repetition INTEGER CHECK (repetition IS NULL OR repetition IN (0,1)),
+    formatting INTEGER CHECK (formatting IS NULL OR formatting IN (0,1)),
+    regression INTEGER CHECK (regression IS NULL OR regression IN (0,1)),
+    decision TEXT NOT NULL CHECK (decision IN (
+        'pass','pass_with_conditions','fail','needs_more_testing'
+    )),
+    notes TEXT NOT NULL DEFAULT '',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (checkpoint_id) REFERENCES incremental_training_checkpoints(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_human_reviews_checkpoint
+    ON incremental_training_human_reviews(checkpoint_id);
+
+CREATE TABLE IF NOT EXISTS incremental_training_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_id INTEGER NOT NULL,
+    report_version INTEGER NOT NULL DEFAULT 1 CHECK (report_version > 0),
+    report_json TEXT NOT NULL DEFAULT '{}',
+    report_checksum_sha256 TEXT NOT NULL,
+    checkpoint_recommendation TEXT NOT NULL CHECK (checkpoint_recommendation IN (
+        'accept_candidate','accept_with_conditions','reject','needs_more_training',
+        'needs_more_evaluation'
+    )),
+    production_release_readiness TEXT NOT NULL DEFAULT 'not_assessed',
+    recommended_next_action TEXT NOT NULL DEFAULT '',
+    finalized_by_admin_public_id TEXT NOT NULL,
+    finalized_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, report_version),
+    FOREIGN KEY (run_id) REFERENCES incremental_training_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_reports_run
+    ON incremental_training_reports(run_id);
+
+CREATE TABLE IF NOT EXISTS incremental_training_checkpoint_acceptances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    checkpoint_id INTEGER NOT NULL,
+    report_id INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'accepted_candidate','accepted_with_conditions','rejected','needs_more_testing'
+    )),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    report_checksum_sha256 TEXT NOT NULL,
+    checkpoint_checksum TEXT,
+    target_fingerprint TEXT NOT NULL,
+    model_candidate_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (checkpoint_id) REFERENCES incremental_training_checkpoints(id) ON DELETE CASCADE,
+    FOREIGN KEY (report_id) REFERENCES incremental_training_reports(id)
+);
+CREATE INDEX IF NOT EXISTS ix_incremental_training_checkpoint_acceptances_checkpoint
+    ON incremental_training_checkpoint_acceptances(checkpoint_id);
+
+CREATE TRIGGER IF NOT EXISTS training_data_assessment_items_immutable_update
+    BEFORE UPDATE ON training_data_assessment_items
+    BEGIN SELECT RAISE(ABORT, 'assessment items are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_data_assessment_items_immutable_delete
+    BEFORE DELETE ON training_data_assessment_items
+    BEGIN SELECT RAISE(ABORT, 'assessment items are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS training_example_revisions_immutable_update
+    BEFORE UPDATE ON training_example_revisions
+    BEGIN SELECT RAISE(ABORT, 'example revisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_example_revisions_immutable_delete
+    BEFORE DELETE ON training_example_revisions
+    BEGIN SELECT RAISE(ABORT, 'example revisions are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS training_replay_plans_immutable_update
+    BEFORE UPDATE ON training_replay_plans
+    BEGIN SELECT RAISE(ABORT, 'replay plans are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS training_replay_plans_immutable_delete
+    BEFORE DELETE ON training_replay_plans
+    BEGIN SELECT RAISE(ABORT, 'replay plans are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_run_events_immutable_update
+    BEFORE UPDATE ON incremental_training_run_events
+    BEGIN SELECT RAISE(ABORT, 'run events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_run_events_immutable_delete
+    BEFORE DELETE ON incremental_training_run_events
+    BEGIN SELECT RAISE(ABORT, 'run events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_checkpoints_immutable_update
+    BEFORE UPDATE ON incremental_training_checkpoints
+    WHEN NEW.underlying_checkpoint_public_id IS NOT OLD.underlying_checkpoint_public_id
+    OR (OLD.status NOT IN ('created','verified','evaluation_pending')
+        AND NOT (OLD.status='evaluated' AND NEW.status IN ('accepted_candidate','rejected','superseded')))
+    BEGIN SELECT RAISE(ABORT, 'checkpoint lineage fields are immutable once evaluated'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_checkpoints_immutable_delete
+    BEFORE DELETE ON incremental_training_checkpoints
+    BEGIN SELECT RAISE(ABORT, 'checkpoints are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_evaluations_immutable_update
+    BEFORE UPDATE ON incremental_training_evaluations
+    BEGIN SELECT RAISE(ABORT, 'evaluations are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_evaluations_immutable_delete
+    BEFORE DELETE ON incremental_training_evaluations
+    BEGIN SELECT RAISE(ABORT, 'evaluations are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_comparisons_immutable_update
+    BEFORE UPDATE ON incremental_training_comparisons
+    BEGIN SELECT RAISE(ABORT, 'comparisons are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_comparisons_immutable_delete
+    BEFORE DELETE ON incremental_training_comparisons
+    BEGIN SELECT RAISE(ABORT, 'comparisons are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_human_reviews_immutable_update
+    BEFORE UPDATE ON incremental_training_human_reviews
+    BEGIN SELECT RAISE(ABORT, 'human reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_human_reviews_immutable_delete
+    BEFORE DELETE ON incremental_training_human_reviews
+    BEGIN SELECT RAISE(ABORT, 'human reviews are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_reports_immutable_update
+    BEFORE UPDATE ON incremental_training_reports
+    BEGIN SELECT RAISE(ABORT, 'reports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_reports_immutable_delete
+    BEFORE DELETE ON incremental_training_reports
+    BEGIN SELECT RAISE(ABORT, 'reports are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_checkpoint_acceptances_immutable_update
+    BEFORE UPDATE ON incremental_training_checkpoint_acceptances
+    BEGIN SELECT RAISE(ABORT, 'checkpoint acceptances are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS incremental_training_checkpoint_acceptances_immutable_delete
+    BEFORE DELETE ON incremental_training_checkpoint_acceptances
+    BEGIN SELECT RAISE(ABORT, 'checkpoint acceptances are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS training_dataset_promotion_requests_immutable_once_approved
+    BEFORE UPDATE ON training_dataset_promotion_requests
+    WHEN OLD.status = 'approved' AND (
+        NEW.status NOT IN ('approved','expired','superseded','building','ready','failed')
+        OR NEW.selected_candidate_ids_json IS NOT OLD.selected_candidate_ids_json
+        OR NEW.replay_plan_id IS NOT OLD.replay_plan_id
+        OR NEW.target_fingerprint IS NOT OLD.target_fingerprint
+    )
+    BEGIN
+        SELECT RAISE(ABORT,
+            'an approved dataset promotion request is immutable except transitioning to expired/superseded or progressing to building/ready/failed');
+    END;
+
+CREATE TRIGGER IF NOT EXISTS incremental_training_run_approvals_immutable_once_approved
+    BEFORE UPDATE ON incremental_training_run_approvals
+    WHEN OLD.status = 'approved' AND (
+        NEW.status NOT IN ('approved','expired','superseded')
+        OR NEW.dataset_version_id IS NOT OLD.dataset_version_id
+        OR NEW.base_checkpoint_id IS NOT OLD.base_checkpoint_id
+        OR NEW.tokenizer_version_id IS NOT OLD.tokenizer_version_id
+        OR NEW.configuration_checksum IS NOT OLD.configuration_checksum
+        OR NEW.resource_preview_checksum IS NOT OLD.resource_preview_checksum
+        OR NEW.replay_plan_id IS NOT OLD.replay_plan_id
+        OR NEW.target_fingerprint IS NOT OLD.target_fingerprint
+    )
+    BEGIN
+        SELECT RAISE(ABORT,
+            'an approved incremental-training run approval is immutable except transitioning to expired/superseded');
+    END;
+"""
+
+MIGRATION_038_NAME = "038_text_nlp_production_readiness"
+PHASE38_SCHEMA = """
+CREATE TABLE IF NOT EXISTS production_rag_promotion_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    promotion_code TEXT NOT NULL UNIQUE,
+    rag_sandbox_experiment_id INTEGER NOT NULL,
+    rag_sandbox_report_id INTEGER NOT NULL,
+    knowledge_space_id INTEGER NOT NULL,
+    selected_record_ids_json TEXT NOT NULL DEFAULT '[]',
+    selected_record_checksum_set_hash TEXT NOT NULL,
+    chunking_configuration_json TEXT NOT NULL DEFAULT '{}',
+    embedding_assignment_key TEXT,
+    retrieval_configuration_json TEXT NOT NULL DEFAULT '{}',
+    generation_assignment_key TEXT,
+    citation_policy_version TEXT NOT NULL DEFAULT 'v1',
+    grounding_policy_version TEXT NOT NULL DEFAULT 'v1',
+    injection_policy_version TEXT NOT NULL DEFAULT 'v1',
+    commercial_use_context TEXT NOT NULL DEFAULT 'unknown' CHECK (commercial_use_context IN (
+        'commercial','non_commercial','unknown'
+    )),
+    resource_preview_json TEXT NOT NULL DEFAULT '{}',
+    target_fingerprint TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','awaiting_review','approved','building_candidate','candidate_ready',
+        'validation_failed','ready_for_activation','rejected','cancelled','expired','superseded'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rag_sandbox_experiment_id) REFERENCES rag_sandbox_experiments(id),
+    FOREIGN KEY (rag_sandbox_report_id) REFERENCES rag_sandbox_reports(id),
+    FOREIGN KEY (knowledge_space_id) REFERENCES rag_knowledge_spaces(id)
+);
+CREATE INDEX IF NOT EXISTS ix_production_rag_promotion_requests_status
+    ON production_rag_promotion_requests(status);
+CREATE INDEX IF NOT EXISTS ix_production_rag_promotion_requests_experiment
+    ON production_rag_promotion_requests(rag_sandbox_experiment_id);
+
+CREATE TABLE IF NOT EXISTS production_rag_promotion_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    promotion_request_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','approved','rejected','expired','superseded'
+    )),
+    approved_by_admin_id TEXT,
+    approved_at TEXT,
+    expires_at TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    target_fingerprint TEXT NOT NULL,
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (promotion_request_id) REFERENCES production_rag_promotion_requests(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_rag_promotion_approvals_request
+    ON production_rag_promotion_approvals(promotion_request_id);
+
+CREATE TABLE IF NOT EXISTS production_rag_release_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    promotion_request_id INTEGER NOT NULL,
+    knowledge_source_id INTEGER,
+    retrieval_profile_id INTEGER,
+    record_checksum_set_hash TEXT NOT NULL,
+    chunk_checksum_set_hash TEXT,
+    embedding_model_reference TEXT,
+    index_checksum_sha256 TEXT,
+    configuration_manifest_json TEXT NOT NULL DEFAULT '{}',
+    build_log_json TEXT NOT NULL DEFAULT '{}',
+    resource_usage_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'building' CHECK (status IN (
+        'building','built','validating','validated','validation_failed','activated','superseded','failed'
+    )),
+    production_visible INTEGER NOT NULL DEFAULT 0 CHECK (production_visible IN (0,1)),
+    rollback_plan_id INTEGER,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (promotion_request_id) REFERENCES production_rag_promotion_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (knowledge_source_id) REFERENCES rag_knowledge_sources(id),
+    FOREIGN KEY (retrieval_profile_id) REFERENCES rag_retrieval_profiles(id)
+);
+CREATE INDEX IF NOT EXISTS ix_production_rag_release_candidates_promotion
+    ON production_rag_release_candidates(promotion_request_id);
+CREATE INDEX IF NOT EXISTS ix_production_rag_release_candidates_status
+    ON production_rag_release_candidates(status);
+
+CREATE TABLE IF NOT EXISTS production_rag_validation_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    rag_release_candidate_id INTEGER NOT NULL,
+    validation_type TEXT NOT NULL,
+    result_status TEXT NOT NULL CHECK (result_status IN (
+        'passed','passed_with_warning','failed','not_applicable'
+    )),
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rag_release_candidate_id) REFERENCES production_rag_release_candidates(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_rag_validation_results_candidate
+    ON production_rag_validation_results(rag_release_candidate_id);
+
+CREATE TABLE IF NOT EXISTS production_rag_activation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    rag_release_candidate_id INTEGER NOT NULL,
+    promotion_approval_id INTEGER,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'pre_activation_snapshot','activated','post_activation_check_passed',
+        'post_activation_check_failed','rolled_back','activation_failed'
+    )),
+    previous_active_profile_public_id TEXT,
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rag_release_candidate_id) REFERENCES production_rag_release_candidates(id) ON DELETE CASCADE,
+    FOREIGN KEY (promotion_approval_id) REFERENCES production_rag_promotion_approvals(id)
+);
+CREATE INDEX IF NOT EXISTS ix_production_rag_activation_events_candidate
+    ON production_rag_activation_events(rag_release_candidate_id);
+
+CREATE TABLE IF NOT EXISTS production_model_release_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_code TEXT NOT NULL UNIQUE,
+    model_candidate_core_model_version_id INTEGER NOT NULL,
+    incremental_training_checkpoint_id INTEGER,
+    model_release_candidate_id INTEGER,
+    release_type TEXT NOT NULL DEFAULT 'experimental' CHECK (release_type IN (
+        'patch','minor','major','experimental','internal'
+    )),
+    target_assignment_keys_json TEXT NOT NULL DEFAULT '[]',
+    canary_requested INTEGER NOT NULL DEFAULT 1 CHECK (canary_requested IN (0,1)),
+    canary_percentage_or_scope TEXT NOT NULL DEFAULT 'admin_diagnostic',
+    resource_preview_json TEXT NOT NULL DEFAULT '{}',
+    security_check_version TEXT NOT NULL DEFAULT 'v1',
+    evaluation_policy_version TEXT NOT NULL DEFAULT 'v1',
+    rollback_plan_id INTEGER,
+    target_fingerprint TEXT,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','awaiting_review','validating','validated','validation_failed','approved',
+        'canary','canary_failed','activating','activated','activation_failed','rejected',
+        'cancelled','expired','superseded'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (model_candidate_core_model_version_id) REFERENCES core_model_versions(id),
+    FOREIGN KEY (incremental_training_checkpoint_id) REFERENCES incremental_training_checkpoints(id),
+    FOREIGN KEY (model_release_candidate_id) REFERENCES model_release_candidates(id)
+);
+CREATE INDEX IF NOT EXISTS ix_production_model_release_requests_status
+    ON production_model_release_requests(status);
+CREATE INDEX IF NOT EXISTS ix_production_model_release_requests_candidate
+    ON production_model_release_requests(model_candidate_core_model_version_id);
+
+CREATE TABLE IF NOT EXISTS production_model_release_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_request_id INTEGER NOT NULL,
+    checkpoint_checksum TEXT,
+    tokenizer_checksum TEXT,
+    config_checksum TEXT,
+    manifest_checksum TEXT,
+    evaluation_report_checksum TEXT,
+    training_report_checksum TEXT,
+    security_report_checksum TEXT,
+    target_assignment_keys_json TEXT NOT NULL DEFAULT '[]',
+    canary_configuration_json TEXT NOT NULL DEFAULT '{}',
+    rollback_plan_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending','approved','rejected','expired','superseded'
+    )),
+    approved_by_admin_id TEXT,
+    approved_at TEXT,
+    expires_at TEXT,
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    target_fingerprint TEXT NOT NULL,
+    requested_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_request_id) REFERENCES production_model_release_requests(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_model_release_approvals_request
+    ON production_model_release_approvals(release_request_id);
+
+CREATE TABLE IF NOT EXISTS production_model_activation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_request_id INTEGER NOT NULL,
+    release_approval_id INTEGER,
+    inference_model_assignment_id INTEGER,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'pre_activation_snapshot','canary_started','canary_passed','canary_failed',
+        'activated','activation_failed','rolled_back'
+    )),
+    previous_assignment_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_request_id) REFERENCES production_model_release_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (release_approval_id) REFERENCES production_model_release_approvals(id),
+    FOREIGN KEY (inference_model_assignment_id) REFERENCES inference_model_assignments(id)
+);
+CREATE INDEX IF NOT EXISTS ix_production_model_activation_events_request
+    ON production_model_activation_events(release_request_id);
+
+CREATE TABLE IF NOT EXISTS production_model_post_activation_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_request_id INTEGER NOT NULL,
+    check_type TEXT NOT NULL,
+    result_status TEXT NOT NULL CHECK (result_status IN (
+        'passed','passed_with_warning','failed','not_applicable'
+    )),
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_request_id) REFERENCES production_model_release_requests(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_model_post_activation_checks_request
+    ON production_model_post_activation_checks(release_request_id);
+
+CREATE TABLE IF NOT EXISTS production_rollback_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    target_type TEXT NOT NULL CHECK (target_type IN ('rag','model')),
+    current_active_version TEXT,
+    candidate_version TEXT,
+    previous_assignment_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    previous_rag_state_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    backup_reference TEXT,
+    rollback_steps_json TEXT NOT NULL DEFAULT '[]',
+    validation_steps_json TEXT NOT NULL DEFAULT '[]',
+    maximum_recovery_time_target_seconds INTEGER NOT NULL DEFAULT 900,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','verified','used','failed','superseded'
+    )),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_production_rollback_plans_target_type
+    ON production_rollback_plans(target_type);
+
+CREATE TABLE IF NOT EXISTS production_rollback_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    rollback_plan_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'validated','executed','execution_failed','verified_recovered'
+    )),
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rollback_plan_id) REFERENCES production_rollback_plans(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_rollback_events_plan
+    ON production_rollback_events(rollback_plan_id);
+
+CREATE TABLE IF NOT EXISTS production_artifact_security_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+        'checkpoint','tokenizer','rag_index','dataset_manifest','training_manifest',
+        'release_manifest','backup','configuration'
+    )),
+    artifact_reference TEXT NOT NULL,
+    result_status TEXT NOT NULL CHECK (result_status IN (
+        'passed','passed_with_warning','failed','not_configured','not_applicable'
+    )),
+    checks_json TEXT NOT NULL DEFAULT '{}',
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_production_artifact_security_checks_type
+    ON production_artifact_security_checks(artifact_type);
+
+CREATE TABLE IF NOT EXISTS production_backup_readiness_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    check_type TEXT NOT NULL CHECK (check_type IN ('backup','restore')),
+    result_status TEXT NOT NULL CHECK (result_status IN (
+        'passed','passed_with_warning','failed','not_configured','not_applicable'
+    )),
+    latest_backup_filename TEXT,
+    latest_backup_age_seconds INTEGER,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_production_backup_readiness_checks_type
+    ON production_backup_readiness_checks(check_type);
+
+CREATE TABLE IF NOT EXISTS production_deployment_readiness_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    result_status TEXT NOT NULL CHECK (result_status IN (
+        'ready','ready_with_conditions','not_ready','blocked'
+    )),
+    checks_json TEXT NOT NULL DEFAULT '{}',
+    blocking_reasons_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS production_regression_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    run_code TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress','completed','completed_with_failures','environment_incomplete'
+    )),
+    batch_plan_json TEXT NOT NULL DEFAULT '[]',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finalized_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS production_regression_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    regression_run_id INTEGER NOT NULL,
+    batch_name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN (
+        'passed','failed','environment_incomplete'
+    )),
+    passed_count INTEGER NOT NULL DEFAULT 0 CHECK (passed_count >= 0),
+    failed_count INTEGER NOT NULL DEFAULT 0 CHECK (failed_count >= 0),
+    error_count INTEGER NOT NULL DEFAULT 0 CHECK (error_count >= 0),
+    duration_seconds REAL,
+    raw_summary TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (regression_run_id) REFERENCES production_regression_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_regression_results_run
+    ON production_regression_results(regression_run_id);
+
+CREATE TABLE IF NOT EXISTS production_readiness_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    report_version INTEGER NOT NULL DEFAULT 1 CHECK (report_version > 0),
+    report_json TEXT NOT NULL DEFAULT '{}',
+    report_checksum_sha256 TEXT NOT NULL,
+    recommendation TEXT NOT NULL CHECK (recommendation IN (
+        'ready_for_text_nlp_production','ready_with_conditions','not_ready','blocked'
+    )),
+    finalized_by_admin_public_id TEXT NOT NULL,
+    finalized_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(report_version)
+);
+
+CREATE TABLE IF NOT EXISTS production_acceptance_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    production_readiness_report_id INTEGER NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'accepted','accepted_with_conditions','rejected','needs_remediation'
+    )),
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    conditions_json TEXT NOT NULL DEFAULT '{}',
+    reviewer_admin_public_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    report_checksum TEXT NOT NULL,
+    active_model_checksum TEXT,
+    active_rag_checksum TEXT,
+    target_fingerprint TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (production_readiness_report_id) REFERENCES production_readiness_reports(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_production_acceptance_reviews_report
+    ON production_acceptance_reviews(production_readiness_report_id);
+
+CREATE TABLE IF NOT EXISTS production_readiness_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_public_id TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    performed_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_production_readiness_events_resource
+    ON production_readiness_events(resource_type, resource_public_id);
+
+CREATE TRIGGER IF NOT EXISTS production_rag_promotion_approvals_immutable_once_approved
+    BEFORE UPDATE ON production_rag_promotion_approvals
+    WHEN OLD.status = 'approved' AND NEW.status NOT IN ('approved','expired','superseded')
+    BEGIN SELECT RAISE(ABORT, 'an approved production RAG promotion approval is immutable except transitioning to expired/superseded'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_rag_validation_results_immutable_update
+    BEFORE UPDATE ON production_rag_validation_results
+    BEGIN SELECT RAISE(ABORT, 'validation results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_rag_validation_results_immutable_delete
+    BEFORE DELETE ON production_rag_validation_results
+    BEGIN SELECT RAISE(ABORT, 'validation results are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_rag_activation_events_immutable_update
+    BEFORE UPDATE ON production_rag_activation_events
+    BEGIN SELECT RAISE(ABORT, 'activation events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_rag_activation_events_immutable_delete
+    BEFORE DELETE ON production_rag_activation_events
+    BEGIN SELECT RAISE(ABORT, 'activation events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_model_release_approvals_immutable_once_approved
+    BEFORE UPDATE ON production_model_release_approvals
+    WHEN OLD.status = 'approved' AND NEW.status NOT IN ('approved','expired','superseded')
+    BEGIN SELECT RAISE(ABORT, 'an approved production model release approval is immutable except transitioning to expired/superseded'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_model_activation_events_immutable_update
+    BEFORE UPDATE ON production_model_activation_events
+    BEGIN SELECT RAISE(ABORT, 'activation events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_model_activation_events_immutable_delete
+    BEFORE DELETE ON production_model_activation_events
+    BEGIN SELECT RAISE(ABORT, 'activation events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_model_post_activation_checks_immutable_update
+    BEFORE UPDATE ON production_model_post_activation_checks
+    BEGIN SELECT RAISE(ABORT, 'post-activation checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_model_post_activation_checks_immutable_delete
+    BEFORE DELETE ON production_model_post_activation_checks
+    BEGIN SELECT RAISE(ABORT, 'post-activation checks are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_rollback_events_immutable_update
+    BEFORE UPDATE ON production_rollback_events
+    BEGIN SELECT RAISE(ABORT, 'rollback events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_rollback_events_immutable_delete
+    BEFORE DELETE ON production_rollback_events
+    BEGIN SELECT RAISE(ABORT, 'rollback events are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_artifact_security_checks_immutable_update
+    BEFORE UPDATE ON production_artifact_security_checks
+    BEGIN SELECT RAISE(ABORT, 'security checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_artifact_security_checks_immutable_delete
+    BEFORE DELETE ON production_artifact_security_checks
+    BEGIN SELECT RAISE(ABORT, 'security checks are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_backup_readiness_checks_immutable_update
+    BEFORE UPDATE ON production_backup_readiness_checks
+    BEGIN SELECT RAISE(ABORT, 'backup readiness checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_backup_readiness_checks_immutable_delete
+    BEFORE DELETE ON production_backup_readiness_checks
+    BEGIN SELECT RAISE(ABORT, 'backup readiness checks are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_deployment_readiness_checks_immutable_update
+    BEFORE UPDATE ON production_deployment_readiness_checks
+    BEGIN SELECT RAISE(ABORT, 'deployment readiness checks are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_deployment_readiness_checks_immutable_delete
+    BEFORE DELETE ON production_deployment_readiness_checks
+    BEGIN SELECT RAISE(ABORT, 'deployment readiness checks are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_regression_results_immutable_update
+    BEFORE UPDATE ON production_regression_results
+    BEGIN SELECT RAISE(ABORT, 'regression results are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_regression_results_immutable_delete
+    BEFORE DELETE ON production_regression_results
+    BEGIN SELECT RAISE(ABORT, 'regression results are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_readiness_reports_immutable_update
+    BEFORE UPDATE ON production_readiness_reports
+    BEGIN SELECT RAISE(ABORT, 'readiness reports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_readiness_reports_immutable_delete
+    BEFORE DELETE ON production_readiness_reports
+    BEGIN SELECT RAISE(ABORT, 'readiness reports are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_acceptance_reviews_immutable_update
+    BEFORE UPDATE ON production_acceptance_reviews
+    BEGIN SELECT RAISE(ABORT, 'acceptance reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_acceptance_reviews_immutable_delete
+    BEFORE DELETE ON production_acceptance_reviews
+    BEGIN SELECT RAISE(ABORT, 'acceptance reviews are append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS production_readiness_events_immutable_update
+    BEFORE UPDATE ON production_readiness_events
+    BEGIN SELECT RAISE(ABORT, 'readiness events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS production_readiness_events_immutable_delete
+    BEFORE DELETE ON production_readiness_events
+    BEGIN SELECT RAISE(ABORT, 'readiness events are append-only'); END;
+"""
+
+MIGRATION_039_NAME = "039_knowledge_routing_classification"
+PHASE39_SCHEMA = """
+CREATE TABLE IF NOT EXISTS routing_classification_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    input_hash TEXT NOT NULL,
+    context_type TEXT NOT NULL CHECK (context_type IN (
+        'public_chat_question','rag_record','dataset_candidate','training_candidate',
+        'evaluation_prompt','knowledge_gap_case'
+    )),
+    language_category TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    domain TEXT NOT NULL,
+    subdomain TEXT,
+    freshness TEXT NOT NULL,
+    ambiguity TEXT NOT NULL,
+    safety_risk TEXT NOT NULL,
+    evidence_requirement TEXT NOT NULL,
+    execution_route TEXT NOT NULL CHECK (execution_route IN (
+        'core_model','approved_rag','trusted_web','tool','memory','clarify','refuse','insufficient'
+    )),
+    learning_target TEXT NOT NULL CHECK (learning_target IN (
+        'core_model','rag_only','web_preferred','tool_required','evaluation_only',
+        'future_training_candidate','do_not_learn','blocked'
+    )),
+    requires_human_review INTEGER NOT NULL DEFAULT 0 CHECK (requires_human_review IN (0,1)),
+    input_truncated INTEGER NOT NULL DEFAULT 0 CHECK (input_truncated IN (0,1)),
+    reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    policy_version TEXT NOT NULL,
+    taxonomy_version TEXT NOT NULL,
+    created_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_routing_classification_decisions_context_type
+    ON routing_classification_decisions(context_type);
+CREATE INDEX IF NOT EXISTS ix_routing_classification_decisions_execution_route
+    ON routing_classification_decisions(execution_route);
+CREATE INDEX IF NOT EXISTS ix_routing_classification_decisions_domain
+    ON routing_classification_decisions(domain);
+CREATE INDEX IF NOT EXISTS ix_routing_classification_decisions_created_at
+    ON routing_classification_decisions(created_at);
+
+CREATE TRIGGER IF NOT EXISTS routing_classification_decisions_immutable_update
+    BEFORE UPDATE ON routing_classification_decisions
+    BEGIN SELECT RAISE(ABORT, 'routing classification decisions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS routing_classification_decisions_immutable_delete
+    BEFORE DELETE ON routing_classification_decisions
+    BEGIN SELECT RAISE(ABORT, 'routing classification decisions are append-only'); END;
+"""
+
+MIGRATION_040_NAME = "040_public_chat_routing_events"
+PHASE40_SCHEMA = """
+CREATE TABLE IF NOT EXISTS public_chat_routing_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    classification_decision_public_id TEXT,
+    recommended_route TEXT NOT NULL CHECK (recommended_route IN (
+        'core_model','approved_rag','memory','clarify','refuse','insufficient',
+        'trusted_web','tool'
+    )),
+    resolved_route TEXT NOT NULL CHECK (resolved_route IN (
+        'core_model','approved_rag','memory','clarify','refuse','insufficient'
+    )),
+    route_status TEXT NOT NULL CHECK (route_status IN ('executable','unavailable','blocked')),
+    evidence_status TEXT NOT NULL CHECK (evidence_status IN (
+        'grounded','partially_grounded','insufficient','conflicting','model_only','none'
+    )),
+    detected_language TEXT NOT NULL,
+    answer_language TEXT,
+    safety_status TEXT NOT NULL CHECK (safety_status IN (
+        'safe','caution','refused','output_blocked','review_flagged'
+    )),
+    fallbacks_attempted_json TEXT NOT NULL DEFAULT '[]',
+    latency_ms INTEGER,
+    error_code TEXT,
+    conversation_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_resolved_route
+    ON public_chat_routing_events(resolved_route);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_created_at
+    ON public_chat_routing_events(created_at);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_request_id
+    ON public_chat_routing_events(request_id);
+
+CREATE TRIGGER IF NOT EXISTS public_chat_routing_events_immutable_update
+    BEFORE UPDATE ON public_chat_routing_events
+    BEGIN SELECT RAISE(ABORT, 'public chat routing events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS public_chat_routing_events_immutable_delete
+    BEFORE DELETE ON public_chat_routing_events
+    BEGIN SELECT RAISE(ABORT, 'public chat routing events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS public_chat_feedback_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    route_used TEXT NOT NULL,
+    answer_hash TEXT NOT NULL,
+    feedback_type TEXT NOT NULL CHECK (feedback_type IN (
+        'thumbs_up','thumbs_down','language_report','safety_report'
+    )),
+    comment TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_public_chat_feedback_events_request_id
+    ON public_chat_feedback_events(request_id);
+
+CREATE TRIGGER IF NOT EXISTS public_chat_feedback_events_immutable_update
+    BEFORE UPDATE ON public_chat_feedback_events
+    BEGIN SELECT RAISE(ABORT, 'public chat feedback events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS public_chat_feedback_events_immutable_delete
+    BEFORE DELETE ON public_chat_feedback_events
+    BEGIN SELECT RAISE(ABORT, 'public chat feedback events are append-only'); END;
+"""
+
+MIGRATION_041_NAME = "041_knowledge_gap_registry"
+PHASE41_SCHEMA = """
+CREATE TABLE IF NOT EXISTS knowledge_gap_clusters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    canonical_question TEXT NOT NULL,
+    primary_language TEXT NOT NULL,
+    domain TEXT,
+    intent TEXT,
+    freshness TEXT,
+    cluster_type TEXT NOT NULL DEFAULT 'knowledge_gap',
+    frequency INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    priority_score REAL NOT NULL DEFAULT 0,
+    priority_band TEXT NOT NULL DEFAULT 'informational' CHECK (priority_band IN (
+        'critical','high','medium','low','informational'
+    )),
+    priority_reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_clusters_status
+    ON knowledge_gap_clusters(status);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_clusters_priority_band
+    ON knowledge_gap_clusters(priority_band);
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    cluster_id INTEGER REFERENCES knowledge_gap_clusters(id),
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'knowledge_gap','clarification_event','safety_event','operational_failure',
+        'language_failure','source_failure','tool_capability_gap','web_capability_gap',
+        'feedback_issue','not_applicable'
+    )),
+    primary_reason_code TEXT NOT NULL,
+    reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN (
+        'new','classified','needs_clarification','evidence_search','answer_draft',
+        'review_required','rag_trial','monitored','training_assessment_candidate',
+        'resolved','rejected','blocked','archived','deleted_payload'
+    )),
+    stage TEXT NOT NULL DEFAULT 'capture' CHECK (stage IN (
+        'capture','privacy_processing','classification','deduplication','prioritization',
+        'research','drafting','human_review','rag_handoff','monitoring','training_handoff',
+        'resolution','retention'
+    )),
+    language TEXT,
+    domain TEXT,
+    intent TEXT,
+    freshness TEXT,
+    input_hash TEXT NOT NULL,
+    canonical_question TEXT,
+    redacted_question TEXT,
+    content_unavailable_for_review INTEGER NOT NULL DEFAULT 0,
+    retention_policy TEXT NOT NULL DEFAULT 'standard' CHECK (retention_policy IN (
+        'standard','extended_review','hash_only','not_retained'
+    )),
+    frequency INTEGER NOT NULL DEFAULT 1,
+    priority_score REAL NOT NULL DEFAULT 0,
+    priority_band TEXT NOT NULL DEFAULT 'informational' CHECK (priority_band IN (
+        'critical','high','medium','low','informational'
+    )),
+    priority_reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    eligible_for_rag_research INTEGER NOT NULL DEFAULT 0,
+    eligible_for_rag_trial_proposal INTEGER NOT NULL DEFAULT 0,
+    rag_handoff_reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    eligible_for_training_assessment INTEGER NOT NULL DEFAULT 0,
+    training_handoff_reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cases_status ON knowledge_gap_cases(status);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cases_event_type ON knowledge_gap_cases(event_type);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cases_input_hash ON knowledge_gap_cases(input_hash);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cases_cluster_id ON knowledge_gap_cases(cluster_id);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cases_priority_band
+    ON knowledge_gap_cases(priority_band);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cases_language_domain_intent
+    ON knowledge_gap_cases(language, domain, intent);
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_occurrences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER REFERENCES knowledge_gap_cases(id),
+    routing_event_public_id TEXT,
+    feedback_event_public_id TEXT,
+    request_hash TEXT NOT NULL,
+    route_recommended TEXT,
+    route_used TEXT,
+    evidence_status TEXT,
+    confidence_band TEXT,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'knowledge_gap','clarification_event','safety_event','operational_failure',
+        'language_failure','source_failure','tool_capability_gap','web_capability_gap',
+        'feedback_issue','not_applicable'
+    )),
+    reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    language TEXT,
+    domain TEXT,
+    intent TEXT,
+    freshness TEXT,
+    privacy_status TEXT NOT NULL DEFAULT 'standard',
+    occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_occurrences_case_id
+    ON knowledge_gap_occurrences(case_id);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_occurrences_request_hash
+    ON knowledge_gap_occurrences(request_hash);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_occurrences_occurred_at
+    ON knowledge_gap_occurrences(occurred_at);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_occurrences_immutable_update
+    BEFORE UPDATE ON knowledge_gap_occurrences
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap occurrences are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_occurrences_immutable_delete
+    BEFORE DELETE ON knowledge_gap_occurrences
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap occurrences are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_cluster_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    cluster_id INTEGER NOT NULL REFERENCES knowledge_gap_clusters(id),
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    member_status TEXT NOT NULL DEFAULT 'active' CHECK (member_status IN ('active','removed')),
+    decision TEXT NOT NULL CHECK (decision IN (
+        'same_case','probable_duplicate','possible_duplicate','distinct','needs_review'
+    )),
+    confirmed_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cluster_members_cluster_id
+    ON knowledge_gap_cluster_members(cluster_id);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_cluster_members_case_id
+    ON knowledge_gap_cluster_members(case_id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_cluster_members_immutable_update
+    BEFORE UPDATE ON knowledge_gap_cluster_members
+    BEGIN SELECT RAISE(ABORT,
+        'knowledge gap cluster members are append-only -- insert a new row to unmerge'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_cluster_members_immutable_delete
+    BEFORE DELETE ON knowledge_gap_cluster_members
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap cluster members are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    decision TEXT NOT NULL CHECK (decision IN (
+        'confirm_gap','reclassify','merge','keep_separate','needs_evidence',
+        'send_to_rag_research','send_to_evaluation','mark_training_assessment_candidate',
+        'resolve','reject','block','archive'
+    )),
+    comment TEXT,
+    reviewed_by_admin_public_id TEXT NOT NULL,
+    stale_check_fingerprint TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_reviews_case_id ON knowledge_gap_reviews(case_id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_reviews_immutable_update
+    BEFORE UPDATE ON knowledge_gap_reviews
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap reviews are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_reviews_immutable_delete
+    BEFORE DELETE ON knowledge_gap_reviews
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap reviews are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_research_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    note_type TEXT NOT NULL CHECK (note_type IN (
+        'investigation','possible_source','rights_concern','answer_draft','routing_issue',
+        'language_issue','safety_issue','operational_issue','resolution_note'
+    )),
+    note_text_redacted TEXT NOT NULL,
+    source_reference TEXT,
+    author_admin_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_research_notes_case_id
+    ON knowledge_gap_research_notes(case_id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_research_notes_immutable_update
+    BEFORE UPDATE ON knowledge_gap_research_notes
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap research notes are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_research_notes_immutable_delete
+    BEFORE DELETE ON knowledge_gap_research_notes
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap research notes are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_resolution_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    resolution_type TEXT NOT NULL CHECK (resolution_type IN (
+        'answered_by_existing_model','resolved_by_routing_rule','resolved_by_approved_rag',
+        'requires_trusted_web','requires_tool','requires_translation',
+        'requires_language_policy_fix','requires_safety_policy_fix','requires_operational_fix',
+        'evaluation_case_created','future_training_assessment','not_reproducible',
+        'duplicate_resolved','rejected','blocked'
+    )),
+    notes TEXT,
+    resolved_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_resolution_events_case_id
+    ON knowledge_gap_resolution_events(case_id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_resolution_events_immutable_update
+    BEFORE UPDATE ON knowledge_gap_resolution_events
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap resolution events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_resolution_events_immutable_delete
+    BEFORE DELETE ON knowledge_gap_resolution_events
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap resolution events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_status_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    from_status TEXT,
+    to_status TEXT NOT NULL,
+    from_stage TEXT,
+    to_stage TEXT NOT NULL,
+    reason TEXT,
+    changed_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_status_events_case_id
+    ON knowledge_gap_status_events(case_id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_status_events_immutable_update
+    BEFORE UPDATE ON knowledge_gap_status_events
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap status events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_status_events_immutable_delete
+    BEFORE DELETE ON knowledge_gap_status_events
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap status events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_deletion_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    state TEXT NOT NULL CHECK (state IN (
+        'requested','confirmed','executed','rejected','cancelled'
+    )),
+    requested_by_admin_public_id TEXT NOT NULL,
+    confirmed_by_admin_public_id TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_deletion_requests_case_id
+    ON knowledge_gap_deletion_requests(case_id);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_deletion_requests_immutable_update
+    BEFORE UPDATE ON knowledge_gap_deletion_requests
+    BEGIN SELECT RAISE(ABORT,
+        'knowledge gap deletion requests are append-only -- insert a new row to advance state');
+    END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_deletion_requests_immutable_delete
+    BEFORE DELETE ON knowledge_gap_deletion_requests
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap deletion requests are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_daily_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    report_date TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_daily_reports_report_date
+    ON knowledge_gap_daily_reports(report_date);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_daily_reports_immutable_update
+    BEFORE UPDATE ON knowledge_gap_daily_reports
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap daily reports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_daily_reports_immutable_delete
+    BEFORE DELETE ON knowledge_gap_daily_reports
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap daily reports are append-only'); END;
+"""
+
+MIGRATION_042_NAME = "042_trusted_web_tool_gateway"
+PHASE42_SCHEMA = """
+CREATE TABLE IF NOT EXISTS trusted_web_search_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    query_hash TEXT NOT NULL,
+    web_category TEXT NOT NULL CHECK (web_category IN (
+        'current_software_documentation','government_service_information',
+        'current_rules_and_regulations','current_general_information',
+        'official_product_documentation'
+    )),
+    provider_name TEXT,
+    policy_version TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN (
+        'success','provider_unavailable','quota_exceeded','no_trusted_source',
+        'source_conflict','evidence_insufficient','fetch_blocked','error'
+    )),
+    result_count INTEGER NOT NULL DEFAULT 0,
+    conflict_status TEXT NOT NULL DEFAULT 'no_conflict' CHECK (conflict_status IN (
+        'no_conflict','minor_difference','material_conflict','date_version_conflict',
+        'unresolved_conflict'
+    )),
+    overall_freshness_status TEXT CHECK (overall_freshness_status IN (
+        'fresh','possibly_stale','stale','undated','conflicting'
+    )),
+    latency_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_search_events_request_id
+    ON trusted_web_search_events(request_id);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_search_events_status
+    ON trusted_web_search_events(status);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_search_events_web_category
+    ON trusted_web_search_events(web_category);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_search_events_created_at
+    ON trusted_web_search_events(created_at);
+
+CREATE TRIGGER IF NOT EXISTS trusted_web_search_events_immutable_update
+    BEFORE UPDATE ON trusted_web_search_events
+    BEGIN SELECT RAISE(ABORT, 'trusted web search events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS trusted_web_search_events_immutable_delete
+    BEFORE DELETE ON trusted_web_search_events
+    BEGIN SELECT RAISE(ABORT, 'trusted web search events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS trusted_web_source_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_event_id INTEGER NOT NULL REFERENCES trusted_web_search_events(id),
+    source_url_normalized TEXT NOT NULL,
+    source_domain TEXT NOT NULL,
+    title TEXT,
+    published_at TEXT,
+    updated_at TEXT,
+    retrieved_at TEXT NOT NULL,
+    trust_level TEXT NOT NULL CHECK (trust_level IN (
+        'official','authoritative','reputable_secondary','community','unknown','blocked'
+    )),
+    verification_level TEXT NOT NULL CHECK (verification_level IN (
+        'search_result_only','domain_verified','page_fetched','content_verified',
+        'cross_source_verified','official_source_verified'
+    )),
+    freshness_status TEXT NOT NULL CHECK (freshness_status IN (
+        'fresh','possibly_stale','stale','undated','conflicting'
+    )),
+    support_status TEXT NOT NULL CHECK (support_status IN (
+        'directly_supports','partially_supports','background_context','contradicts'
+    )),
+    content_hash TEXT,
+    excerpt_redacted TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_source_evidence_search_event_id
+    ON trusted_web_source_evidence(search_event_id);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_source_evidence_source_domain
+    ON trusted_web_source_evidence(source_domain);
+
+CREATE TRIGGER IF NOT EXISTS trusted_web_source_evidence_immutable_update
+    BEFORE UPDATE ON trusted_web_source_evidence
+    BEGIN SELECT RAISE(ABORT, 'trusted web source evidence is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS trusted_web_source_evidence_immutable_delete
+    BEFORE DELETE ON trusted_web_source_evidence
+    BEGIN SELECT RAISE(ABORT, 'trusted web source evidence is append-only'); END;
+
+CREATE TABLE IF NOT EXISTS trusted_web_fetch_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    search_event_id INTEGER REFERENCES trusted_web_search_events(id),
+    url_domain TEXT NOT NULL,
+    http_status INTEGER,
+    content_type TEXT,
+    outcome TEXT NOT NULL CHECK (outcome IN (
+        'success','blocked','timeout','error'
+    )),
+    block_reason TEXT,
+    injection_status TEXT CHECK (injection_status IN (
+        'clean','warning','quarantined','blocked'
+    )),
+    bytes_fetched INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_fetch_events_search_event_id
+    ON trusted_web_fetch_events(search_event_id);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_fetch_events_outcome
+    ON trusted_web_fetch_events(outcome);
+
+CREATE TRIGGER IF NOT EXISTS trusted_web_fetch_events_immutable_update
+    BEFORE UPDATE ON trusted_web_fetch_events
+    BEGIN SELECT RAISE(ABORT, 'trusted web fetch events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS trusted_web_fetch_events_immutable_delete
+    BEFORE DELETE ON trusted_web_fetch_events
+    BEGIN SELECT RAISE(ABORT, 'trusted web fetch events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS trusted_web_policy_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'loaded','reload_proposed','reload_confirmed','validation_failed',
+        'source_block_proposed','source_block_confirmed',
+        'issue_flagged','allowlist_review_proposed'
+    )),
+    policy_version TEXT,
+    policy_checksum_sha256 TEXT,
+    admin_public_id TEXT,
+    detail TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_trusted_web_policy_events_event_type
+    ON trusted_web_policy_events(event_type);
+
+CREATE TRIGGER IF NOT EXISTS trusted_web_policy_events_immutable_update
+    BEFORE UPDATE ON trusted_web_policy_events
+    BEGIN SELECT RAISE(ABORT, 'trusted web policy events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS trusted_web_policy_events_immutable_delete
+    BEFORE DELETE ON trusted_web_policy_events
+    BEGIN SELECT RAISE(ABORT, 'trusted web policy events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS deterministic_tool_execution_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL CHECK (tool_name IN (
+        'calculator','unit_conversion','date_time_arithmetic','unknown'
+    )),
+    tool_version TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN (
+        'success','input_invalid','disabled','unsupported','timeout','execution_failed',
+        'rate_limited'
+    )),
+    input_summary TEXT,
+    result_summary TEXT,
+    error_code TEXT,
+    latency_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_deterministic_tool_execution_events_request_id
+    ON deterministic_tool_execution_events(request_id);
+CREATE INDEX IF NOT EXISTS ix_deterministic_tool_execution_events_tool_name
+    ON deterministic_tool_execution_events(tool_name);
+CREATE INDEX IF NOT EXISTS ix_deterministic_tool_execution_events_status
+    ON deterministic_tool_execution_events(status);
+
+CREATE TRIGGER IF NOT EXISTS deterministic_tool_execution_events_immutable_update
+    BEFORE UPDATE ON deterministic_tool_execution_events
+    BEGIN SELECT RAISE(ABORT, 'deterministic tool execution events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS deterministic_tool_execution_events_immutable_delete
+    BEFORE DELETE ON deterministic_tool_execution_events
+    BEGIN SELECT RAISE(ABORT, 'deterministic tool execution events are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS knowledge_gap_capability_resolutions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    case_id INTEGER NOT NULL REFERENCES knowledge_gap_cases(id),
+    resolution_kind TEXT NOT NULL CHECK (resolution_kind IN (
+        'resolved_by_trusted_web','resolved_by_tool'
+    )),
+    search_event_id INTEGER REFERENCES trusted_web_search_events(id),
+    tool_execution_id INTEGER REFERENCES deterministic_tool_execution_events(id),
+    matched_by TEXT NOT NULL,
+    confidence_band TEXT NOT NULL DEFAULT 'medium' CHECK (confidence_band IN (
+        'high','medium','low','unknown'
+    )),
+    linked_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_capability_resolutions_case_id
+    ON knowledge_gap_capability_resolutions(case_id);
+CREATE INDEX IF NOT EXISTS ix_knowledge_gap_capability_resolutions_resolution_kind
+    ON knowledge_gap_capability_resolutions(resolution_kind);
+
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_capability_resolutions_immutable_update
+    BEFORE UPDATE ON knowledge_gap_capability_resolutions
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap capability resolutions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS knowledge_gap_capability_resolutions_immutable_delete
+    BEFORE DELETE ON knowledge_gap_capability_resolutions
+    BEGIN SELECT RAISE(ABORT, 'knowledge gap capability resolutions are append-only'); END;
+"""
+
+MIGRATION_043_NAME = "043_document_sft_workflow"
+PHASE43_SCHEMA = """
+CREATE TABLE IF NOT EXISTS document_sft_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    source_chunk_id INTEGER,
+    source_page_start INTEGER NOT NULL CHECK (source_page_start > 0),
+    source_page_end INTEGER NOT NULL CHECK (source_page_end >= source_page_start),
+    task TEXT NOT NULL CHECK (task IN (
+        'definition','fact_answer','explanation','contextual_meaning','multiple_meanings',
+        'grammar','spelling_correction','grammar_correction','instruction_following',
+        'summarization','clarification_request','Tamil_to_English','English_to_Tamil',
+        'Tanglish_input_to_Tamil','basic_math_reasoning','computer_basics','safety_response'
+    )),
+    domain TEXT NOT NULL DEFAULT 'general',
+    difficulty TEXT NOT NULL DEFAULT 'basic' CHECK (difficulty IN (
+        'basic','intermediate','advanced'
+    )),
+    instruction TEXT NOT NULL CHECK (length(trim(instruction)) > 0),
+    context TEXT NOT NULL DEFAULT '',
+    response TEXT NOT NULL CHECK (length(trim(response)) > 0),
+    input_language TEXT NOT NULL,
+    output_language TEXT NOT NULL,
+    rights_status TEXT NOT NULL CHECK (rights_status IN ('verified','pending','blocked')),
+    quality_status TEXT NOT NULL DEFAULT 'draft' CHECK (quality_status IN (
+        'draft','pending_review','needs_correction','approved','rejected','duplicate'
+    )),
+    generation_method TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    duplicate_of_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_chunk_id) REFERENCES semantic_chunks(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_document_sft_candidates_status
+    ON document_sft_candidates(document_source_id, quality_status);
+CREATE INDEX IF NOT EXISTS ix_document_sft_candidates_hash
+    ON document_sft_candidates(content_hash);
+CREATE INDEX IF NOT EXISTS ix_document_sft_candidates_task
+    ON document_sft_candidates(task);
+
+CREATE TABLE IF NOT EXISTS document_tamil_quality_issues (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    page_number INTEGER NOT NULL CHECK (page_number > 0),
+    issue_type TEXT NOT NULL CHECK (issue_type IN (
+        'broken_combining_mark','misplaced_pulli','broken_vowel_sign','invalid_unicode',
+        'ocr_character_substitution','non_tamil_glyph_contamination','zero_width_corruption',
+        'spelling_issue','grammar_mismatch'
+    )),
+    context TEXT NOT NULL DEFAULT '',
+    original_text TEXT NOT NULL,
+    suggested_text TEXT NOT NULL DEFAULT '',
+    confidence_band TEXT NOT NULL DEFAULT 'medium' CHECK (confidence_band IN (
+        'high','medium','low','unknown'
+    )),
+    reason_code TEXT NOT NULL,
+    correction_risk TEXT NOT NULL CHECK (correction_risk IN (
+        'mechanical','preview_required','mandatory_review'
+    )),
+    human_review_required INTEGER NOT NULL DEFAULT 0 CHECK (human_review_required IN (0,1)),
+    review_status TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN (
+        'pending','accepted','rejected','edited','ignored'
+    )),
+    reviewed_by_admin_public_id TEXT,
+    reviewed_at TEXT,
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_tamil_quality_issues_document
+    ON document_tamil_quality_issues(document_source_id, review_status);
+CREATE INDEX IF NOT EXISTS ix_document_tamil_quality_issues_hash
+    ON document_tamil_quality_issues(content_hash);
+
+CREATE TABLE IF NOT EXISTS document_sft_candidate_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    candidate_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('approve','reject','edit','needs_correction')),
+    actor_reference TEXT NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (candidate_id) REFERENCES document_sft_candidates(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_sft_candidate_reviews_candidate_id
+    ON document_sft_candidate_reviews(candidate_id);
+
+CREATE TRIGGER IF NOT EXISTS document_sft_candidate_reviews_immutable_update
+    BEFORE UPDATE ON document_sft_candidate_reviews
+    BEGIN SELECT RAISE(ABORT, 'document sft candidate reviews are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS document_sft_candidate_reviews_immutable_delete
+    BEFORE DELETE ON document_sft_candidate_reviews
+    BEGIN SELECT RAISE(ABORT, 'document sft candidate reviews are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS document_sft_exports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    record_count INTEGER NOT NULL,
+    excluded_count INTEGER NOT NULL,
+    task_distribution_json TEXT NOT NULL DEFAULT '{}',
+    language_distribution_json TEXT NOT NULL DEFAULT '{}',
+    domain_distribution_json TEXT NOT NULL DEFAULT '{}',
+    source_document_ids_json TEXT NOT NULL DEFAULT '[]',
+    rights_summary_json TEXT NOT NULL DEFAULT '{}',
+    quality_summary_json TEXT NOT NULL DEFAULT '{}',
+    checksum_sha256 TEXT NOT NULL,
+    export_path TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_document_sft_exports_created_at
+    ON document_sft_exports(created_at);
+
+CREATE TRIGGER IF NOT EXISTS document_sft_exports_immutable_update
+    BEFORE UPDATE ON document_sft_exports
+    BEGIN SELECT RAISE(ABORT, 'document sft exports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS document_sft_exports_immutable_delete
+    BEFORE DELETE ON document_sft_exports
+    BEGIN SELECT RAISE(ABORT, 'document sft exports are append-only'); END;
+"""
+
+MIGRATION_044_NAME = "044_document_sft_finalization"
+PHASE44_SCHEMA = """
+-- Widen document_repeated_elements.element_type (migration 025) to add the
+-- 4 new content-pattern-based cleanup categories from Task Finalization §12
+-- (copyright_notice, navigation_text, watermark_text, logo_text). SQLite
+-- cannot loosen a CHECK constraint in place, so this rebuilds the table --
+-- the table has no triggers and a small, well-understood column set, so a
+-- rebuild is safe; every row's data is preserved unchanged. This is the
+-- only structural change PHASE44_SCHEMA makes to a pre-existing table;
+-- migration 043 itself is never edited.
+CREATE TABLE document_repeated_elements_v2 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    normalized_text TEXT NOT NULL,
+    element_type TEXT NOT NULL CHECK (element_type IN (
+        'header','footer','page_number','unknown',
+        'copyright_notice','navigation_text','watermark_text','logo_text'
+    )),
+    page_occurrences_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    status TEXT NOT NULL DEFAULT 'suggested' CHECK (status IN (
+        'suggested','accepted','rejected','applied'
+    )),
+    reviewed_by_admin_public_id TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE
+);
+INSERT INTO document_repeated_elements_v2(
+    id,public_id,document_source_id,normalized_text,element_type,page_occurrences_json,
+    confidence,status,reviewed_by_admin_public_id,reviewed_at,created_at
+) SELECT
+    id,public_id,document_source_id,normalized_text,element_type,page_occurrences_json,
+    confidence,status,reviewed_by_admin_public_id,reviewed_at,created_at
+FROM document_repeated_elements;
+DROP TABLE document_repeated_elements;
+ALTER TABLE document_repeated_elements_v2 RENAME TO document_repeated_elements;
+CREATE INDEX IF NOT EXISTS ix_document_repeated_elements_document
+    ON document_repeated_elements(document_source_id);
+CREATE INDEX IF NOT EXISTS ix_document_repeated_elements_status
+    ON document_repeated_elements(document_source_id, status);
+
+CREATE TABLE IF NOT EXISTS document_sft_dataset_handoffs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    export_public_id TEXT NOT NULL UNIQUE,
+    export_checksum_sha256 TEXT NOT NULL,
+    dataset_source_public_id TEXT NOT NULL,
+    dataset_version_public_id TEXT,
+    dataset_build_public_id TEXT,
+    imported_count INTEGER NOT NULL DEFAULT 0,
+    skipped_count INTEGER NOT NULL DEFAULT 0,
+    duplicate_count INTEGER NOT NULL DEFAULT 0,
+    rights_blocked_count INTEGER NOT NULL DEFAULT 0,
+    security_blocked_count INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK (status IN (
+        'imported','version_proposed','version_built','blocked'
+    )),
+    created_by TEXT NOT NULL,
+    confirmed_by TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_document_sft_dataset_handoffs_status
+    ON document_sft_dataset_handoffs(status);
+
+CREATE TABLE IF NOT EXISTS document_tamil_correction_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    incorrect_form TEXT NOT NULL,
+    approved_correction TEXT NOT NULL,
+    issue_category TEXT NOT NULL CHECK (issue_category IN (
+        'known_ocr_substitution','pulli_error','vowel_sign_error','grapheme_integrity',
+        'zero_width_contamination','unicode_normalization_mismatch','spelling_variant',
+        'word_boundary_anomaly','punctuation_spacing','mixed_script_contamination'
+    )),
+    evidence TEXT NOT NULL DEFAULT '',
+    confidence_band TEXT NOT NULL DEFAULT 'medium' CHECK (confidence_band IN (
+        'high','medium','low','unknown'
+    )),
+    meaning_change_risk TEXT NOT NULL CHECK (meaning_change_risk IN (
+        'mechanical','spelling','grammatical','meaning_sensitive','ambiguous'
+    )),
+    automatic_proposal_allowed INTEGER NOT NULL DEFAULT 0 CHECK (automatic_proposal_allowed IN (0,1)),
+    human_review_required INTEGER NOT NULL DEFAULT 1 CHECK (human_review_required IN (0,1)),
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft','needs_review','approved','active','rejected'
+    )),
+    rule_version INTEGER NOT NULL DEFAULT 1 CHECK (rule_version > 0),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_document_tamil_correction_rules_status
+    ON document_tamil_correction_rules(status);
+
+CREATE TABLE IF NOT EXISTS document_tamil_correction_rule_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    rule_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('submit_review','approve','activate','reject')),
+    actor_reference TEXT NOT NULL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (rule_id) REFERENCES document_tamil_correction_rules(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_tamil_correction_rule_reviews_rule_id
+    ON document_tamil_correction_rule_reviews(rule_id);
+CREATE TRIGGER IF NOT EXISTS document_tamil_correction_rule_reviews_immutable_update
+    BEFORE UPDATE ON document_tamil_correction_rule_reviews
+    BEGIN SELECT RAISE(ABORT, 'document tamil correction rule reviews are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS document_tamil_correction_rule_reviews_immutable_delete
+    BEFORE DELETE ON document_tamil_correction_rule_reviews
+    BEGIN SELECT RAISE(ABORT, 'document tamil correction rule reviews are immutable'); END;
+
+CREATE TABLE IF NOT EXISTS document_content_classifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    page_number INTEGER NOT NULL CHECK (page_number > 0),
+    content_type TEXT NOT NULL CHECK (content_type IN (
+        'text_only','image_with_caption','image_with_explanation','diagram_with_labels',
+        'table','mixed_content','image_without_usable_text'
+    )),
+    caption_text TEXT NOT NULL DEFAULT '',
+    nearby_text TEXT NOT NULL DEFAULT '',
+    table_data_json TEXT NOT NULL DEFAULT '{}',
+    vision_required INTEGER NOT NULL DEFAULT 0 CHECK (vision_required IN (0,1)),
+    review_status TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN (
+        'pending','reviewed','approved','excluded'
+    )),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE,
+    UNIQUE(document_source_id, page_number)
+);
+CREATE INDEX IF NOT EXISTS ix_document_content_classifications_type
+    ON document_content_classifications(document_source_id, content_type);
+
+CREATE TABLE IF NOT EXISTS document_security_findings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_id INTEGER NOT NULL,
+    page_number INTEGER NOT NULL CHECK (page_number > 0),
+    finding_type TEXT NOT NULL CHECK (finding_type IN (
+        'prompt_injection','pii_email','pii_phone','pii_address','pii_government_id',
+        'pii_bank','pii_secret','pii_path'
+    )),
+    matched_text TEXT NOT NULL,
+    confidence_band TEXT NOT NULL DEFAULT 'medium' CHECK (confidence_band IN (
+        'high','medium','low','unknown'
+    )),
+    reason_code TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN (
+        'allow','mask_for_preview','exclude_from_sft','require_review','block_export'
+    )),
+    review_status TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN (
+        'pending','reviewed','dismissed'
+    )),
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_document_security_findings_document
+    ON document_security_findings(document_source_id, finding_type);
+CREATE INDEX IF NOT EXISTS ix_document_security_findings_hash
+    ON document_security_findings(content_hash);
+"""

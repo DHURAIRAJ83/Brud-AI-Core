@@ -1,0 +1,3003 @@
+{
+  "batches": [
+    {
+      "batch_id": "database_migrations_01",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_migrations.py",
+        "tests/database/test_phase10_migration.py",
+        "tests/database/test_phase11_migration.py",
+        "tests/database/test_phase12_migration.py",
+        "tests/database/test_phase13_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 1 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_02",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase14_migration.py",
+        "tests/database/test_phase15_migration.py",
+        "tests/database/test_phase16_migration.py",
+        "tests/database/test_phase17_migration.py",
+        "tests/database/test_phase18_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 2 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_03",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase19_migration.py",
+        "tests/database/test_phase20_migration.py",
+        "tests/database/test_phase21a_migration.py",
+        "tests/database/test_phase22_migration.py",
+        "tests/database/test_phase23_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 3 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_04",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase24_migration.py",
+        "tests/database/test_phase25_migration.py",
+        "tests/database/test_phase26_migration.py",
+        "tests/database/test_phase27_migration.py",
+        "tests/database/test_phase28_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 4 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_05",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase29_migration.py",
+        "tests/database/test_phase2_migrations.py",
+        "tests/database/test_phase30_migration.py",
+        "tests/database/test_phase31_migration.py",
+        "tests/database/test_phase32_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 5 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_06",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase33_migration.py",
+        "tests/database/test_phase34_migration.py",
+        "tests/database/test_phase35_migration.py",
+        "tests/database/test_phase36_migration.py",
+        "tests/database/test_phase3_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 6 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_07",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase4_migration.py",
+        "tests/database/test_phase5_migration.py",
+        "tests/database/test_phase6_migration.py",
+        "tests/database/test_phase7_migration.py",
+        "tests/database/test_phase8_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 7 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_08",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase9_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 8 (1 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_integrity_01",
+      "category": "database_integrity",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_system_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 120,
+      "title": "Live database integrity + system health endpoint checks",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_repositories_01",
+      "category": "database_repositories",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_data_source_repository.py",
+        "tests/database/test_dataset_sample_import_repository.py",
+        "tests/database/test_dataset_verification_repository.py",
+        "tests/database/test_document_workspace_repository.py",
+        "tests/database/test_external_data_provider_repository.py",
+        "tests/database/test_external_dataset_discovery_repository.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "database_repositories batch 1 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_repositories_02",
+      "category": "database_repositories",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_governance_repository.py",
+        "tests/database/test_governed_build_repository.py",
+        "tests/database/test_manual_data_repository.py",
+        "tests/database/test_production_readiness_repository.py",
+        "tests/database/test_rag_sandbox_repository.py",
+        "tests/database/test_repositories.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "database_repositories batch 2 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_repositories_03",
+      "category": "database_repositories",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_repository_transaction_concurrency.py",
+        "tests/database/test_semantic_chunk_repository.py",
+        "tests/database/test_structured_record_repository.py",
+        "tests/database/test_training_incremental_repository.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "database_repositories batch 3 (4 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_01",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_auth.py",
+        "tests/backend/test_config.py",
+        "tests/backend/test_data_source_service.py",
+        "tests/backend/test_data_sources_integration.py",
+        "tests/backend/test_dataset_governance_manifest_service.py",
+        "tests/backend/test_dataset_phase6.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 1 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_02",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_dataset_sample_archive_safety_service.py",
+        "tests/backend/test_dataset_sample_contamination_service.py",
+        "tests/backend/test_dataset_sample_deletion_service.py",
+        "tests/backend/test_dataset_sample_download_service.py",
+        "tests/backend/test_dataset_sample_download_transport.py",
+        "tests/backend/test_dataset_sample_duplicate_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 2 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_03",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_dataset_sample_eligibility_service.py",
+        "tests/backend/test_dataset_sample_file_validation_service.py",
+        "tests/backend/test_dataset_sample_language_service.py",
+        "tests/backend/test_dataset_sample_normalization_service.py",
+        "tests/backend/test_dataset_sample_parsing_service.py",
+        "tests/backend/test_dataset_sample_pii_safety_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 3 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_04",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_dataset_sample_poisoning_service.py",
+        "tests/backend/test_dataset_sample_quality_service.py",
+        "tests/backend/test_dataset_sample_quarantine_service.py",
+        "tests/backend/test_dataset_sample_report_service.py",
+        "tests/backend/test_dataset_sample_review_service.py",
+        "tests/backend/test_dataset_sample_security_scan_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 4 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_05",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_dataset_verification_case_service.py",
+        "tests/backend/test_dataset_verification_evidence_service.py",
+        "tests/backend/test_dataset_verification_permission_service.py",
+        "tests/backend/test_dataset_verification_report_service.py",
+        "tests/backend/test_dataset_verification_source_rights_service.py",
+        "tests/backend/test_dataset_verification_transport.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 5 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_06",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_document_pipeline.py",
+        "tests/backend/test_document_workspace_service.py",
+        "tests/backend/test_external_data_connectors.py",
+        "tests/backend/test_external_data_connectors_search.py",
+        "tests/backend/test_external_data_provider_service.py",
+        "tests/backend/test_external_dataset_comparison_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 6 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_07",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_external_dataset_deduplication_service.py",
+        "tests/backend/test_external_dataset_normalization_service.py",
+        "tests/backend/test_external_dataset_scoring_service.py",
+        "tests/backend/test_external_dataset_search_service.py",
+        "tests/backend/test_governance_service.py",
+        "tests/backend/test_governed_build_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 7 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_08",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_governed_rag_handoff_service.py",
+        "tests/backend/test_import_pipeline.py",
+        "tests/backend/test_lineage_graph_service.py",
+        "tests/backend/test_manual_data_service.py",
+        "tests/backend/test_phase2_config.py",
+        "tests/backend/test_phase4_config.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 8 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_09",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_phase5_config.py",
+        "tests/backend/test_phase7_config.py",
+        "tests/backend/test_public_commercial_preflight_service.py",
+        "tests/backend/test_semantic_chunk_service.py",
+        "tests/backend/test_structured_record_service.py",
+        "tests/backend/test_text_normalization.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 9 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_01",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_api.py",
+        "tests/backend/test_conversation_memory_api.py",
+        "tests/backend/test_corpus_api.py",
+        "tests/backend/test_data_sources_api.py",
+        "tests/backend/test_dataset_api.py",
+        "tests/backend/test_dataset_discovery_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 700,
+      "title": "backend_api batch 1 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_02",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_dataset_sample_import_api.py",
+        "tests/backend/test_dataset_verification_api.py",
+        "tests/backend/test_document_workspace_api.py",
+        "tests/backend/test_external_data_providers_api.py",
+        "tests/backend/test_feedback_api.py",
+        "tests/backend/test_governance_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 700,
+      "title": "backend_api batch 2 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_03",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_governed_builds_api.py",
+        "tests/backend/test_manual_data_api.py",
+        "tests/backend/test_phase20_corpus_api.py",
+        "tests/backend/test_semantic_chunk_api.py",
+        "tests/backend/test_structured_record_api.py",
+        "tests/backend/test_system_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 700,
+      "title": "backend_api batch 3 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_01",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_admin_assistant_intent.py",
+        "tests/core_model/test_admin_assistant_language_preference.py",
+        "tests/core_model/test_admin_assistant_localization.py",
+        "tests/core_model/test_admin_assistant_registries.py",
+        "tests/core_model/test_data_discovery_deduplication.py",
+        "tests/core_model/test_data_discovery_policy.py",
+        "tests/core_model/test_data_discovery_scoring.py",
+        "tests/core_model/test_data_governance_gate_rules.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 1 (8 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_02",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_data_governance_issue_taxonomy.py",
+        "tests/core_model/test_data_governance_quality_adapter.py",
+        "tests/core_model/test_data_governance_review.py",
+        "tests/core_model/test_data_governance_usage_policy.py",
+        "tests/core_model/test_data_providers_policy.py",
+        "tests/core_model/test_data_verification_policy.py",
+        "tests/core_model/test_document_workspace_cleanup_suggestions.py",
+        "tests/core_model/test_document_workspace_extraction_decision.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 2 (8 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_03",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_document_workspace_lifecycle.py",
+        "tests/core_model/test_document_workspace_repeated_elements.py",
+        "tests/core_model/test_imports.py",
+        "tests/core_model/test_manual_data_duplicates.py",
+        "tests/core_model/test_manual_data_quality.py",
+        "tests/core_model/test_manual_data_usage_policy.py",
+        "tests/core_model/test_manual_data_validation.py",
+        "tests/core_model/test_phase16_rag.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 3 (8 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_04",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_phase17_conversation_memory.py",
+        "tests/core_model/test_phase18_feedback.py",
+        "tests/core_model/test_phase19_corpus.py",
+        "tests/core_model/test_phase20_corpus.py",
+        "tests/core_model/test_phase21a_pretraining_readiness.py",
+        "tests/core_model/test_phase8_architecture.py",
+        "tests/core_model/test_phase9_pretraining.py",
+        "tests/core_model/test_pipeline_integration_eligibility.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 4 (8 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_05",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_pipeline_integration_manifest.py",
+        "tests/core_model/test_pipeline_integration_split_policy.py",
+        "tests/core_model/test_sample_import_policy.py",
+        "tests/core_model/test_semantic_chunk_classification.py",
+        "tests/core_model/test_semantic_chunk_coverage.py",
+        "tests/core_model/test_semantic_chunk_duplicates.py",
+        "tests/core_model/test_semantic_chunk_hierarchy.py",
+        "tests/core_model/test_semantic_chunk_lifecycle.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 5 (8 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_06",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_semantic_chunk_quality.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 6 (1 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "rag_01",
+      "category": "rag",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_rag_api.py",
+        "tests/backend/test_rag_sandbox_answer_service.py",
+        "tests/backend/test_rag_sandbox_api.py",
+        "tests/backend/test_rag_sandbox_corpus_service.py",
+        "tests/backend/test_rag_sandbox_eligibility_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "rag batch 1 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "rag_02",
+      "category": "rag",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_rag_sandbox_evaluation_service.py",
+        "tests/backend/test_rag_sandbox_index_service.py",
+        "tests/backend/test_rag_sandbox_query_and_retrieval_services.py",
+        "tests/backend/test_rag_sandbox_review_report_acceptance_deletion.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "rag batch 2 (4 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "training_01",
+      "category": "training",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_base_training_api.py",
+        "tests/backend/test_governed_training_handoff_service.py",
+        "tests/backend/test_incremental_training_api.py",
+        "tests/backend/test_incremental_training_checkpoint_and_comparison.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 400,
+      "title": "training batch 1 (4 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "training_02",
+      "category": "training",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_incremental_training_review_report_and_acceptance.py",
+        "tests/backend/test_incremental_training_run_and_execution.py",
+        "tests/backend/test_instruction_tuning_api.py",
+        "tests/backend/test_pretraining_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 400,
+      "title": "training batch 2 (4 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "training_03",
+      "category": "training",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_pretraining_readiness_api.py",
+        "tests/backend/test_training_contamination_replay_and_promotion.py",
+        "tests/backend/test_training_suitability_and_transformation.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 400,
+      "title": "training batch 3 (3 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "model_registry_01",
+      "category": "model_registry",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_core_model_api.py",
+        "tests/backend/test_inference_runtime_api.py",
+        "tests/backend/test_model_evaluation_api.py",
+        "tests/backend/test_model_release_api.py",
+        "tests/backend/test_tokenizer_pipeline.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 420,
+      "title": "model_registry batch 1 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "production_readiness_01",
+      "category": "production_readiness",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_production_artifact_security_and_readiness.py",
+        "tests/backend/test_production_backup_restore_and_deployment_readiness.py",
+        "tests/backend/test_production_model_release_request.py",
+        "tests/backend/test_production_model_release_validation_activation.py",
+        "tests/backend/test_production_rag_eligibility_and_promotion.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 400,
+      "title": "production_readiness batch 1 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "production_readiness_02",
+      "category": "production_readiness",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_production_rag_validation_activation_rollback.py",
+        "tests/backend/test_production_readiness_admin_assistant.py",
+        "tests/backend/test_production_readiness_api.py",
+        "tests/backend/test_production_readiness_security.py",
+        "tests/backend/test_production_regression_and_readiness_report.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 400,
+      "title": "production_readiness batch 2 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "admin_assistant_01",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_admin_assistant_api.py",
+        "tests/backend/test_admin_assistant_api_phase8.py",
+        "tests/backend/test_admin_assistant_chat_service.py",
+        "tests/backend/test_admin_assistant_context_repository.py",
+        "tests/backend/test_admin_assistant_dataset_discovery_integration.py",
+        "tests/backend/test_admin_assistant_external_data_provider_integration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "admin_assistant batch 1 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "admin_assistant_02",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_admin_assistant_language_deterministic_responses.py",
+        "tests/backend/test_admin_assistant_language_preference_api.py",
+        "tests/backend/test_admin_assistant_language_service.py",
+        "tests/backend/test_admin_assistant_lifecycle.py",
+        "tests/backend/test_admin_assistant_llm_language_enforcement.py",
+        "tests/backend/test_admin_assistant_tools.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "admin_assistant batch 2 (6 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "admin_assistant_03",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_admin_cli.py",
+        "tests/backend/test_dataset_sample_import_admin_assistant.py",
+        "tests/backend/test_dataset_verification_admin_assistant.py",
+        "tests/backend/test_incremental_training_admin_assistant.py",
+        "tests/backend/test_rag_sandbox_admin_assistant.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "admin_assistant batch 3 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "security_01",
+      "category": "security",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_dataset_discovery_security.py",
+        "tests/backend/test_dataset_sample_import_security.py",
+        "tests/backend/test_dataset_verification_security.py",
+        "tests/backend/test_incremental_training_security.py",
+        "tests/backend/test_rag_sandbox_security.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "security batch 1 (5 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "frontend_unit_01",
+      "category": "frontend_unit",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "Admin dashboard vitest suite",
+      "working_directory": "apps/admin-dashboard"
+    },
+    {
+      "batch_id": "frontend_build_01",
+      "category": "frontend_build",
+      "command": [
+        "npx",
+        "vite",
+        "build"
+      ],
+      "expected_artifacts": [
+        "apps/admin-dashboard/dist/index.html"
+      ],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 0,
+        "retry_on": []
+      },
+      "timeout_seconds": 180,
+      "title": "Admin dashboard production build",
+      "working_directory": "apps/admin-dashboard"
+    },
+    {
+      "batch_id": "browser_e2e_01",
+      "category": "browser_e2e",
+      "command": [
+        "npx",
+        "playwright",
+        "test"
+      ],
+      "expected_artifacts": [
+        "apps/admin-dashboard/playwright-report"
+      ],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 600,
+      "title": "Playwright critical-workflow browser automation",
+      "working_directory": "apps/admin-dashboard"
+    },
+    {
+      "batch_id": "static_analysis_01",
+      "category": "static_analysis",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "ruff",
+        "check",
+        "."
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 0,
+        "retry_on": []
+      },
+      "timeout_seconds": 120,
+      "title": "ruff static analysis (whole repository)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "secret_scan_01",
+      "category": "secret_scan",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_production_artifact_security_and_readiness.py",
+        "-q",
+        "-k",
+        "secret_scan"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 120,
+      "title": "Secret-scan service tests (redaction, frontend bundle, domain-model fields)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "forbidden_write_scan_01",
+      "category": "forbidden_write_scan",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_production_readiness_security.py",
+        "-q",
+        "-k",
+        "mutates_activation_state or new_network_library or expose_no_download"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 120,
+      "title": "Static guards: no raw activation-state mutation, no download endpoints, no new network imports",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_07",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_knowledge_routing_taxonomy.py",
+        "tests/core_model/test_knowledge_routing_policy.py",
+        "tests/core_model/test_knowledge_routing_pipeline.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 7 -- Phase 17 knowledge routing (3 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_10",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_routing_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "backend_services batch 10 -- Phase 17 knowledge routing (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_04",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_routing_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "backend_api batch 4 -- Phase 17 knowledge routing (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "admin_assistant_04",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_routing_admin_assistant.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "admin_assistant batch 4 -- Phase 17 knowledge routing (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_09",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase17_knowledge_routing_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 9 -- Phase 17 knowledge routing migration (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_10",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase18_public_chat_routing_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 10 -- Phase 18 public chat routing migration (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_11",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_public_chat_routing_service.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_services batch 11 -- Phase 18 public Smart Answer Router (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_05",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_public_chat_admin_diagnostics.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "backend_api batch 5 -- Phase 18 public chat admin diagnostics + help + assistant tools (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "security_02",
+      "category": "security",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_public_chat_security.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "security batch 2 -- Phase 18 public chat router security/false-route controls (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "frontend_unit_02",
+      "category": "frontend_unit",
+      "command": [
+        "npm",
+        "test"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "Public chatbot vitest suite",
+      "working_directory": "apps/chatbot"
+    },
+    {
+      "batch_id": "frontend_build_02",
+      "category": "frontend_build",
+      "command": [
+        "npx",
+        "vite",
+        "build"
+      ],
+      "expected_artifacts": [
+        "apps/chatbot/dist/index.html"
+      ],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 0,
+        "retry_on": []
+      },
+      "timeout_seconds": 180,
+      "title": "Public chatbot production build",
+      "working_directory": "apps/chatbot"
+    },
+    {
+      "batch_id": "database_migrations_11",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase19_knowledge_gap_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 11 -- Phase 19 knowledge-gap registry migration (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_services_12",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_gap_core_services.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "backend_services batch 12 -- Phase 19 knowledge-gap core services (eligibility/privacy/canonicalization/clustering/priority) (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_06",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_gap_admin_api.py",
+        "tests/backend/test_public_chat_knowledge_gap_integration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "backend_api batch 6 -- Phase 19 knowledge-gap admin API + Phase 18 integration (2 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "admin_assistant_05",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_gap_admin_assistant.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "admin_assistant batch 5 -- Phase 19 knowledge-gap Admin Assistant tools/actions (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_08",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_knowledge_gap_help.py",
+        "tests/core_model/test_public_chat_safety_supplemental.py",
+        "tests/core_model/test_public_chat_ambiguity_supplemental.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 8 -- Phase 19 knowledge-gap help FAQ + Phase 18 safety/ambiguity supplemental rules (3 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "security_03",
+      "category": "security",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_knowledge_gap_security_and_performance.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "security batch 3 -- Phase 19 knowledge-gap security/privacy/performance (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "database_migrations_12",
+      "category": "database_migrations",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/database/test_phase20_trusted_web_tool_gateway_migration.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "database_migrations batch 12 -- Phase 20 trusted-web/tool-gateway migration (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "core_model_09",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_tool_gateway_security_and_functional.py",
+        "tests/core_model/test_web_search_pipeline_modules.py",
+        "tests/core_model/test_trusted_web_help.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "core_model batch 9 -- Phase 20 tool gateway security/functional, Web pipeline modules, Trusted Web help FAQ (3 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "backend_api_07",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_trusted_web_and_tools_admin_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 240,
+      "title": "backend_api batch 7 -- Phase 20 Trusted Web + Deterministic Tools Admin API (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "admin_assistant_06",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_trusted_web_admin_assistant.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "admin_assistant batch 6 -- Phase 20 Trusted Web / Deterministic Tools Admin Assistant tools/actions (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "security_04",
+      "category": "security",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_safe_web_fetcher_security.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 180,
+      "title": "security batch 4 -- Phase 20 SafeWebFetcher SSRF/security (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "document_sft_01",
+      "category": "backend_services",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_document_sft_workflow_service.py",
+        "tests/backend/test_document_sft_dataset_handoff.py",
+        "tests/backend/test_document_sft_expanded_generators.py",
+        "tests/backend/test_document_tamil_correction_registry.py",
+        "tests/backend/test_document_content_classification.py",
+        "tests/backend/test_document_security_review.py",
+        "tests/backend/test_document_sft_vision_blocking.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 420,
+      "title": "document_sft batch 1: SFT generation/handoff/tamil/classification/security services (7 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "document_sft_02",
+      "category": "backend_api",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_document_sft_workflow_api.py",
+        "tests/backend/test_document_sft_production_integration_api.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "document_sft batch 2: SFT workflow + production integration API (2 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "document_sft_03",
+      "category": "admin_assistant",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_document_sft_workflow_admin_assistant.py",
+        "tests/backend/test_document_sft_finalization_admin_assistant.py",
+        "tests/backend/test_admin_assistant_document_navigation.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "document_sft batch 3: SFT Admin Assistant proposals + document navigation (3 files)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "document_sft_04",
+      "category": "security",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/backend/test_document_sft_workflow_security.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "document_sft batch 4: SFT workflow security (1 file)",
+      "working_directory": "."
+    },
+    {
+      "batch_id": "document_sft_05",
+      "category": "core_model",
+      "command": [
+        "${PYTHON}",
+        "-m",
+        "pytest",
+        "tests/core_model/test_document_workspace_finalization_detectors.py",
+        "-q"
+      ],
+      "expected_artifacts": [],
+      "failure_classification_rules": {
+        "environment_failed_if_exit_code_in": [
+          124,
+          137,
+          -9,
+          -15
+        ],
+        "passed_if_exit_code_in": [
+          0
+        ],
+        "product_failed_if_exit_code_in": [
+          1
+        ]
+      },
+      "required": true,
+      "retry_policy": {
+        "max_retries": 1,
+        "retry_on": [
+          "environment_failed",
+          "timed_out"
+        ]
+      },
+      "timeout_seconds": 300,
+      "title": "document_sft batch 5: finalization cleanup/repeated-element detectors (1 file)",
+      "working_directory": "."
+    }
+  ],
+  "created_at": "2026-07-29T00:00:00+00:00",
+  "description": "Repository-owned, checksum-verified list of every regression batch the production-readiness pipeline may execute. No batch command is ever admin-supplied; every command below is fixed at commit time. '${PYTHON}' is resolved by the executing service to the project's own interpreter (never a shell-expanded or admin-supplied value).",
+  "finalization_policy": {
+    "all_required_passed": "passed",
+    "any_required_product_failure": "failed",
+    "environment_failure_with_all_else_passing": "passed_with_environment_limitations",
+    "missing_required_batch": "blocked",
+    "required_categories": [
+      "admin_assistant",
+      "backend_api",
+      "backend_services",
+      "browser_e2e",
+      "core_model",
+      "database_integrity",
+      "database_migrations",
+      "database_repositories",
+      "forbidden_write_scan",
+      "frontend_build",
+      "frontend_unit",
+      "model_registry",
+      "production_readiness",
+      "rag",
+      "secret_scan",
+      "security",
+      "static_analysis",
+      "training"
+    ]
+  },
+  "manifest_checksum_sha256": "f185a9ad2ab11cf84aae67cac742a99eb9f46a5f97b103ac810e1d8640e043b9",
+  "manifest_version": 8,
+  "name": "Brud AI Canonical Production Regression Manifest",
+  "required_environment": {
+    "node_min_version": "18",
+    "python_min_version": "3.11",
+    "requires_chromium_path_env": "PLAYWRIGHT_CHROMIUM_PATH",
+    "requires_network": false
+  },
+  "updated_at": "2026-07-31T19:20:53.072224+00:00"
+}

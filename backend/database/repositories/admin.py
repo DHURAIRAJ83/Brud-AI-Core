@@ -278,6 +278,57 @@ class AdminRepository(BaseRepository):
             ).fetchone()
         return bool(row and hmac.compare_digest(row[0], _hash_token(token)))
 
+    # -- Phase 10A: Admin Assistant response-language preference ------------
+
+    def get_response_language(self, admin_public_id: str) -> dict[str, str]:
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT admin_assistant_response_language, updated_at FROM admin_accounts "
+                "WHERE public_id=?",
+                (admin_public_id,),
+            ).fetchone()
+            if not row:
+                raise NotFoundError("admin not found")
+            return {
+                "response_language": row["admin_assistant_response_language"],
+                "updated_at": row["updated_at"],
+            }
+
+    def set_response_language(
+        self, admin_public_id: str, response_language: str, *, change_source: str = "api"
+    ) -> dict[str, str]:
+        """Updates the saved preference and records the transition on the
+        `audit_logs` table via this file's own `_audit()` helper -- never
+        the full chat message content, only the enum change itself."""
+
+        if response_language not in ("tamil", "english", "tanglish", "auto"):
+            raise ValidationError(f"unsupported response_language: {response_language}")
+        with self.transaction() as connection:
+            row = connection.execute(
+                "SELECT id, admin_assistant_response_language FROM admin_accounts "
+                "WHERE public_id=?",
+                (admin_public_id,),
+            ).fetchone()
+            if not row:
+                raise NotFoundError("admin not found")
+            previous = row["admin_assistant_response_language"]
+            now = _now().isoformat()
+            connection.execute(
+                "UPDATE admin_accounts SET admin_assistant_response_language=?,updated_at=? "
+                "WHERE id=?",
+                (response_language, now, row["id"]),
+            )
+            _audit(
+                connection,
+                "admin_assistant_response_language_changed",
+                "success",
+                admin_public_id,
+                old_response_language=previous,
+                new_response_language=response_language,
+                change_source=change_source,
+            )
+        return {"response_language": response_language, "updated_at": now}
+
     def logout(self, token: str) -> None:
         with self.transaction() as connection:
             row = connection.execute(

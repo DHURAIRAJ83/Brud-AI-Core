@@ -1,0 +1,763 @@
+{
+  "policy_version": "v1",
+  "taxonomy_version": "v1",
+  "domains": {
+    "tamil_language": {
+      "keywords_en": [
+        "tamil grammar",
+        "tamil word",
+        "tamil letter",
+        "tamil noun",
+        "tamil verb",
+        "tamil spelling",
+        "tamil pronunciation",
+        "meaning of the tamil word",
+        "tamil meaning",
+        "in tamil grammar"
+      ],
+      "keywords_ta": [
+        "தமிழ்",
+        "இலக்கணம்",
+        "எழுத்து",
+        "சொல்",
+        "மொழி"
+      ],
+      "subdomains": {
+        "tamil_grammar": {
+          "keywords_en": [
+            "grammar",
+            "noun",
+            "verb",
+            "tense",
+            "uyir eluthu",
+            "mei eluthu"
+          ],
+          "keywords_ta": [
+            "இலக்கணம்",
+            "பெயர்ச்சொல்",
+            "வினைச்சொல்",
+            "உயிரெழுத்து",
+            "மெய்யெழுத்து",
+            "வேற்றுமை"
+          ]
+        },
+        "tamil_orthography": {
+          "keywords_en": [
+            "tamil spelling",
+            "tamil orthography",
+            "correct spelling"
+          ],
+          "keywords_ta": [
+            "எழுத்துப்பிழை",
+            "சரியான எழுத்து",
+            "உயிர்மெய்"
+          ]
+        },
+        "tamil_meaning": {
+          "keywords_en": [
+            "meaning of the tamil word",
+            "what does the tamil word mean"
+          ],
+          "keywords_ta": [
+            "பொருள் என்ன",
+            "அர்த்தம் என்ன",
+            "பொருள்"
+          ]
+        },
+        "tamil_translation": {
+          "keywords_en": [
+            "translate to tamil",
+            "tamil translation"
+          ],
+          "keywords_ta": [
+            "மொழிபெயர்ப்பு",
+            "தமிழில் மொழிபெயர்"
+          ]
+        }
+      }
+    },
+    "english_language": {
+      "keywords_en": [
+        "english grammar",
+        "english word",
+        "english meaning",
+        "in english grammar",
+        "english spelling",
+        "english sentence"
+      ],
+      "keywords_ta": []
+    },
+    "tanglish_input": {
+      "keywords_en": [],
+      "keywords_ta": []
+    },
+    "mathematics": {
+      "keywords_en": [
+        "calculate",
+        "multiply",
+        "multiplication",
+        "divide",
+        "division",
+        "subtract",
+        "add up",
+        "square root",
+        "percentage of",
+        "sum of",
+        "×",
+        "*"
+      ],
+      "keywords_ta": [
+        "கணக்கு",
+        "கூட்டல்",
+        "கழித்தல்",
+        "பெருக்கல்",
+        "வகுத்தல்"
+      ],
+      "subdomains": {
+        "basic_arithmetic": {
+          "keywords_en": [
+            "add",
+            "plus",
+            "minus",
+            "simple addition"
+          ],
+          "keywords_ta": [
+            "கூட்டல்",
+            "எளிய கணக்கு"
+          ]
+        },
+        "advanced_calculation": {
+          "keywords_en": [
+            "multiply",
+            "×",
+            "*",
+            "large number",
+            "compound interest",
+            "square root",
+            "factorial"
+          ],
+          "keywords_ta": [
+            "பெருக்கல்",
+            "சிக்கலான கணக்கு"
+          ]
+        }
+      }
+    },
+    "computer_and_coding": {
+      "keywords_en": [
+        "python",
+        "javascript",
+        "software",
+        "programming",
+        "code",
+        "api",
+        "version",
+        "library",
+        "framework",
+        "compiler",
+        "algorithm",
+        "database",
+        "server"
+      ],
+      "keywords_ta": [
+        "மென்பொருள்",
+        "நிரலாக்கம்"
+      ],
+      "subdomains": {
+        "software_usage": {
+          "keywords_en": [
+            "how do i use",
+            "how to install",
+            "how to configure",
+            "settings"
+          ],
+          "keywords_ta": []
+        },
+        "software_documentation": {
+          "keywords_en": [
+            "documentation",
+            "docs",
+            "readme",
+            "api reference"
+          ],
+          "keywords_ta": []
+        },
+        "programming": {
+          "keywords_en": [
+            "write a function",
+            "python code",
+            "programming language",
+            "algorithm",
+            "loop",
+            "variable"
+          ],
+          "keywords_ta": []
+        },
+        "cybersecurity": {
+          "keywords_en": [
+            "cybersecurity",
+            "vulnerability",
+            "penetration testing",
+            "firewall",
+            "encryption",
+            "secure coding"
+          ],
+          "keywords_ta": []
+        }
+      }
+    },
+    "science": {
+      "keywords_en": [
+        "physics",
+        "chemistry",
+        "biology",
+        "atom",
+        "molecule",
+        "cell",
+        "gravity",
+        "energy",
+        "reaction",
+        "organism"
+      ],
+      "keywords_ta": [
+        "அறிவியல்"
+      ],
+      "subdomains": {
+        "physics": {
+          "keywords_en": [
+            "physics",
+            "gravity",
+            "force",
+            "velocity",
+            "energy"
+          ],
+          "keywords_ta": []
+        },
+        "chemistry": {
+          "keywords_en": [
+            "chemistry",
+            "molecule",
+            "reaction",
+            "compound",
+            "element"
+          ],
+          "keywords_ta": []
+        },
+        "biology": {
+          "keywords_en": [
+            "biology",
+            "cell",
+            "organism",
+            "dna",
+            "species"
+          ],
+          "keywords_ta": []
+        }
+      }
+    },
+    "social_science": {
+      "keywords_en": [
+        "history",
+        "geography",
+        "civics",
+        "constitution",
+        "empire",
+        "continent",
+        "capital city"
+      ],
+      "keywords_ta": [
+        "வரலாறு",
+        "புவியியல்"
+      ],
+      "subdomains": {
+        "history": {
+          "keywords_en": [
+            "history of",
+            "historical",
+            "ancient",
+            "empire",
+            "war of"
+          ],
+          "keywords_ta": [
+            "வரலாறு"
+          ]
+        },
+        "geography": {
+          "keywords_en": [
+            "geography",
+            "continent",
+            "capital city",
+            "river",
+            "mountain"
+          ],
+          "keywords_ta": [
+            "புவியியல்"
+          ]
+        },
+        "civics": {
+          "keywords_en": [
+            "civics",
+            "constitution",
+            "rights and duties",
+            "democracy"
+          ],
+          "keywords_ta": []
+        }
+      }
+    },
+    "government_services": {
+      "keywords_en": [
+        "government scheme",
+        "govt scheme",
+        "government announcement",
+        "eligibility criteria",
+        "application form",
+        "subsidy",
+        "welfare scheme"
+      ],
+      "keywords_ta": [
+        "அரசு திட்டம்",
+        "அரசு அறிவித்த",
+        "மானியம்"
+      ],
+      "subdomains": {
+        "government_scheme": {
+          "keywords_en": [
+            "government scheme",
+            "welfare scheme",
+            "subsidy"
+          ],
+          "keywords_ta": [
+            "அரசு திட்டம்",
+            "மானியம்"
+          ]
+        },
+        "application_guidance": {
+          "keywords_en": [
+            "how to apply",
+            "application form",
+            "required documents"
+          ],
+          "keywords_ta": [
+            "விண்ணப்பிக்க"
+          ]
+        },
+        "legal_or_regulatory_current": {
+          "keywords_en": [
+            "new law",
+            "current regulation",
+            "amendment"
+          ],
+          "keywords_ta": [
+            "புதிய சட்டம்"
+          ]
+        }
+      }
+    },
+    "industry_knowledge": {
+      "keywords_en": [
+        "business process",
+        "industry standard",
+        "supply chain",
+        "manufacturing process",
+        "market practice"
+      ],
+      "keywords_ta": [],
+      "subdomains": {
+        "business_process": {
+          "keywords_en": [
+            "business process",
+            "workflow",
+            "operations"
+          ],
+          "keywords_ta": []
+        },
+        "technical_industry": {
+          "keywords_en": [
+            "industry standard",
+            "manufacturing",
+            "engineering practice"
+          ],
+          "keywords_ta": []
+        }
+      }
+    },
+    "current_affairs": {
+      "keywords_en": [
+        "news",
+        "weather",
+        "price of",
+        "match score",
+        "today's news",
+        "breaking news",
+        "stock price",
+        "exchange rate"
+      ],
+      "keywords_ta": [
+        "செய்தி",
+        "வானிலை",
+        "விலை",
+        "இன்றைய"
+      ],
+      "subdomains": {
+        "news": {
+          "keywords_en": [
+            "news",
+            "breaking news",
+            "headline"
+          ],
+          "keywords_ta": [
+            "செய்தி"
+          ]
+        },
+        "weather": {
+          "keywords_en": [
+            "weather",
+            "temperature",
+            "rain forecast"
+          ],
+          "keywords_ta": [
+            "வானிலை"
+          ]
+        },
+        "prices": {
+          "keywords_en": [
+            "price of",
+            "stock price",
+            "exchange rate",
+            "cost of"
+          ],
+          "keywords_ta": [
+            "விலை"
+          ]
+        },
+        "sports": {
+          "keywords_en": [
+            "match score",
+            "tournament result",
+            "cricket score"
+          ],
+          "keywords_ta": [
+            "போட்டி முடிவு"
+          ]
+        }
+      }
+    },
+    "general_knowledge": {
+      "keywords_en": [
+        "capital of",
+        "who invented",
+        "how many",
+        "definition of"
+      ],
+      "keywords_ta": [],
+      "subdomains": {
+        "stable_general_fact": {
+          "keywords_en": [
+            "capital of",
+            "who invented",
+            "definition of"
+          ],
+          "keywords_ta": []
+        }
+      }
+    },
+    "personal_context": {
+      "keywords_en": [
+        "my previous",
+        "my preference",
+        "i told you",
+        "remember my",
+        "what did i say"
+      ],
+      "keywords_ta": [
+        "என் முந்தைய",
+        "என் விருப்பம்",
+        "நான் சொன்ன"
+      ]
+    },
+    "translation": {
+      "keywords_en": [
+        "translate",
+        "translation of",
+        "how do you say"
+      ],
+      "keywords_ta": [
+        "மொழிபெயர்"
+      ]
+    },
+    "creative_writing": {
+      "keywords_en": [
+        "write a poem",
+        "write a story",
+        "compose a",
+        "creative writing"
+      ],
+      "keywords_ta": [
+        "கவிதை எழுது",
+        "கதை எழுது"
+      ]
+    },
+    "administrative_action": {
+      "keywords_en": [
+        "reset my password",
+        "submit the form",
+        "cancel my",
+        "update my account",
+        "please apply",
+        "please submit"
+      ],
+      "keywords_ta": [
+        "கடவுச்சொல்லை மாற்று",
+        "படிவத்தை சமர்ப்பி"
+      ]
+    },
+    "safety_sensitive": {
+      "keywords_en": [
+        "make a bomb",
+        "make a weapon",
+        "hack into",
+        "steal credentials",
+        "how to poison",
+        "self harm",
+        "kill myself",
+        "synthesize a drug"
+      ],
+      "keywords_ta": [
+        "ஆயுதம் தயாரிக்க",
+        "தற்கொலை"
+      ]
+    }
+  },
+  "intents": {
+    "ask_fact": {
+      "keywords_en": [
+        "what is",
+        "who is",
+        "where is",
+        "when did"
+      ],
+      "keywords_ta": [
+        "என்ன",
+        "யார்",
+        "எங்கே",
+        "எப்போது"
+      ]
+    },
+    "ask_explanation": {
+      "keywords_en": [
+        "why does",
+        "explain",
+        "how does it work"
+      ],
+      "keywords_ta": [
+        "ஏன்",
+        "விளக்கு"
+      ]
+    },
+    "ask_definition": {
+      "keywords_en": [
+        "define",
+        "definition of",
+        "என்றால் என்ன",
+        "meaning of"
+      ],
+      "keywords_ta": [
+        "என்றால் என்ன",
+        "பொருள் என்ன"
+      ]
+    },
+    "ask_how_to": {
+      "keywords_en": [
+        "how do i",
+        "how to",
+        "steps to"
+      ],
+      "keywords_ta": [
+        "எப்படி"
+      ]
+    },
+    "ask_calculation": {
+      "keywords_en": [
+        "calculate",
+        "×",
+        "*",
+        "multiply",
+        "sum of",
+        "how much is"
+      ],
+      "keywords_ta": [
+        "கணக்கு"
+      ]
+    },
+    "ask_translation": {
+      "keywords_en": [
+        "translate",
+        "how do you say"
+      ],
+      "keywords_ta": [
+        "மொழிபெயர்"
+      ]
+    },
+    "ask_summarization": {
+      "keywords_en": [
+        "summarize",
+        "summary of",
+        "tl;dr"
+      ],
+      "keywords_ta": [
+        "சுருக்கம்"
+      ]
+    },
+    "ask_comparison": {
+      "keywords_en": [
+        "difference between",
+        "compare",
+        "vs",
+        "versus"
+      ],
+      "keywords_ta": [
+        "வேறுபாடு"
+      ]
+    },
+    "ask_recommendation": {
+      "keywords_en": [
+        "recommend",
+        "suggest",
+        "which is better"
+      ],
+      "keywords_ta": [
+        "பரிந்துரை"
+      ]
+    },
+    "ask_current_status": {
+      "keywords_en": [
+        "latest",
+        "current",
+        "now",
+        "today",
+        "right now",
+        "as of today",
+        "இன்று"
+      ],
+      "keywords_ta": [
+        "இன்று",
+        "இப்போது",
+        "தற்போதைய"
+      ]
+    },
+    "ask_navigation": {
+      "keywords_en": [
+        "take me to",
+        "show me",
+        "go to",
+        "open the"
+      ],
+      "keywords_ta": [
+        "செல்",
+        "திற"
+      ]
+    },
+    "ask_personal_memory": {
+      "keywords_en": [
+        "my previous",
+        "what did i say",
+        "remember my"
+      ],
+      "keywords_ta": [
+        "என் முந்தைய",
+        "நான் சொன்ன"
+      ]
+    },
+    "ask_code": {
+      "keywords_en": [
+        "write a function",
+        "write code",
+        "python code",
+        "debug this"
+      ],
+      "keywords_ta": []
+    },
+    "ask_creative_generation": {
+      "keywords_en": [
+        "write a poem",
+        "write a story",
+        "compose"
+      ],
+      "keywords_ta": [
+        "கவிதை எழுது"
+      ]
+    },
+    "ask_action": {
+      "keywords_en": [
+        "please apply",
+        "please submit",
+        "please reset",
+        "please cancel",
+        "please update"
+      ],
+      "keywords_ta": [
+        "தயவுசெய்து"
+      ]
+    },
+    "unsafe_operational": {
+      "keywords_en": [
+        "how do i make a bomb",
+        "how to hack",
+        "how to steal",
+        "how to synthesize"
+      ],
+      "keywords_ta": []
+    }
+  },
+  "freshness_signals": {
+    "real_time": {
+      "keywords_en": [
+        "right now",
+        "at this moment",
+        "today's weather",
+        "current weather",
+        "live score"
+      ],
+      "keywords_ta": [
+        "இப்போது",
+        "இன்றைய வானிலை",
+        "இன்று"
+      ]
+    },
+    "time_sensitive": {
+      "keywords_en": [
+        "latest",
+        "current version",
+        "recent",
+        "this week",
+        "newest",
+        "up to date",
+        "latest stable version",
+        "api version",
+        "who is the current"
+      ],
+      "keywords_ta": [
+        "தற்போதைய",
+        "சமீபத்திய"
+      ]
+    },
+    "historical": {
+      "keywords_en": [
+        "in 19",
+        "in 20",
+        "history of",
+        "was elected in",
+        "election result",
+        "previous election",
+        "used to be"
+      ],
+      "keywords_ta": [
+        "தேர்தல் முடிவு",
+        "வரலாறு"
+      ]
+    }
+  },
+  "reason_code_registry_note": "The authoritative reason-code registry is core_model/knowledge_routing/reason_codes.py; this file carries only classification keyword data, per the plan doc's JSON-vs-Python split.",
+  "policy_checksum_sha256": "067c9c8d70c9a2f9b103e21fe83fdf8330d0f278117ba1b08fa601d764ef1e43"
+}

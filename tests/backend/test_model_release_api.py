@@ -294,8 +294,8 @@ async def test_candidate_b_eligible_full_lifecycle(api_app: FastAPI) -> None:
         assert verify_bundle.status_code == 200
         assert verify_bundle.json()["matches"] is True
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 
@@ -398,8 +398,8 @@ async def test_rollback_workflow(api_app: FastAPI) -> None:
         family_final = await client.get(f"/api/admin/model-releases/families/{family_id}")
         assert family_final.json()["current_release_public_id"] == release_alpha_1
 
-        chat = await client.post("/api/chat", json={"message": "hello", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "hello"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 

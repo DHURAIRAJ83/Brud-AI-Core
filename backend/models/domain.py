@@ -477,6 +477,14 @@ class AdminApprovalCreate(DomainModel):
     request_payload: dict[str, Any] = Field(default_factory=dict)
     requested_by: str
     summary: str = ""
+    # Phase 8 additions (migration 029) -- additive, defaulted, and never
+    # required by any Phase 2-7 caller. `preview`/`stale_check` are
+    # generated once at propose time (see AdminAssistantService.propose);
+    # `expires_at` governs when that snapshot must be treated as stale.
+    risk_level: str = "moderate"
+    preview: dict[str, Any] = Field(default_factory=dict)
+    stale_check: dict[str, Any] = Field(default_factory=dict)
+    expires_at: datetime | None = None
 
 
 class AdminApprovalUpdate(DomainModel):

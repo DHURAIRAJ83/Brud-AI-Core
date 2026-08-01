@@ -71,6 +71,10 @@ class AssignmentPatch(DomainModel):
     canary_percentage: int | None = Field(default=None, ge=0, le=100)
 
 
+class ScopeEnabledPatch(DomainModel):
+    enabled: bool
+
+
 class AssignmentActivateRequest(DomainModel):
     explicit_activation_confirmed: bool = False
 

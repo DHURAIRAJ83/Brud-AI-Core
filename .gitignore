@@ -27,3 +27,7 @@ models/checkpoints/*
 models/active/*
 models/exports/*
 !**/.gitkeep
+apps/admin-dashboard/e2e/.e2e-state.json
+apps/admin-dashboard/e2e/test-results/
+apps/admin-dashboard/playwright-report/
+apps/admin-dashboard/blob-report/

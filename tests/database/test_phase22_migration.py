@@ -64,13 +64,18 @@ APPLY_THROUGH_V21 = (
 
 
 def test_fresh_database_reaches_schema_22(tmp_path: Path) -> None:
+    # A fresh database always reaches the current SCHEMA_VERSION (now beyond
+    # 22, as later phases add their own migrations) -- this test only checks
+    # that migration 22's own columns exist along the way, not that 22 is
+    # the final version.
     database = tmp_path / "fresh.db"
     initialize_database(database)
-    assert current_schema_version(database) == SCHEMA_VERSION == 22
+    assert current_schema_version(database) == SCHEMA_VERSION
+    assert SCHEMA_VERSION >= 22
     with database_connection(database) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(admin_approvals)")}
         assert PHASE22_COLUMNS <= columns
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 22
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
         assert not list(connection.execute("PRAGMA foreign_key_check"))
 
 
@@ -101,7 +106,9 @@ def test_schema_21_upgrades_to_22_and_preserves_existing_approvals(tmp_path: Pat
         allow_external_storage=True,
     )
     version, _backup, integrity = upgrade_database(settings)
-    assert version == SCHEMA_VERSION == 22
+    # upgrade_database always brings a database to the current SCHEMA_VERSION,
+    # not just to 22 -- later phases add their own migrations on top.
+    assert version == SCHEMA_VERSION
     assert integrity == "ok"
 
     with database_connection(database) as connection:

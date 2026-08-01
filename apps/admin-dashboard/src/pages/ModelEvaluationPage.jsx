@@ -281,6 +281,7 @@ export default function ModelEvaluationPage() {
             <>
               <h3>Eligible Candidates</h3>
               <p className="notice">Only base_pretrained + instruction_tuned + evaluation_required candidates are eligible.</p>
+              <p className="notice">A governed, isolated evaluation-only dataset version (guaranteed never to leak into a training split) can be built from the Builds &amp; Pipelines page.</p>
               <div className="data-list">
                 {(state.candidates ?? []).length === 0 && <article>No eligible candidates yet — complete Phase 12 instruction tuning first.</article>}
                 {(state.candidates ?? []).map((item) => (

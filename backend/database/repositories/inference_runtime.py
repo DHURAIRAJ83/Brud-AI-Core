@@ -253,6 +253,15 @@ class InferenceRuntimeRepository(BaseRepository):
             "SELECT * FROM inference_assignment_scopes ORDER BY scope_key"
         ).fetchall()
 
+    def set_scope_enabled(
+        self, connection: sqlite3.Connection, scope_key: str, enabled: bool
+    ) -> None:
+        connection.execute(
+            "UPDATE inference_assignment_scopes SET enabled=?, updated_at=CURRENT_TIMESTAMP "
+            "WHERE scope_key=?",
+            (1 if enabled else 0, scope_key),
+        )
+
     # --- assignments -----------------------------------------------------
 
     def create_assignment(self, connection: sqlite3.Connection, values: dict[str, Any]) -> str:

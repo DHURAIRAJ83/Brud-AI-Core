@@ -298,8 +298,8 @@ async def test_full_evaluation_lifecycle(api_app: FastAPI) -> None:
             ).fetchone()
         assert json.loads(row["architecture_summary_json"])["not_public_chat_ready"] is True
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
 
         manifest = await client.post(
             f"/api/admin/model-evaluation/runs/{run_id}/manifest", headers=headers

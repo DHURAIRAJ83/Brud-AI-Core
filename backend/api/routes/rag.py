@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends
 
 from backend.api.auth import CsrfDependency, require_admin
 from backend.api.dependencies import SettingsDependency
+from backend.database.repositories.data_sources import DataSourceRepository
 from backend.database.repositories.inference_runtime import InferenceRuntimeRepository
 from backend.database.repositories.model_release import ModelReleaseRepository
 from backend.database.repositories.rag import RagRepository
@@ -34,6 +35,7 @@ from backend.models.rag import (
     RetrieveRequest,
     VectorIndexCreate,
 )
+from backend.services.data_source_service import SourceUsagePolicyService
 from backend.services.inference_runtime_service import InferenceRuntimeService
 from backend.services.model_assignment_service import ModelAssignmentService
 from backend.services.rag_evaluation_service import RagEvaluationService
@@ -58,6 +60,10 @@ def ingestion_service(settings) -> RagIngestionService:
 
 def retrieval_service(settings) -> RagRetrievalService:
     return RagRetrievalService(rag_repository(settings), settings)
+
+
+def source_usage_service(settings) -> SourceUsagePolicyService:
+    return SourceUsagePolicyService(DataSourceRepository(settings.resolved_database_path), settings)
 
 
 def generation_service(settings) -> RagGenerationService:
@@ -143,6 +149,27 @@ async def patch_source(
     admin: CsrfDependency,
 ):
     return ingestion_service(settings).patch_source(public_id, payload, admin.admin.public_id)
+
+
+@router.get("/sources/{public_id}/rights-check")
+async def source_rights_check(public_id: str, settings: SettingsDependency):
+    """Phase 2 preflight, additive: reports whether this knowledge source is
+    linked to a Source, Rights & Usage Registry entry allowing RAG use.
+    Never changes indexing/retrieval behaviour on its own -- this is a
+    read-only report for an admin to act on."""
+
+    summary = source_usage_service(settings).rights_summary_for_entities(
+        "rag_knowledge_source", [public_id], "rag"
+    )
+    if summary["allowed"]:
+        status = "allowed"
+    elif summary["review_required"]:
+        status = "review_required"
+    elif summary["blocked"]:
+        status = "blocked"
+    else:
+        status = "unlinked"
+    return {"status": status, **summary}
 
 
 # --- source versions -----------------------------------------------------

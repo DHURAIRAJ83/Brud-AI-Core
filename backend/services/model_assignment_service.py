@@ -89,6 +89,25 @@ class ModelAssignmentService:
             self.repository.ensure_default_scopes(connection)
             return {"items": [public_row(row) for row in self.repository.list_scopes(connection)]}
 
+    def set_scope_enabled(self, scope_key: str, enabled: bool, admin_id: str) -> dict[str, Any]:
+        """Additive Phase 18 capability: `public_chat` (and every other
+        scope) starts with a real, explicit enable/disable switch an
+        Admin can operate -- previously there was no way to enable
+        `public_chat` at all, even after an assignment passed the full
+        `_public_activation_gate()`. Does not change any other scope's
+        behavior or any existing assignment lifecycle logic."""
+
+        with self.repository.transaction() as connection:
+            self.repository.ensure_default_scopes(connection)
+            self.repository.scope_by_key(connection, scope_key)
+            self.repository.set_scope_enabled(connection, scope_key, enabled)
+            event_name = (
+                "inference_assignment_scope_enabled" if enabled
+                else "inference_assignment_scope_disabled"
+            )
+            self._audit(connection, event_name, admin_id, scope_key)
+            return public_row(self.repository.scope_by_key(connection, scope_key))
+
     # --- assignment eligibility gathering -----------------------------------------------------
 
     def _eligibility_for(

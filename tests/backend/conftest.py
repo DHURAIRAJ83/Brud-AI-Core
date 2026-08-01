@@ -24,6 +24,7 @@ def api_app(tmp_path: Path) -> FastAPI:
         allowed_data_dir=tmp_path,
         import_dir=tmp_path / "imports",
         import_report_dir=tmp_path / "imports" / "reports",
+        quarantine_dir=tmp_path / "quarantine",
         document_dir=tmp_path / "documents",
         document_report_dir=tmp_path / "documents" / "reports",
         tokenizer_dir=tmp_path / "tokenizers",

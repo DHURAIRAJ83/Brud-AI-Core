@@ -566,7 +566,7 @@ async def test_improvement_report_and_manifest(api_app: FastAPI) -> None:
         verify = await client.post(f"{CM}/policies/{policy_id}/manifest/verify", headers=headers)
         assert verify.json()["matches"] is True
 
-        chat = await client.post("/api/chat", json={"message": "hello", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "hello"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()

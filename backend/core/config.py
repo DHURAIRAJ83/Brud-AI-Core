@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     )
     database_wal: bool = Field(default=True, validation_alias="BRUD_DATABASE_WAL")
     database_auto_backup: bool = Field(default=True, validation_alias="BRUD_DATABASE_AUTO_BACKUP")
+    # Phase 15A Step 15: stores only the *name* of the environment
+    # variable holding the backup-encryption key -- never the key
+    # itself. The key is read from os.environ at encrypt/decrypt time
+    # only; it is never persisted to the database.
+    backup_encryption_key_env_var: str = Field(
+        default="BRUD_BACKUP_ENCRYPTION_KEY",
+        validation_alias="BRUD_BACKUP_ENCRYPTION_KEY_ENV_VAR",
+    )
     audit_enabled: bool = Field(default=True, validation_alias="BRUD_AUDIT_ENABLED")
     audit_retention_days: int = Field(
         default=365, ge=1, validation_alias="BRUD_AUDIT_RETENTION_DAYS"
@@ -111,6 +119,18 @@ class Settings(BaseSettings):
     )
     import_max_error_report_rows: int = Field(
         default=5_000, ge=1, le=25_000, validation_alias="BRUD_IMPORT_MAX_ERROR_REPORT_ROWS"
+    )
+    quarantine_dir: Path = Field(
+        default=Path("data/quarantine/external-samples"), validation_alias="BRUD_QUARANTINE_DIR"
+    )
+    quarantine_max_bytes_per_import: int = Field(
+        default=50_000_000,
+        ge=1,
+        le=500_000_000,
+        validation_alias="BRUD_QUARANTINE_MAX_BYTES_PER_IMPORT",
+    )
+    quarantine_total_quota_bytes: int = Field(
+        default=2_000_000_000, ge=1, validation_alias="BRUD_QUARANTINE_TOTAL_QUOTA_BYTES"
     )
     document_dir: Path = Field(default=Path("data/documents"), validation_alias="BRUD_DOCUMENT_DIR")
     document_report_dir: Path = Field(
@@ -209,6 +229,41 @@ class Settings(BaseSettings):
     )
     dataset_export_max_records: int = Field(
         default=100_000, ge=1, le=1_000_000, validation_alias="BRUD_DATASET_EXPORT_MAX_RECORDS"
+    )
+    document_sft_max_candidates_per_job: int = Field(
+        default=100, ge=1, le=500, validation_alias="BRUD_DOCUMENT_SFT_MAX_CANDIDATES_PER_JOB"
+    )
+    document_sft_export_dir: Path = Field(
+        default=Path("data/document_sft_exports"), validation_alias="BRUD_DOCUMENT_SFT_EXPORT_DIR"
+    )
+    document_sft_bulk_approval_max_items: int = Field(
+        default=25, ge=1, le=100, validation_alias="BRUD_DOCUMENT_SFT_BULK_APPROVAL_MAX_ITEMS"
+    )
+    document_sft_handoff_max_records: int = Field(
+        default=500, ge=1, le=5_000, validation_alias="BRUD_DOCUMENT_SFT_HANDOFF_MAX_RECORDS"
+    )
+    document_sft_generator_max_candidates: int = Field(
+        default=100, ge=1, le=500, validation_alias="BRUD_DOCUMENT_SFT_GENERATOR_MAX_CANDIDATES"
+    )
+    document_cleanup_max_findings_per_page: int = Field(
+        default=50, ge=1, le=500, validation_alias="BRUD_DOCUMENT_CLEANUP_MAX_FINDINGS_PER_PAGE"
+    )
+    document_tamil_max_findings_per_page: int = Field(
+        default=50, ge=1, le=500, validation_alias="BRUD_DOCUMENT_TAMIL_MAX_FINDINGS_PER_PAGE"
+    )
+    document_security_max_findings_per_page: int = Field(
+        default=50, ge=1, le=500, validation_alias="BRUD_DOCUMENT_SECURITY_MAX_FINDINGS_PER_PAGE"
+    )
+    document_classification_max_pages_per_job: int = Field(
+        default=200, ge=1, le=2_000,
+        validation_alias="BRUD_DOCUMENT_CLASSIFICATION_MAX_PAGES_PER_JOB",
+    )
+    document_sft_split_preview_max_records: int = Field(
+        default=1_000, ge=1, le=20_000,
+        validation_alias="BRUD_DOCUMENT_SFT_SPLIT_PREVIEW_MAX_RECORDS",
+    )
+    document_sft_api_page_size_max: int = Field(
+        default=200, ge=1, le=500, validation_alias="BRUD_DOCUMENT_SFT_API_PAGE_SIZE_MAX"
     )
     tokenizer_dir: Path = Field(
         default=Path("data/tokenizers"),
@@ -627,6 +682,57 @@ class Settings(BaseSettings):
     public_chat_model_enabled: bool = Field(
         default=False, validation_alias="BRUD_PUBLIC_CHAT_MODEL_ENABLED"
     )
+    public_chat_rate_limit_max_requests: int = Field(
+        default=20, ge=1, validation_alias="BRUD_PUBLIC_CHAT_RATE_LIMIT_MAX_REQUESTS"
+    )
+    public_chat_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, validation_alias="BRUD_PUBLIC_CHAT_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    knowledge_gap_capture_enabled: bool = Field(
+        default=True, validation_alias="BRUD_KNOWLEDGE_GAP_CAPTURE_ENABLED"
+    )
+    trusted_web_provider_name: str = Field(
+        default="wikipedia", validation_alias="BRUD_TRUSTED_WEB_PROVIDER_NAME"
+    )
+    trusted_web_provider_base_url: str | None = Field(
+        default=None, validation_alias="BRUD_TRUSTED_WEB_PROVIDER_BASE_URL"
+    )
+    trusted_web_provider_api_key: str | None = Field(
+        default=None, validation_alias="BRUD_TRUSTED_WEB_PROVIDER_API_KEY"
+    )
+    trusted_web_provider_api_key_header: str = Field(
+        default="X-Subscription-Token",
+        validation_alias="BRUD_TRUSTED_WEB_PROVIDER_API_KEY_HEADER",
+    )
+    trusted_web_search_rate_limit_max_requests: int = Field(
+        default=20, ge=1, validation_alias="BRUD_TRUSTED_WEB_SEARCH_RATE_LIMIT_MAX_REQUESTS"
+    )
+    trusted_web_search_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, validation_alias="BRUD_TRUSTED_WEB_SEARCH_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    trusted_web_fetch_rate_limit_max_requests: int = Field(
+        default=10, ge=1, validation_alias="BRUD_TRUSTED_WEB_FETCH_RATE_LIMIT_MAX_REQUESTS"
+    )
+    trusted_web_fetch_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, validation_alias="BRUD_TRUSTED_WEB_FETCH_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    trusted_web_fetch_per_domain_rate_limit_max_requests: int = Field(
+        default=5,
+        ge=1,
+        validation_alias="BRUD_TRUSTED_WEB_FETCH_PER_DOMAIN_RATE_LIMIT_MAX_REQUESTS",
+    )
+    tool_execution_rate_limit_max_requests: int = Field(
+        default=30, ge=1, validation_alias="BRUD_TOOL_EXECUTION_RATE_LIMIT_MAX_REQUESTS"
+    )
+    tool_execution_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, validation_alias="BRUD_TOOL_EXECUTION_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    trusted_web_search_cache_ttl_seconds: int = Field(
+        default=300, ge=0, validation_alias="BRUD_TRUSTED_WEB_SEARCH_CACHE_TTL_SECONDS"
+    )
+    external_mcp_enabled: bool = Field(
+        default=False, validation_alias="BRUD_EXTERNAL_MCP_ENABLED"
+    )
     inference_max_loaded_models: int = Field(
         default=1, ge=1, validation_alias="BRUD_INFERENCE_MAX_LOADED_MODELS"
     )
@@ -978,9 +1084,11 @@ class Settings(BaseSettings):
             "allowed_export_dir",
             "import_dir",
             "import_report_dir",
+            "quarantine_dir",
             "document_dir",
             "document_report_dir",
             "dataset_export_dir",
+            "document_sft_export_dir",
             "tokenizer_dir",
             "tokenizer_corpus_dir",
             "tokenizer_export_dir",
@@ -1001,9 +1109,11 @@ class Settings(BaseSettings):
             for field_name in (
                 "import_dir",
                 "import_report_dir",
+                "quarantine_dir",
                 "document_dir",
                 "document_report_dir",
                 "dataset_export_dir",
+            "document_sft_export_dir",
                 "tokenizer_dir",
                 "tokenizer_corpus_dir",
                 "tokenizer_export_dir",
@@ -1121,6 +1231,10 @@ class Settings(BaseSettings):
         return self._resolve_path(self.import_report_dir)
 
     @property
+    def resolved_quarantine_dir(self) -> Path:
+        return self._resolve_path(self.quarantine_dir)
+
+    @property
     def resolved_document_dir(self) -> Path:
         return self._resolve_path(self.document_dir)
 
@@ -1131,6 +1245,10 @@ class Settings(BaseSettings):
     @property
     def resolved_dataset_export_dir(self) -> Path:
         return self._resolve_path(self.dataset_export_dir)
+
+    @property
+    def resolved_document_sft_export_dir(self) -> Path:
+        return self._resolve_path(self.document_sft_export_dir)
 
     @property
     def resolved_tokenizer_dir(self) -> Path:

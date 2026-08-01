@@ -149,6 +149,16 @@ class DatasetQualityRepository(BaseRepository):
             if filters.get(key):
                 clauses.append(f"{column}=?")
                 params.append(filters[key])
+        # Additive (Phase 7): an explicit public_id allowlist, used by
+        # `GovernedBuildService` to pin a build to exactly the set of
+        # records that already passed its own governance preflight --
+        # never used by any existing caller, so every pre-Phase-7
+        # selection behaves exactly as before.
+        include_public_ids = filters.get("include_public_ids")
+        if include_public_ids:
+            placeholders = ",".join("?" for _ in include_public_ids)
+            clauses.append(f"r.public_id IN ({placeholders})")
+            params.extend(include_public_ids)
         rows = connection.execute(
             f"""SELECT r.*,s.public_id AS source_public_id,s.source_type,s.licence_status,
             s.name AS source_name FROM dataset_records r

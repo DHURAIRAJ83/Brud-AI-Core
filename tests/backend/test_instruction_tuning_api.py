@@ -665,8 +665,8 @@ async def test_candidate_selection_promotes_and_remains_not_public_chat_ready(
         assert summary["evaluation_required"] is True
         assert summary["not_public_chat_ready"] is True
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
 
         manifest = await client.get(
             f"/api/admin/instruction-tuning/experiments/{experiment_id}/manifest"

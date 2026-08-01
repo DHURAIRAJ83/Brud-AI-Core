@@ -11,34 +11,40 @@ from backend.api.routes import (
     conversation_memory,
     core_models,
     corpus,
-    datasets,
-    documents,
-    feedback,
-    health,
-    imports,
-    inference_runtime,
-    instruction_tuning,
     data_lineage,
     data_sources,
     dataset_discovery,
     dataset_sample_import,
     dataset_verification,
+    datasets,
+    deterministic_tools_admin,
+    documents,
     external_data_providers,
+    feedback,
     governance,
     governed_builds,
+    health,
+    imports,
     incremental_training,
+    inference_runtime,
+    instruction_tuning,
+    knowledge_gap_admin,
+    knowledge_routing,
     manual_data,
-    rag_sandbox,
-    semantic_chunks,
-    structured_records,
     model_evaluation,
     model_release,
     pretraining,
     pretraining_readiness,
+    production_readiness,
+    public_chat_admin,
     rag,
+    rag_sandbox,
+    semantic_chunks,
+    structured_records,
     system,
     tokenizers,
     training_reliability,
+    trusted_web_admin,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -78,3 +84,9 @@ api_router.include_router(dataset_verification.router)
 api_router.include_router(dataset_sample_import.router)
 api_router.include_router(rag_sandbox.router)
 api_router.include_router(incremental_training.router)
+api_router.include_router(production_readiness.router)
+api_router.include_router(knowledge_routing.router)
+api_router.include_router(knowledge_gap_admin.router)
+api_router.include_router(public_chat_admin.router)
+api_router.include_router(trusted_web_admin.router)
+api_router.include_router(deterministic_tools_admin.router)

@@ -34,8 +34,8 @@ class DatasetAdminRepository(BaseRepository):
             licence_name,licence_status,metadata_json) VALUES (?,?,?,?,?,?,?,?)""",
             (
                 values["name"],
-                "manual",
-                "draft",
+                values.get("source_type", "manual"),
+                values.get("status", "draft"),
                 public_id,
                 values["language"],
                 values.get("licence_name"),

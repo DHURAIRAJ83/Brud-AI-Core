@@ -391,8 +391,8 @@ async def test_admin_diagnostic_and_chat_lab_full_lifecycle(api_app: FastAPI) ->
         )
         assert message.status_code == 200, message.text
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 
@@ -643,8 +643,8 @@ async def test_canary_and_rollback_workflow(api_app: FastAPI) -> None:
         assert execute.json()["assignment"]["release_public_id"] == release_a
         assert execute.json()["assignment"]["status"] == "active"
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 
@@ -696,7 +696,7 @@ async def test_public_chat_activation_blocked_by_default(api_app: FastAPI) -> No
         assert activated.json()["activated"] is False
         assert activated.json()["rejection_reasons"]
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()

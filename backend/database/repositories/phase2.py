@@ -60,6 +60,10 @@ def _approval_public(row: sqlite3.Row) -> AdminApprovalPublic:
         executor_public_id=row["executor_public_id"],
         created_at=row["created_at"],
         reviewed_at=row["reviewed_at"],
+        risk_level=row["risk_level"],
+        preview=redact_secrets(loads_json(row["preview_json"] or "{}")),
+        stale_check=redact_secrets(loads_json(row["stale_check_json"] or "{}")),
+        expires_at=row["expires_at"],
     )
 
 
@@ -760,8 +764,9 @@ class AdminApprovalRepository(BaseRepository):
         with self.transaction() as connection:
             connection.execute(
                 """INSERT INTO admin_approvals(public_id,action_type,target_type,
-                target_public_id,request_payload_json,requested_by,summary)
-                VALUES (?,?,?,?,?,?,?)""",
+                target_public_id,request_payload_json,requested_by,summary,
+                risk_level,preview_json,stale_check_json,expires_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     public_id,
                     item.action_type,
@@ -770,17 +775,40 @@ class AdminApprovalRepository(BaseRepository):
                     dumps_json(item.request_payload),
                     item.requested_by,
                     item.summary,
+                    item.risk_level,
+                    dumps_json(item.preview),
+                    dumps_json(item.stale_check),
+                    item.expires_at.isoformat() if item.expires_at else None,
                 ),
             )
         return self.get_by_public_id(public_id)
+
+    def _expire_if_due(self, connection, row: sqlite3.Row) -> sqlite3.Row:
+        """Lazy, request-triggered expiry: a `pending` proposal whose
+        `expires_at` has passed transitions to `expired` the next time
+        it is read or reviewed -- never via a background sweep, since
+        rule 20 forbids unbounded background agents."""
+
+        if row["status"] != "pending" or not row["expires_at"]:
+            return row
+        if datetime.fromisoformat(row["expires_at"]) > datetime.now(UTC):
+            return row
+        connection.execute(
+            "UPDATE admin_approvals SET status='expired' WHERE public_id=?",
+            (row["public_id"],),
+        )
+        return connection.execute(
+            "SELECT * FROM admin_approvals WHERE public_id=?", (row["public_id"],)
+        ).fetchone()
 
     def get_by_public_id(self, public_id: str) -> AdminApprovalPublic:
         with self.transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM admin_approvals WHERE public_id=?", (public_id,)
             ).fetchone()
-        if not row:
-            raise NotFoundError("admin approval not found")
+            if not row:
+                raise NotFoundError("admin approval not found")
+            row = self._expire_if_due(connection, row)
         return _approval_public(row)
 
     def list(
@@ -799,6 +827,7 @@ class AdminApprovalRepository(BaseRepository):
                     "SELECT * FROM admin_approvals ORDER BY id DESC LIMIT ? OFFSET ?",
                     (limit, offset),
                 ).fetchall()
+            rows = [self._expire_if_due(connection, row) for row in rows]
         return [_approval_public(row) for row in rows]
 
     def update_review(
@@ -811,10 +840,11 @@ class AdminApprovalRepository(BaseRepository):
     ) -> AdminApprovalPublic:
         with self.transaction() as connection:
             current = connection.execute(
-                "SELECT status FROM admin_approvals WHERE public_id=?", (public_id,)
+                "SELECT * FROM admin_approvals WHERE public_id=?", (public_id,)
             ).fetchone()
             if not current:
                 raise NotFoundError("admin approval not found")
+            current = self._expire_if_due(connection, current)
             if current["status"] != "pending":
                 raise ValidationError(
                     f"admin approval already reviewed (status={current['status']})"
@@ -824,6 +854,32 @@ class AdminApprovalRepository(BaseRepository):
                 """UPDATE admin_approvals SET status=?, reviewed_by=?, review_comment=?,
                 reviewed_at=?, execution_status=? WHERE public_id=?""",
                 (status, reviewed_by, review_comment, _now(), execution_status, public_id),
+            )
+        return self.get_by_public_id(public_id)
+
+    def cancel(
+        self, public_id: str, *, cancelled_by: str, reason: str | None
+    ) -> AdminApprovalPublic:
+        """Activates the long-unused `cancelled` status (Phase 8): an
+        admin withdrawing their own still-pending proposal, or an admin
+        declining to act on someone else's -- distinct from `rejected`,
+        which is a reviewer's considered "no"."""
+
+        with self.transaction() as connection:
+            current = connection.execute(
+                "SELECT * FROM admin_approvals WHERE public_id=?", (public_id,)
+            ).fetchone()
+            if not current:
+                raise NotFoundError("admin approval not found")
+            current = self._expire_if_due(connection, current)
+            if current["status"] != "pending":
+                raise ValidationError(
+                    f"only a pending admin approval may be cancelled (status={current['status']})"
+                )
+            connection.execute(
+                """UPDATE admin_approvals SET status='cancelled', reviewed_by=?,
+                review_comment=?, reviewed_at=? WHERE public_id=?""",
+                (cancelled_by, reason, _now(), public_id),
             )
         return self.get_by_public_id(public_id)
 

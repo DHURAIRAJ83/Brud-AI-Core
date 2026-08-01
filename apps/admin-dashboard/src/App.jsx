@@ -28,6 +28,12 @@ import ModelRegistryPage from './pages/ModelRegistryPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
 import PretrainingReadinessPage from './pages/PretrainingReadinessPage.jsx'
+import ProductionReadinessPage from './pages/ProductionReadinessPage.jsx'
+import KnowledgeGapsPage from './pages/KnowledgeGapsPage.jsx'
+import KnowledgeRoutingPage from './pages/KnowledgeRoutingPage.jsx'
+import PublicChatRoutingPage from './pages/PublicChatRoutingPage.jsx'
+import TrustedWebPage from './pages/TrustedWebPage.jsx'
+import DeterministicToolsPage from './pages/DeterministicToolsPage.jsx'
 import RagPage from './pages/RagPage.jsx'
 import RagSandboxPage from './pages/RagSandboxPage.jsx'
 import SourcesRightsPage from './pages/SourcesRightsPage.jsx'
@@ -114,6 +120,12 @@ export default function App() {
   if (active === 'Feedback & Improvement') page = <FeedbackPage />
   if (active === 'Corpus Builder') page = <CorpusPage />
   if (active === 'Pretraining Readiness') page = <PretrainingReadinessPage />
+  if (active === 'Production Readiness') page = <ProductionReadinessPage />
+  if (active === 'Knowledge Routing') page = <KnowledgeRoutingPage />
+  if (active === 'Public Chat Routing') page = <PublicChatRoutingPage />
+  if (active === 'Knowledge Gaps') page = <KnowledgeGapsPage />
+  if (active === 'Trusted Web') page = <TrustedWebPage />
+  if (active === 'Deterministic Tools') page = <DeterministicToolsPage />
   if (active === 'Admin Assistant') page = <AdminAssistantPage />
   return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

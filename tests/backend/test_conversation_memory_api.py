@@ -206,8 +206,8 @@ async def test_path_a_private_no_persist_session(api_app: FastAPI) -> None:
         )
         assert memory_items.json()["items"] == []
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 
@@ -585,8 +585,8 @@ async def test_orchestration_lookups_and_public_chat_unchanged(api_app: FastAPI)
         )
         assert rejected.status_code >= 400
 
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 

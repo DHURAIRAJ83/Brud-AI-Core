@@ -261,6 +261,7 @@ export default function PretrainingReadinessPage() {
                 snapshot → training-config validation → tiny bounded smoke run → 17-dimension
                 readiness gate.
               </p>
+              <p className="notice">A governed dataset version built from approved Data Studio content can be handed off here from the Builds &amp; Pipelines page -- the handoff never starts a pretraining run automatically; this page's own readiness/run controls remain the only way to start one.</p>
             </>
           )}
 

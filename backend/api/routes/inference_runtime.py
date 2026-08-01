@@ -25,6 +25,7 @@ from backend.models.inference_runtime import (
     RuntimeInstanceCreate,
     RuntimeProfileCreate,
     RuntimeProfilePatch,
+    ScopeEnabledPatch,
 )
 from backend.services.inference_runtime_service import InferenceRuntimeService
 from backend.services.model_assignment_service import ModelAssignmentService
@@ -163,6 +164,15 @@ async def compatibility(release_public_id: str, settings: SettingsDependency):
 @router.get("/assignment-scopes")
 async def assignment_scopes(settings: SettingsDependency):
     return assignment_service(settings).list_scopes()
+
+
+@router.patch("/assignment-scopes/{scope_key}")
+async def patch_assignment_scope(
+    scope_key: str, payload: ScopeEnabledPatch, settings: SettingsDependency, admin: CsrfDependency
+):
+    return assignment_service(settings).set_scope_enabled(
+        scope_key, payload.enabled, admin.admin.public_id
+    )
 
 
 # --- assignments -----------------------------------------------------

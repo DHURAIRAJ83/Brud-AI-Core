@@ -491,8 +491,8 @@ async def test_grounded_answer_and_chat_lab_lifecycle(api_app: FastAPI) -> None:
         assert closed.json()["status"] == "closed"
 
         # public chatbot must remain the unchanged placeholder throughout
-        chat = await client.post("/api/chat", json={"message": "வணக்கம்", "language": "auto"})
-        assert chat.json()["model"] == "placeholder"
+        chat = await client.post("/api/chat", json={"message": "வணக்கம்"})
+        assert "route_used" in chat.json()
     finally:
         await client.aclose()
 

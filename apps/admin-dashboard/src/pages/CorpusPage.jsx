@@ -888,6 +888,7 @@ export default function CorpusPage() {
                 safety filtering → deduplication → language/domain labelling → balancing →
                 immutable corpus version → future pretraining export.
               </p>
+              <p className="notice">Governed, target-specific dataset builds composed from Data Studio content (Manual Data, Documents, Chunk &amp; Record Studio) are available from the Builds &amp; Pipelines page -- a separate, additive selection layer from this corpus builder's own pipeline.</p>
             </>
           )}
 

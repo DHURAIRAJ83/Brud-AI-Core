@@ -443,6 +443,7 @@ export default function RagPage() {
                 <StatusCard label="Public chat" value="placeholder" tone="good" />
               </div>
               <p className="notice">{INJECTION_NOTICE}</p>
+              <p className="notice">Governed, rights-checked RAG ingestion (selecting only approved, traceable content and never auto-activating an index) is available from the Builds &amp; Pipelines page.</p>
               {selectedSpaceId && <p className="notice">Selected space: {selectedSpaceId.slice(0, 8)}</p>}
               {selectedProfileId && <p className="notice">Selected retrieval profile: {selectedProfileId.slice(0, 8)}</p>}
             </>

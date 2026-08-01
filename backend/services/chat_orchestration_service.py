@@ -78,11 +78,15 @@ class ChatOrchestrationService:
         self.rag_retrieval_service = rag_retrieval_service
         self.settings = settings
 
-    def _verify_assignment(self, assignment_public_id: str) -> dict[str, Any]:
+    def _verify_assignment(
+        self, assignment_public_id: str, *, required_scope: str = RAG_SCOPE
+    ) -> dict[str, Any]:
         with self.inference_repository.transaction() as connection:
             assignment = self.inference_repository.assignment(connection, assignment_public_id)
-            if assignment["scope_key"] != RAG_SCOPE:
-                raise ValidationError(f"chat orchestration requires an '{RAG_SCOPE}' assignment")
+            if assignment["scope_key"] != required_scope:
+                raise ValidationError(
+                    f"chat orchestration requires an '{required_scope}' assignment"
+                )
             if assignment["status"] != "active":
                 raise ValidationError("assignment must be active for chat orchestration")
             facts = self.runtime_service.gather_release_facts(
@@ -95,8 +99,30 @@ class ChatOrchestrationService:
             return dict(assignment)
 
     def send_message(
-        self, session_public_id: str, payload: MessageCreate, admin_id: str
+        self,
+        session_public_id: str,
+        payload: MessageCreate,
+        admin_id: str,
+        *,
+        required_scope: str = RAG_SCOPE,
+        evidence_mode: str = "auto",
+        rag_filters: RetrievalFiltersPayload | None = None,
     ) -> dict[str, Any]:
+        """``evidence_mode``: ``"auto"`` (default, unchanged combined RAG+
+        memory+conversation-history behavior for every existing Admin
+        caller), ``"model_only"`` (skip RAG and memory retrieval; the
+        model answers from its own knowledge and conversation context
+        only -- and the ``no_evidence_available`` gate is bypassed,
+        since a model-only turn is never expected to carry supplied
+        evidence), ``"rag_only"`` (skip memory retrieval), or
+        ``"memory_only"`` (skip RAG retrieval). ``required_scope`` and
+        ``rag_filters`` default to today's exact behavior; Phase 18's
+        public router is the only caller that passes non-default
+        values for any of these three parameters."""
+
+        if evidence_mode not in ("auto", "model_only", "rag_only", "memory_only"):
+            raise ValidationError(f"unknown evidence_mode: {evidence_mode!r}")
+
         with self.repository.transaction() as connection:
             session = self.repository.session(connection, session_public_id)
             if session["status"] != "active":
@@ -111,7 +137,9 @@ class ChatOrchestrationService:
                 (session["model_assignment_id"],),
             ).fetchone()
 
-        assignment = self._verify_assignment(assignment_row["public_id"])
+        assignment = self._verify_assignment(
+            assignment_row["public_id"], required_scope=required_scope
+        )
         instance = self.assignment_service.ensure_instance_loaded(assignment["public_id"], admin_id)
 
         user_turn = self.session_service.create_turn(
@@ -157,7 +185,11 @@ class ChatOrchestrationService:
         # --- memory retrieval (separate, self-committing call) -----
         memory_results: list[dict[str, Any]] = []
         memory_retrieval_run_id = None
-        if capabilities["allow_long_term_memory"] and payload.memory_retrieval_profile_public_id:
+        if (
+            evidence_mode in ("auto", "memory_only")
+            and capabilities["allow_long_term_memory"]
+            and payload.memory_retrieval_profile_public_id
+        ):
             memory_run = self.memory_service.retrieve(
                 MemoryRetrieveRequest(
                     retrieval_profile_public_id=payload.memory_retrieval_profile_public_id,
@@ -175,12 +207,12 @@ class ChatOrchestrationService:
         # --- RAG retrieval (separate, self-committing call) -----
         rag_results: list[dict[str, Any]] = []
         rag_retrieval_run_id = None
-        if session["rag_retrieval_profile_public_id"]:
+        if evidence_mode in ("auto", "rag_only") and session["rag_retrieval_profile_public_id"]:
             rag_run = self.rag_retrieval_service.retrieve(
                 RetrieveRequest(
                     retrieval_profile_public_id=session["rag_retrieval_profile_public_id"],
                     query=payload.message,
-                    filters=RetrievalFiltersPayload(),
+                    filters=rag_filters or RetrievalFiltersPayload(),
                 ),
                 admin_id,
             )
@@ -206,6 +238,7 @@ class ChatOrchestrationService:
             rag_results=rag_results,
             rag_retrieval_run_id=rag_retrieval_run_id,
             admin_id=admin_id,
+            evidence_mode=evidence_mode,
         )
 
     def _assemble_and_generate(
@@ -226,6 +259,7 @@ class ChatOrchestrationService:
         rag_results,
         rag_retrieval_run_id,
         admin_id,
+        evidence_mode: str = "auto",
     ) -> dict[str, Any]:
         with self.repository.transaction() as connection:
             system_tokens = estimate_token_count(SYSTEM_INSTRUCTIONS)
@@ -411,7 +445,11 @@ class ChatOrchestrationService:
                     },
                 )
 
-            no_evidence_available = not evidence_items and not selected_by_key["conversation"]
+            no_evidence_available = (
+                evidence_mode != "model_only"
+                and not evidence_items
+                and not selected_by_key["conversation"]
+            )
 
             if context_blocked or no_evidence_available:
                 status_result = decide_response_status(

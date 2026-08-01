@@ -333,6 +333,7 @@ export default function ModelRegistryPage() {
                 Source model, checkpoint checksum, tokenizer, dataset lineage, and training lineage
                 are all shown per-candidate in the Candidates and Artifact Inventory tabs.
               </p>
+              <p className="notice">The full source-to-model trace (source, PDF page, chunk, structured record, dataset record, dataset version, training run, evaluation, release) for a release's dataset version is queryable from the Builds &amp; Pipelines page's Lineage tab.</p>
             </>
           )}
 

@@ -5,6 +5,7 @@ from fastapi.responses import Response
 
 from backend.api.auth import CsrfDependency, require_admin
 from backend.api.dependencies import SettingsDependency
+from backend.database.repositories.data_sources import DataSourceRepository
 from backend.database.repositories.dataset_admin import DatasetAdminRepository
 from backend.database.repositories.dataset_quality import DatasetQualityRepository
 from backend.models.dataset_quality import BulkQualityAssessRequest, QualityAssessRequest
@@ -24,6 +25,7 @@ from backend.models.datasets import (
     ReviewRequest,
     SourcePatch,
 )
+from backend.services.data_source_service import SourceUsagePolicyService
 from backend.services.dataset_quality import DatasetQualityService
 from backend.services.dataset_service import DatasetService
 from backend.services.dataset_versioning import DatasetVersioningService
@@ -47,6 +49,10 @@ def version_service(settings) -> DatasetVersioningService:
     return DatasetVersioningService(
         DatasetQualityRepository(settings.resolved_database_path), settings
     )
+
+
+def source_usage_service(settings) -> SourceUsagePolicyService:
+    return SourceUsagePolicyService(DataSourceRepository(settings.resolved_database_path), settings)
 
 
 @router.get("/sources", response_model=Page)
@@ -263,6 +269,26 @@ async def version_items(
     page_size: int = Query(default=25, ge=1, le=100),
 ):
     return version_service(settings).version_items(public_id, page, page_size)
+
+
+@router.get("/versions/{public_id}/rights-summary")
+async def version_rights_summary(
+    public_id: str,
+    settings: SettingsDependency,
+    target_use: str = Query(default="training"),
+):
+    """Phase 2 preflight: reports how many of this version's records are
+    allowed/blocked/unlinked for ``target_use`` in the Source, Rights &
+    Usage Registry, without changing this endpoint's existing siblings or
+    this version's own build/export behaviour. Bounded to the first 10,000
+    records of the version, matching this project's bounded-operation
+    convention elsewhere."""
+
+    items = version_service(settings).version_items(public_id, 1, 10_000)["items"]
+    record_ids = [item["public_id"] for item in items]
+    return source_usage_service(settings).rights_summary_for_entities(
+        "dataset_record", record_ids, target_use
+    )
 
 
 @router.get("/versions/{public_id}/manifest")

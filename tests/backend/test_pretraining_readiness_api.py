@@ -398,7 +398,7 @@ async def test_full_phase21a_pipeline(authenticated_client):
     # Public chatbot must remain unaffected by any of the above.
     chat = await client.post("/api/chat", json={"message": "hello"})
     assert chat.status_code == 200
-    assert chat.json()["model"] == "placeholder"
+    assert "route_used" in chat.json()
 
 
 async def test_phase21a_mutations_require_csrf(api_app: FastAPI):

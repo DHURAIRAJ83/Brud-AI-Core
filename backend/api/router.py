@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from backend.api.routes.documents import tamil_correction_rules_router
 from backend.api.routes import (
     admin,
     admin_assistant,
@@ -31,12 +32,44 @@ from backend.api.routes import (
     knowledge_gap_admin,
     knowledge_routing,
     manual_data,
+    mini_brain,
+    mini_brain_advanced_dataset,
+    mini_brain_capability,
+    mini_brain_continuous_learning,
+    mini_brain_continuous_learning_center,
+    mini_brain_dataset_evolution,
+    mini_brain_dataset_intelligence,
+    mini_brain_intelligence,
+    mini_brain_knowledge,
+    mini_brain_language_intelligence,
+    mini_brain_learning_supervisor,
+    mini_brain_multimodal_dataset_generator,
+    mini_brain_pipeline_coordinator,
+    mini_brain_prompt_optimization,
+    mini_brain_quality,
+    mini_brain_release_pipeline,
+    mini_brain_research_center,
+    mini_brain_evaluation_center,
+    mini_brain_external_ai_gateway,
+    mini_brain_release_governance,
+    mini_brain_plugin_governance,
+    mini_brain_plugin_runtime,
+    mini_brain_public_chat_runtime,
+    mini_brain_runtime,
+    mini_brain_training_engine,
+    mini_brain_training_pipeline,
+    mini_brain_vision_intelligence,
+    mini_brain_vision_model,
+    mini_brain_vision_rag,
     model_evaluation,
     model_release,
     pretraining,
     pretraining_readiness,
     production_readiness,
     public_chat_admin,
+    public_chat_runtime,
+    public_plugin_policy,
+    public_plugin_runtime,
     rag,
     rag_sandbox,
     semantic_chunks,
@@ -50,12 +83,45 @@ from backend.api.routes import (
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health.router)
 api_router.include_router(chat.router)
+api_router.include_router(public_chat_runtime.router)
+api_router.include_router(public_plugin_policy.router)
+api_router.include_router(public_plugin_runtime.router)
 api_router.include_router(auth.router)
 api_router.include_router(admin.router)
 api_router.include_router(admin_assistant.router)
+api_router.include_router(mini_brain.router)
+api_router.include_router(mini_brain_knowledge.router)
+api_router.include_router(mini_brain_intelligence.router)
+api_router.include_router(mini_brain_runtime.router)
+api_router.include_router(mini_brain_prompt_optimization.router)
+api_router.include_router(mini_brain_quality.router)
+api_router.include_router(mini_brain_capability.router)
+api_router.include_router(mini_brain_dataset_intelligence.router)
+api_router.include_router(mini_brain_advanced_dataset.router)
+api_router.include_router(mini_brain_learning_supervisor.router)
+api_router.include_router(mini_brain_release_pipeline.router)
+api_router.include_router(mini_brain_continuous_learning.router)
+api_router.include_router(mini_brain_continuous_learning_center.router)
+api_router.include_router(mini_brain_research_center.router)
+api_router.include_router(mini_brain_dataset_evolution.router)
+api_router.include_router(mini_brain_pipeline_coordinator.router)
+api_router.include_router(mini_brain_language_intelligence.router)
+api_router.include_router(mini_brain_vision_intelligence.router)
+api_router.include_router(mini_brain_vision_model.router)
+api_router.include_router(mini_brain_multimodal_dataset_generator.router)
+api_router.include_router(mini_brain_vision_rag.router)
+api_router.include_router(mini_brain_training_pipeline.router)
+api_router.include_router(mini_brain_evaluation_center.router)
+api_router.include_router(mini_brain_release_governance.router)
+api_router.include_router(mini_brain_external_ai_gateway.router)
+api_router.include_router(mini_brain_training_engine.router)
+api_router.include_router(mini_brain_public_chat_runtime.router)
+api_router.include_router(mini_brain_plugin_governance.router)
+api_router.include_router(mini_brain_plugin_runtime.router)
 api_router.include_router(system.router)
 api_router.include_router(imports.router)
 api_router.include_router(documents.router)
+api_router.include_router(tamil_correction_rules_router)
 api_router.include_router(datasets.router)
 api_router.include_router(tokenizers.router)
 api_router.include_router(core_models.router)

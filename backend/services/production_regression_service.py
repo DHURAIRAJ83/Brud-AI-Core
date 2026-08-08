@@ -42,11 +42,13 @@ from backend.database.repositories import AuditLogRepository
 from backend.database.repositories.base import NotFoundError, ValidationError
 from backend.database.repositories.production_readiness import ProductionReadinessRepository
 from backend.models.domain import AuditEventCreate, AuditOutcome
+from core_model.release.artifact_inventory import resolve_confined_path
 
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MANIFEST_PATH = _REPO_ROOT / "config" / "production_regression_manifest.json"
+_TESTS_ROOT = (_REPO_ROOT / "tests").resolve()
 _PASSED_RE = re.compile(r"(\d+) passed")
 _FAILED_RE = re.compile(r"(\d+) failed")
 _ERROR_RE = re.compile(r"(\d+) error")
@@ -409,10 +411,21 @@ class ProductionRegressionService:
         admin_id: str,
         timeout_seconds: int = 120,
     ) -> dict[str, Any]:
+        # Security: this legacy path (unlike the checksum-verified manifest path
+        # above) takes admin-supplied test_paths directly. Each entry is resolved
+        # and confined to `tests/` via resolve_confined_path() -- rejecting
+        # absolute paths, `..` escapes, and anything outside `tests/` -- so an
+        # admin session cannot smuggle a flag-like argv entry or point pytest at
+        # an arbitrary file with side-effecting conftest.py code. shell=True is
+        # never used.
+        for entry in test_paths:
+            resolved = resolve_confined_path(_REPO_ROOT, entry)
+            if not resolved.is_relative_to(_TESTS_ROOT):
+                raise ValueError(f"test path '{entry}' must resolve under tests/")
         command = [sys.executable, "-m", "pytest", *test_paths, "-q"]
         started = time.perf_counter()
         try:
-            proc = subprocess.run(  # noqa: S603 -- fixed interpreter + admin-supplied test paths only
+            proc = subprocess.run(  # noqa: S603 -- fixed interpreter + confined, validated test paths only
                 command, cwd=_REPO_ROOT, capture_output=True, text=True,
                 timeout=timeout_seconds, check=False,
             )

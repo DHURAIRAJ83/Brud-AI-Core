@@ -41,20 +41,44 @@ def settings(tmp_path: Path) -> Settings:
     return settings
 
 
-def _passing_test_file(tmp_path: Path) -> Path:
-    path = tmp_path / "test_trivial_passing.py"
+# execute_batch() now confines admin-supplied test_paths to resolve under
+# tests/ (see backend/services/production_regression_service.py) -- these
+# synthetic single-test fixture files must therefore live under tests/ too,
+# not in pytest's own tmp_path (which resolves outside the repo). They use a
+# non-"test_"-prefixed filename so the repo's own outer `pytest tests/`
+# collection never discovers them, and are removed after each test.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_REGRESSION_FIXTURE_ROOT = _REPO_ROOT / "tests" / "_regression_fixtures"
+
+
+def _rel(path: Path) -> str:
+    return str(path.relative_to(_REPO_ROOT))
+
+
+@pytest.fixture
+def regression_fixture_dir(tmp_path: Path):
+    fixture_dir = _REGRESSION_FIXTURE_ROOT / tmp_path.name
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        yield fixture_dir
+    finally:
+        shutil.rmtree(fixture_dir, ignore_errors=True)
+
+
+def _passing_test_file(fixture_dir: Path) -> Path:
+    path = fixture_dir / "trivial_passing.py"
     path.write_text("def test_trivial_ok():\n    assert True\n", encoding="utf-8")
     return path
 
 
-def _failing_test_file(tmp_path: Path) -> Path:
-    path = tmp_path / "test_trivial_failing.py"
+def _failing_test_file(fixture_dir: Path) -> Path:
+    path = fixture_dir / "trivial_failing.py"
     path.write_text("def test_trivial_fails():\n    assert False\n", encoding="utf-8")
     return path
 
 
-def _slow_test_file(tmp_path: Path) -> Path:
-    path = tmp_path / "test_trivial_slow.py"
+def _slow_test_file(fixture_dir: Path) -> Path:
+    path = fixture_dir / "trivial_slow.py"
     path.write_text(
         "import time\n\ndef test_trivial_slow():\n    time.sleep(5)\n    assert True\n",
         encoding="utf-8",
@@ -121,43 +145,47 @@ def test_create_run_requires_batch_plan(settings: Settings) -> None:
         service.create_run([], admin_id=ADMIN_ID)
 
 
-def test_execute_batch_records_real_pytest_pass(settings: Settings, tmp_path: Path) -> None:
-    test_file = _passing_test_file(tmp_path)
+def test_execute_batch_records_real_pytest_pass(
+    settings: Settings, regression_fixture_dir: Path
+) -> None:
+    test_file = _passing_test_file(regression_fixture_dir)
     service = ProductionRegressionService(settings)
     run = service.create_run(
-        [{"batch_name": "trivial", "command": [str(test_file)]}], admin_id=ADMIN_ID,
+        [{"batch_name": "trivial", "command": [_rel(test_file)]}], admin_id=ADMIN_ID,
     )
     result = service.execute_batch(
-        run["public_id"], "trivial", [str(test_file)], admin_id=ADMIN_ID,
+        run["public_id"], "trivial", [_rel(test_file)], admin_id=ADMIN_ID,
     )
     assert result["status"] == "passed"
     assert result["passed_count"] == 1
     assert result["failed_count"] == 0
 
 
-def test_execute_batch_records_real_pytest_failure(settings: Settings, tmp_path: Path) -> None:
-    test_file = _failing_test_file(tmp_path)
+def test_execute_batch_records_real_pytest_failure(
+    settings: Settings, regression_fixture_dir: Path
+) -> None:
+    test_file = _failing_test_file(regression_fixture_dir)
     service = ProductionRegressionService(settings)
     run = service.create_run(
-        [{"batch_name": "trivial", "command": [str(test_file)]}], admin_id=ADMIN_ID,
+        [{"batch_name": "trivial", "command": [_rel(test_file)]}], admin_id=ADMIN_ID,
     )
     result = service.execute_batch(
-        run["public_id"], "trivial", [str(test_file)], admin_id=ADMIN_ID,
+        run["public_id"], "trivial", [_rel(test_file)], admin_id=ADMIN_ID,
     )
     assert result["status"] == "failed"
     assert result["failed_count"] == 1
 
 
 def test_execute_batch_records_environment_incomplete_on_timeout(
-    settings: Settings, tmp_path: Path
+    settings: Settings, regression_fixture_dir: Path
 ) -> None:
-    test_file = _slow_test_file(tmp_path)
+    test_file = _slow_test_file(regression_fixture_dir)
     service = ProductionRegressionService(settings)
     run = service.create_run(
-        [{"batch_name": "slow", "command": [str(test_file)]}], admin_id=ADMIN_ID,
+        [{"batch_name": "slow", "command": [_rel(test_file)]}], admin_id=ADMIN_ID,
     )
     result = service.execute_batch(
-        run["public_id"], "slow", [str(test_file)], admin_id=ADMIN_ID, timeout_seconds=1,
+        run["public_id"], "slow", [_rel(test_file)], admin_id=ADMIN_ID, timeout_seconds=1,
     )
     assert result["status"] == "environment_incomplete"
 
@@ -171,22 +199,24 @@ def test_finalize_run_requires_results(settings: Settings) -> None:
         service.finalize_run(run["public_id"], admin_id=ADMIN_ID)
 
 
-def test_finalize_run_status_derivation(settings: Settings, tmp_path: Path) -> None:
-    passing = _passing_test_file(tmp_path)
-    failing = _failing_test_file(tmp_path)
+def test_finalize_run_status_derivation(
+    settings: Settings, regression_fixture_dir: Path
+) -> None:
+    passing = _passing_test_file(regression_fixture_dir)
+    failing = _failing_test_file(regression_fixture_dir)
     service = ProductionRegressionService(settings)
 
     run = service.create_run(
-        [{"batch_name": "a", "command": [str(passing)]}], admin_id=ADMIN_ID,
+        [{"batch_name": "a", "command": [_rel(passing)]}], admin_id=ADMIN_ID,
     )
-    service.execute_batch(run["public_id"], "a", [str(passing)], admin_id=ADMIN_ID)
+    service.execute_batch(run["public_id"], "a", [_rel(passing)], admin_id=ADMIN_ID)
     finalized = service.finalize_run(run["public_id"], admin_id=ADMIN_ID)
     assert finalized["status"] == "completed"
 
     run_2 = service.create_run(
-        [{"batch_name": "b", "command": [str(failing)]}], admin_id=ADMIN_ID,
+        [{"batch_name": "b", "command": [_rel(failing)]}], admin_id=ADMIN_ID,
     )
-    service.execute_batch(run_2["public_id"], "b", [str(failing)], admin_id=ADMIN_ID)
+    service.execute_batch(run_2["public_id"], "b", [_rel(failing)], admin_id=ADMIN_ID)
     finalized_2 = service.finalize_run(run_2["public_id"], admin_id=ADMIN_ID)
     assert finalized_2["status"] == "completed_with_failures"
 
@@ -202,15 +232,15 @@ def test_compile_report_not_ready_when_nothing_assessed(settings: Settings) -> N
 
 
 def test_compile_report_ready_for_production_when_everything_passes(
-    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    settings: Settings, regression_fixture_dir: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _all_readiness_checks_pass(settings, monkeypatch)
-    passing = _passing_test_file(tmp_path)
+    passing = _passing_test_file(regression_fixture_dir)
     regression_service = ProductionRegressionService(settings)
     run = regression_service.create_run(
-        [{"batch_name": "a", "command": [str(passing)]}], admin_id=ADMIN_ID,
+        [{"batch_name": "a", "command": [_rel(passing)]}], admin_id=ADMIN_ID,
     )
-    regression_service.execute_batch(run["public_id"], "a", [str(passing)], admin_id=ADMIN_ID)
+    regression_service.execute_batch(run["public_id"], "a", [_rel(passing)], admin_id=ADMIN_ID)
     regression_service.finalize_run(run["public_id"], admin_id=ADMIN_ID)
 
     report_service = ProductionReadinessReportService(settings)

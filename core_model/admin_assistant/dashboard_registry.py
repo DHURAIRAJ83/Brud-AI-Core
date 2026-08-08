@@ -772,6 +772,32 @@ DASHBOARD_PAGES: tuple[PageEntry, ...] = (
         },
         related_page_ids=("system",),
     ),
+    PageEntry(
+        page_id="mini_brain",
+        nav_key="Brud Mini Brain",
+        group=None,
+        implemented=True,
+        mode="governance",
+        title={"en": "Brud Mini Brain", "ta": "Brud Mini Brain"},
+        purpose={
+            "en": "The consolidated governance console for the Mini Brain phases (dataset intelligence, training pipeline, evaluation, release governance, external AI gateway, training execution engine, public chat runtime feedback loop, and plugin governance/execution) -- every stage requires explicit Admin action to advance and none auto-approves, auto-deploys, or auto-executes an earlier stage's output.",
+            "ta": "Mini Brain phases-களுக்கான (dataset intelligence, training pipeline, evaluation, release governance, external AI gateway, training execution engine, public chat runtime feedback loop, plugin governance/execution) ஒருங்கிணைந்த governance console -- ஒவ்வொரு stage-ஐயும் முன்னெடுக்க வெளிப்படையான Admin action தேவை, எந்த stage-உம் ஒரு முந்தைய stage-இன் output-ஐ தானாக approve/deploy/execute செய்யாது.",
+        },
+        tabs=(
+            "Overview", "Settings", "Logs", "Diagnostics", "Knowledge Core", "Intelligence Engine",
+            "Runtime", "Response Quality", "Capability", "Dataset Intelligence", "Learning Supervisor",
+            "Release Pipeline", "Continuous Learning", "Continuous Learning Center", "Research Center",
+            "Dataset Evolution", "Pipeline Coordinator", "Language Intelligence", "Vision Intelligence",
+            "Vision Model Center", "Multimodal Dataset Generator", "Vision RAG", "Training Pipeline",
+            "Evaluation Center", "Release Governance", "External AI Gateway", "Training Engine",
+            "Public Chat Runtime", "Plugin Governance", "Plugin Runtime", "Future Model",
+        ),
+        related_page_ids=("admin_assistant", "production_readiness"),
+        safety_note={
+            "en": "Training execution is simulation-only today -- real training backends deliberately raise an unavailable-backend error rather than silently claiming to have trained a model. Plugin execution has no container or process isolation; guards are cooperative, not adversarial.",
+            "ta": "Training execution தற்போது simulation-only -- real training backends ஒரு model-ஐ train செய்ததாக மறைமுகமாக claim செய்யாமல், வேண்டுமென்றே unavailable-backend error-ஐ raise செய்யும். Plugin execution-க்கு container அல்லது process isolation கிடையாது; guards cooperative-ஆகவே உள்ளன, adversarial அல்ல.",
+        },
+    ),
 )
 
 PAGE_BY_ID: dict[str, PageEntry] = {page.page_id: page for page in DASHBOARD_PAGES}

@@ -206,35 +206,46 @@ async def test_regression_run_requires_batch_plan(api_app: FastAPI) -> None:
 
 
 async def test_regression_full_run_through_api(api_app: FastAPI, tmp_path: Path) -> None:
-    test_file = tmp_path / "test_trivial_passing.py"
-    test_file.write_text("def test_trivial_ok():\n    assert True\n", encoding="utf-8")
-
-    client, headers = await authenticated_client(api_app)
+    # execute_batch() confines admin-supplied test_paths to resolve under
+    # tests/ (backend/services/production_regression_service.py) -- this
+    # synthetic single-test fixture file must therefore live under tests/,
+    # not in pytest's own tmp_path (which resolves outside the repo).
+    repo_root = Path(__file__).resolve().parents[2]
+    fixture_dir = repo_root / "tests" / "_regression_fixtures" / tmp_path.name
+    fixture_dir.mkdir(parents=True, exist_ok=True)
     try:
-        created = await client.post(
-            "/api/admin/production-readiness/regression/runs",
-            headers=headers,
-            json={"batch_plan": [{"batch_name": "trivial", "command": [str(test_file)]}]},
-        )
-        assert created.status_code == 200, created.text
-        run_id = created.json()["public_id"]
+        test_file = fixture_dir / "trivial_passing.py"
+        test_file.write_text("def test_trivial_ok():\n    assert True\n", encoding="utf-8")
+        test_path = str(test_file.relative_to(repo_root))
 
-        executed = await client.post(
-            f"/api/admin/production-readiness/regression/runs/{run_id}/batches",
-            headers=headers,
-            json={"batch_name": "trivial", "test_paths": [str(test_file)]},
-        )
-        assert executed.status_code == 200, executed.text
-        assert executed.json()["status"] == "passed"
+        client, headers = await authenticated_client(api_app)
+        try:
+            created = await client.post(
+                "/api/admin/production-readiness/regression/runs",
+                headers=headers,
+                json={"batch_plan": [{"batch_name": "trivial", "command": [test_path]}]},
+            )
+            assert created.status_code == 200, created.text
+            run_id = created.json()["public_id"]
 
-        finalized = await client.post(
-            f"/api/admin/production-readiness/regression/runs/{run_id}/finalize",
-            headers=headers,
-        )
-        assert finalized.status_code == 200, finalized.text
-        assert finalized.json()["status"] == "completed"
+            executed = await client.post(
+                f"/api/admin/production-readiness/regression/runs/{run_id}/batches",
+                headers=headers,
+                json={"batch_name": "trivial", "test_paths": [test_path]},
+            )
+            assert executed.status_code == 200, executed.text
+            assert executed.json()["status"] == "passed"
+
+            finalized = await client.post(
+                f"/api/admin/production-readiness/regression/runs/{run_id}/finalize",
+                headers=headers,
+            )
+            assert finalized.status_code == 200, finalized.text
+            assert finalized.json()["status"] == "completed"
+        finally:
+            await client.aclose()
     finally:
-        await client.aclose()
+        shutil.rmtree(fixture_dir, ignore_errors=True)
 
 
 async def test_readiness_report_endpoint_reflects_not_ready_state(api_app: FastAPI) -> None:

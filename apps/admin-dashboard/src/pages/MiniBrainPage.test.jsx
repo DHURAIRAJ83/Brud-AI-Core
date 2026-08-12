@@ -536,14 +536,26 @@ describe('MiniBrainPage', () => {
     })
   })
 
-  // Step 2c adds real hash persistence (tabFromHash / history.replaceState,
-  // mirroring ProductionReadinessPage.jsx). Written now as the target spec,
-  // completed together with that step's implementation so the suite never
-  // has a real feature gap between a passing test and working code.
-  describe.skip('top-level tab hash persistence (Step 2c)', () => {
-    it('switching tabs updates window.location.hash', async () => {})
-    it('mounting with a valid hash opens that tab', async () => {})
-    it('an invalid hash falls back to Overview', async () => {})
+  describe('top-level tab hash persistence (mirrors ProductionReadinessPage.jsx)', () => {
+    it('switching tabs updates window.location.hash', async () => {
+      const user = userEvent.setup()
+      render(<MiniBrainPage />)
+      await screen.findByRole('heading', { name: 'Brud Mini Brain' })
+      await user.click(screen.getByRole('button', { name: 'Logs' }))
+      await waitFor(() => expect(window.location.hash).toContain('tab=Logs'))
+    })
+
+    it('mounting with a valid hash opens that tab', async () => {
+      window.location.hash = '#Brud%20Mini%20Brain?tab=Runtime'
+      render(<MiniBrainPage />)
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Runtime' })).toHaveClass('active'))
+    })
+
+    it('an invalid hash falls back to Overview', async () => {
+      window.location.hash = '#Brud%20Mini%20Brain?tab=NotARealTab'
+      render(<MiniBrainPage />)
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Overview' })).toHaveClass('active'))
+    })
   })
 
   // Step 3A replaces this panel's body with <ChatPanel variant="compact" />.

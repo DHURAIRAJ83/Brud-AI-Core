@@ -118,6 +118,16 @@ const tabs = [
   'Release Governance', 'External AI Gateway', 'Training Engine', 'Public Chat Runtime',
   'Plugin Governance', 'Plugin Runtime', 'Voice Runtime', 'Provider Settings', 'Assistant Intelligence', 'Local Setup', 'Runtime Manager', 'Future Model',
 ]
+
+// Mirrors ProductionReadinessPage.jsx's tabFromHash() verbatim -- the
+// top-level tab is encoded into the URL hash so a hard refresh returns to
+// the same tab instead of always resetting to Overview.
+function tabFromHash() {
+  const queryIndex = window.location.hash.indexOf('?')
+  if (queryIndex === -1) return 'Overview'
+  const requested = new URLSearchParams(window.location.hash.slice(queryIndex + 1)).get('tab')
+  return requested && tabs.includes(requested) ? requested : 'Overview'
+}
 const MAX_QUALITY_HISTORY = 10
 const diSubTabs = ['Overview', 'Quality', 'Language', 'Domain', 'Training', 'RAG', 'SFT', 'Recommendations', 'Reports', 'Diagnostics']
 const advancedSubTabs = ['Overview', 'Conflict', 'Bias', 'Coverage', 'Difficulty', 'Curriculum', 'Knowledge Gaps', 'Risk', 'Priority', 'Report', 'Diagnostics']
@@ -236,7 +246,10 @@ function mbQualityTone(status) {
 }
 
 export default function MiniBrainPage({ initialTab } = {}) {
-  const [tab, setTab] = useState('Overview')
+  // An explicit initialTab (the Admin Assistant widget's "Open Mini Brain
+  // Assistant" deep-link) wins on first mount; otherwise the URL hash
+  // controls the tab, same precedence order as the plan requires.
+  const [tab, setTab] = useState(() => (initialTab && tabs.includes(initialTab) ? initialTab : tabFromHash()))
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [status, setStatus] = useState(null)
@@ -721,6 +734,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
   useEffect(() => { load() }, [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (initialTab && initialTab !== tab) selectTab(initialTab) }, [initialTab])
+
+  // Mirrors ProductionReadinessPage.jsx's write-back effect verbatim.
+  useEffect(() => {
+    const pageName = window.location.hash.slice(1).split('?')[0]
+    const params = new URLSearchParams()
+    params.set('tab', tab)
+    window.history.replaceState(null, '', `#${pageName}?${params.toString()}`)
+  }, [tab])
 
   async function load() {
     try {

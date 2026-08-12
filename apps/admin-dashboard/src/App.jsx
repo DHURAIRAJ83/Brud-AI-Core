@@ -142,6 +142,6 @@ export default function App() {
   if (active === 'Deterministic Tools') page = <DeterministicToolsPage />
   if (active === 'Admin Assistant') page = <AdminAssistantPage />
   if (active === 'Assistant Center') page = <AssistantCenterPage admin={auth.admin} />
-  if (active === 'Brud Mini Brain') page = <MiniBrainPage initialTab={miniBrainInitialTab} />
+  if (active === 'Brud Mini Brain') page = <MiniBrainPage initialTab={miniBrainInitialTab} admin={auth.admin} />
   return <DashboardLayout active={active} onSelect={selectPage} onOpenMiniBrainAssistant={openMiniBrainAssistant} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToastProvider } from '../components/Toast.jsx'
 import MiniBrainPage from './MiniBrainPage.jsx'
@@ -578,10 +578,27 @@ describe('MiniBrainPage', () => {
     })
   })
 
-  // Step 3B replaces the Chat sub-tab with <ChatPanel variant="full" />.
-  // Written now as the target spec for that step.
-  describe.skip('Assistant Intelligence -> Chat sub-tab (Step 3B)', () => {
-    it('sends through the real ChatPanel and renders a reply', async () => {})
+  describe('Assistant Intelligence -> Chat sub-tab (now the shared ChatPanel)', () => {
+    it('sends through the real ChatPanel and renders a reply', async () => {
+      const user = userEvent.setup()
+      api.lrChat.mockResolvedValue({
+        session: { public_id: 'sess-1' },
+        reply: { sanitized_text: 'Assistant Intelligence reply.' },
+      })
+      const { container } = renderPage()
+      await screen.findByRole('heading', { name: 'Brud Mini Brain' })
+      await user.click(screen.getByRole('button', { name: 'Assistant Intelligence' }))
+
+      // variant="full" (this tab) vs variant="compact" (the always-visible
+      // Grounded Chat Test panel above the tab bar) render simultaneously,
+      // so scope to the full panel specifically to avoid an ambiguous
+      // "Message" label match.
+      const fullPanel = container.querySelector('.chat-panel-full')
+      expect(fullPanel).toBeTruthy()
+      await user.type(within(fullPanel).getByLabelText('Message'), 'Explain this dashboard.')
+      await user.click(within(fullPanel).getByRole('button', { name: 'Send' }))
+      expect(await screen.findByText('Assistant Intelligence reply.')).toBeInTheDocument()
+    })
   })
 
   describe('a representative logic-untouched tab (Vision Intelligence): load -> error -> retry -> success', () => {

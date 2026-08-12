@@ -5,7 +5,6 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { useToast } from '../components/Toast.jsx'
-import { formatMessageText } from '../utils/markdown.jsx'
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
   continuousLearningAnalyzeDifficulty, continuousLearningAnalyzeFailures,
@@ -106,7 +105,7 @@ import {
   psDiagnostics, psProviders, psCreateProvider, psUpdateProvider, psEnableProvider, psDisableProvider,
   psSetSecret, psDeleteSecret, psTestConnection, psProviderAudit,
   psArchiveProvider, psMemory,
-  lrDiagnostics, lrSessions, lrMessages, lrDeleteSession, lrChat, lrExplainPage,
+  lrDiagnostics, lrChat, lrExplainPage,
   lrSummarizeReport, lrSummarizeRegression, lrExplainError, lrNextActions,
   lcHardware, lcScanModels, lcRecommendations, lcSaveLocalModel, lcSaveProvider,
   lcProvidersCatalog, lcSetupGuide, lcDiagnostics,
@@ -218,8 +217,10 @@ const psRequiredSecrets = {
   openrouter: ['api_key'], openai: ['api_key'], anthropic: ['api_key'], gemini: ['api_key'],
   faster_whisper: [], coqui_tts: [], local_llm: [],
 }
+// "Conversations" was folded into "Chat" -- ChatPanel's variant="full"
+// already includes its own session list (9 sub-tabs -> 8).
 const lrSubTabs = [
-  'Chat', 'Conversations', 'Explain Page', 'Summarize Report', 'Summarize Regression',
+  'Chat', 'Explain Page', 'Summarize Report', 'Summarize Regression',
   'Explain Error', 'Next Actions', 'Local Model Config', 'Diagnostics',
 ]
 const lcSubTabs = [
@@ -250,7 +251,7 @@ function mbQualityTone(status) {
   return 'neutral'
 }
 
-export default function MiniBrainPage({ initialTab } = {}) {
+export default function MiniBrainPage({ initialTab, admin } = {}) {
   const toast = useToast()
   // An explicit initialTab (the Admin Assistant widget's "Open Mini Brain
   // Assistant" deep-link) wins on first mount; otherwise the URL hash
@@ -684,12 +685,11 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
   const [lrSubTab, setLrSubTab] = useState('Chat')
   const [lrDiag, setLrDiag] = useState(null)
-  const [lrSessionsList, setLrSessionsList] = useState([])
+  // lrActiveSessionId is still real, used context: the non-Chat sub-tabs
+  // (Explain Page, Summarize Report/Regression, Explain Error, Next
+  // Actions) each continue the same conversation thread across actions.
   const [lrActiveSessionId, setLrActiveSessionId] = useState('')
-  const [lrMessagesList, setLrMessagesList] = useState([])
-  const [lrChatInput, setLrChatInput] = useState('')
   const [lrBusy, setLrBusy] = useState(false)
-  const [lrLastBackendType, setLrLastBackendType] = useState(null)
   const [lrExplainPageForm, setLrExplainPageForm] = useState({ page_id: '', nav_key: '' })
   const [lrReportForm, setLrReportForm] = useState('{}')
   const [lrRegressionForm, setLrRegressionForm] = useState('{}')
@@ -2578,9 +2578,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
   }
 
   async function loadLr() {
-    const [diag, sessions, localProviders] = await Promise.all([lrDiagnostics(), lrSessions(), psProviders('local_model')])
+    const [diag, localProviders] = await Promise.all([lrDiagnostics(), psProviders('local_model')])
     setLrDiag(diag)
-    setLrSessionsList(sessions.items)
     const localProvider = localProviders.items.find((p) => p.provider_key === 'local_llm')
     if (localProvider) {
       const cfg = localProvider.config || {}
@@ -2595,43 +2594,17 @@ export default function MiniBrainPage({ initialTab } = {}) {
     }
   }
 
-  async function selectLrSession(sessionId) {
+  // The non-Chat sub-tabs (Explain Page, Summarize Report/Regression,
+  // Explain Error, Next Actions) each continue the same conversation
+  // thread across actions -- this just tracks which session that is.
+  function selectLrSession(sessionId) {
     setLrActiveSessionId(sessionId)
     setLrNextActionsResult(null)
-    if (!sessionId) { setLrMessagesList([]); return }
-    try {
-      const messages = await lrMessages(sessionId)
-      setLrMessagesList(messages.items)
-    } catch (reason) { setError(reason.message) }
   }
 
   function startNewLrConversation() {
     setLrActiveSessionId('')
-    setLrMessagesList([])
     setLrNextActionsResult(null)
-  }
-
-  async function sendLrChat() {
-    if (!lrChatInput.trim()) return
-    setLrBusy(true); setError(''); setNotice('')
-    try {
-      const result = await lrChat(lrActiveSessionId || null, lrChatInput)
-      setLrChatInput('')
-      setLrActiveSessionId(result.session.public_id)
-      setLrLastBackendType(result.backend_type)
-      await selectLrSession(result.session.public_id)
-      await loadLr()
-    } catch (reason) { setError(reason.message) } finally { setLrBusy(false) }
-  }
-
-  async function deleteLrSession(sessionId) {
-    setLrBusy(true); setError(''); setNotice('')
-    try {
-      await lrDeleteSession(sessionId)
-      if (lrActiveSessionId === sessionId) startNewLrConversation()
-      await loadLr()
-      setNotice('Conversation deleted / உரையாடல் நீக்கப்பட்டது.')
-    } catch (reason) { setError(reason.message) } finally { setLrBusy(false) }
   }
 
   function lrParseJson(text, label) {
@@ -2723,10 +2696,6 @@ export default function MiniBrainPage({ initialTab } = {}) {
       setNotice('Local model configuration saved / உள்ளூர் மாடல் அமைப்பு சேமிக்கப்பட்டது.')
       await loadLr()
     } catch (reason) { setError(reason.message) } finally { setLrBusy(false) }
-  }
-
-  function lrCopyMessage(text) {
-    if (navigator.clipboard) navigator.clipboard.writeText(text || '')
   }
 
   async function loadLc() {
@@ -9728,46 +9697,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           </div>
 
           {lrSubTab === 'Chat' && (
-            <div className="card">
-              <div className="notice">
-                {lrActiveSessionId ? `Session: ${lrActiveSessionId}` : 'New conversation (not yet started)'}
-                {lrLastBackendType && <span> -- last reply backend: {lrLastBackendType}</span>}
-              </div>
-              <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
-                {lrMessagesList.map((m) => (
-                  <div key={m.public_id} className={m.role === 'admin' ? 'notice' : 'card'}>
-                    <strong>{m.role}</strong> ({m.capability}){m.truncated ? ' [truncated]' : ''}
-                    <div>{formatMessageText(m.sanitized_text)}</div>
-                    {m.role === 'assistant' && <Button onClick={() => lrCopyMessage(m.sanitized_text)}>Copy</Button>}
-                  </div>
-                ))}
-                {!lrMessagesList.length && <p className="notice">No messages yet -- ask a question below.</p>}
-              </div>
-              <textarea
-                rows={3}
-                placeholder="Ask the Admin Assistant Intelligence layer... / கேள்வி கேளுங்கள்..."
-                value={lrChatInput}
-                onChange={(e) => setLrChatInput(e.target.value)}
-              />
-              <div>
-                <Button disabled={lrBusy || !lrChatInput.trim()} onClick={sendLrChat}>Send</Button>
-                <Button disabled={lrBusy} onClick={startNewLrConversation}>New conversation</Button>
-              </div>
-            </div>
-          )}
-
-          {lrSubTab === 'Conversations' && (
-            <ul className="notice">
-              {lrSessionsList.map((s) => (
-                <li key={s.public_id}>
-                  <Button className={lrActiveSessionId === s.public_id ? 'active' : ''} onClick={() => selectLrSession(s.public_id)}>
-                    {s.title || s.public_id} -- {s.status} -- {s.total_messages} messages
-                  </Button>
-                  <Button disabled={lrBusy} onClick={() => deleteLrSession(s.public_id)}>Delete</Button>
-                </li>
-              ))}
-              {!lrSessionsList.length && <li>No conversations yet.</li>}
-            </ul>
+            <ChatPanel variant="full" admin={admin} toast={toast} />
           )}
 
           {lrSubTab === 'Explain Page' && (

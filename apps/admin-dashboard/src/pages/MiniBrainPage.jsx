@@ -6,9 +6,11 @@ import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { useToast } from '../components/Toast.jsx'
 import DiagnosticsTab from './mini-brain/DiagnosticsTab.jsx'
+import IntelligenceEngineTab from './mini-brain/IntelligenceEngineTab.jsx'
 import KnowledgeCoreTab from './mini-brain/KnowledgeCoreTab.jsx'
 import LogsTab from './mini-brain/LogsTab.jsx'
 import OverviewTab from './mini-brain/OverviewTab.jsx'
+import RuntimeTab from './mini-brain/RuntimeTab.jsx'
 import SettingsTab from './mini-brain/SettingsTab.jsx'
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
@@ -3176,140 +3178,18 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
       )}
 
       {tab === 'Intelligence Engine' && (
-        <>
-          <p className="notice">
-            MB-03 -- a deterministic decision engine, not a language model. Every field below
-            traces to a keyword match or a fixed rule; nothing is generated or guessed.
-          </p>
-          <form className="inline-form training-form" onSubmit={runIntelligenceAnalysis}>
-            <label>Question<input value={ieQuestion} onChange={(e) => setIeQuestion(e.target.value)} placeholder="e.g. How do I train the tokenizer?" /></label>
-            <Button type="submit" disabled={ieBusy || !ieQuestion}>{ieBusy ? 'Analyzing…' : 'Analyze'}</Button>
-          </form>
-
-          {ieResult && (
-            <>
-              <section className="metric-grid">
-                <StatusCard label="Intent" value={ieResult.question_analysis.intent} tone="neutral" />
-                <StatusCard label="Question type" value={ieResult.question_analysis.question_type} tone="neutral" />
-                <StatusCard label="Response type" value={ieResult.response_plan.suggested_response_type} tone="neutral" />
-                <StatusCard label="Confidence" value={`${ieResult.confidence.score} (${ieResult.confidence.band})`} tone={ieResult.confidence.band === 'high' ? 'good' : ieResult.confidence.band === 'none' ? 'waiting' : 'neutral'} />
-                <StatusCard label="Processing time" value={`${ieResult.diagnostics.processing_time_ms} ms`} tone="neutral" />
-                <StatusCard label="Candidates scanned" value={ieResult.diagnostics.candidate_item_count} tone="neutral" />
-              </section>
-
-              <h4>Knowledge</h4>
-              <div className="notice">
-                <p><strong>Primary:</strong> {ieResult.knowledge_plan.primary_knowledge.join(', ') || '--'}</p>
-                <p><strong>Supporting:</strong> {ieResult.knowledge_plan.supporting_knowledge.join(', ') || '--'}</p>
-                <p><strong>Optional:</strong> {ieResult.knowledge_plan.optional_knowledge.join(', ') || '--'}</p>
-                <p><strong>Excluded:</strong> {ieResult.knowledge_plan.excluded_knowledge.join(', ') || '--'}</p>
-              </div>
-
-              <h4>Workflow</h4>
-              <div className="notice">
-                <p><strong>Current step:</strong> {ieResult.workflow.current_step || '--'}</p>
-                <p><strong>Previous:</strong> {ieResult.workflow.previous_steps.join(', ') || '--'}</p>
-                <p><strong>Next:</strong> {ieResult.workflow.next_steps.join(', ') || '--'}</p>
-                <p><strong>Dependencies:</strong> {ieResult.workflow.dependencies.join(', ') || '--'}</p>
-              </div>
-
-              <h4>Context</h4>
-              <div className="notice">
-                <p><strong>Matched items:</strong> {ieResult.context.matched_item_titles.join(', ') || '--'}</p>
-                <p><strong>Documentation:</strong> {ieResult.context.documentation_references.join(', ') || '--'}</p>
-              </div>
-
-              <h4>Features</h4>
-              <div className="notice">
-                <p><strong>Dashboard pages:</strong> {ieResult.features.dashboard_pages.join(', ') || '--'}</p>
-                <p><strong>Backend services:</strong> {ieResult.features.backend_services.join(', ') || '--'}</p>
-                <p><strong>APIs:</strong> {ieResult.features.apis.join(', ') || '--'}</p>
-              </div>
-
-              <h4>Response plan (for a future model -- not a final answer)</h4>
-              <pre className="notice">{JSON.stringify(ieResult.response_plan, null, 2)}</pre>
-
-              <h4>Rules applied</h4>
-              <div className="notice">
-                <p><strong>Flags:</strong> {ieResult.rules.flags.join(', ') || 'none'}</p>
-                <ul>{ieResult.rules.disclaimers.map((d) => <li key={d}>{d}</li>)}</ul>
-              </div>
-
-              <h4>Confidence breakdown</h4>
-              <table>
-                <thead><tr><th>Reason</th><th>Points</th></tr></thead>
-                <tbody>
-                  {ieResult.confidence.contributions.map((c) => (
-                    <tr key={c.reason}><td>{c.reason}</td><td>{c.points}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </>
+        <IntelligenceEngineTab
+          runIntelligenceAnalysis={runIntelligenceAnalysis} ieQuestion={ieQuestion} setIeQuestion={setIeQuestion}
+          ieBusy={ieBusy} ieResult={ieResult}
+        />
       )}
 
       {tab === 'Runtime' && (
-        <>
-          <p className="notice">
-            MB-04 -- CPU-only local runtime, GGUF via a lightweight backend, never Ollama, never
-            Docker. No model is currently loaded in this environment: <code>llama-cpp-python</code>{' '}
-            is not installed and no <code>.gguf</code> file is provisioned. The full Model Manager
-            below is real and working against that honest state.
-          </p>
-          {rtStatus && rtStats ? (
-            <section className="metric-grid">
-              <StatusCard label="Runtime status" value={rtStatus.state} tone={rtStatus?.state === 'loaded' ? 'good' : rtStatus?.state === 'error' ? 'waiting' : 'neutral'} />
-              <StatusCard label="Current model" value={rtStatus.current_model?.name ?? 'none'} tone="neutral" />
-              <StatusCard label="Model version" value={rtStatus.current_model?.quantization ?? 'n/a'} tone="neutral" />
-              <StatusCard label="Context size" value={rtStatus.current_model?.context_length ?? 'n/a'} tone="neutral" />
-              <StatusCard label="Load time" value={`${rtStats.last_load_time_ms ?? 'n/a'} ms`} tone="neutral" />
-              <StatusCard label="Response time" value={`${rtStats.last_response_time_ms ?? 'n/a'} ms`} tone="neutral" />
-              <StatusCard label="Available memory" value={`${Math.round(rtStats.available_memory_bytes / 1048576)} MB`} tone="neutral" />
-              <StatusCard label="Process CPU time" value={`${rtStats.process_cpu_time_seconds}s`} tone="neutral" />
-              <StatusCard label="Process peak memory" value={`${Math.round(rtStats.process_max_rss_kb / 1024)} MB`} tone="neutral" />
-            </section>
-          ) : (
-            <Skeleton lines={3} />
-          )}
-
-          <div className="form-row">
-            <Button onClick={() => runRuntimeAction('load')} disabled={rtBusy || !rtModels.length}>Load</Button>
-            <Button onClick={() => runRuntimeAction('unload')} disabled={rtBusy}>Unload</Button>
-            <Button onClick={() => runRuntimeAction('reload')} disabled={rtBusy}>Reload</Button>
-          </div>
-          {rtStatus?.last_error && <div className="form-error" role="alert">{rtStatus.last_error}</div>}
-
-          <h4>Register a model</h4>
-          <form className="inline-form training-form" onSubmit={submitRegisterModel}>
-            <label>Name<input value={rtRegisterForm.name} onChange={(e) => setRtRegisterForm((p) => ({ ...p, name: e.target.value }))} /></label>
-            <label>Path<input value={rtRegisterForm.path} onChange={(e) => setRtRegisterForm((p) => ({ ...p, path: e.target.value }))} placeholder="/path/to/model.gguf" /></label>
-            <label>Quantization<input value={rtRegisterForm.quantization} onChange={(e) => setRtRegisterForm((p) => ({ ...p, quantization: e.target.value }))} /></label>
-            <label>Context length<input type="number" value={rtRegisterForm.context_length} onChange={(e) => setRtRegisterForm((p) => ({ ...p, context_length: Number(e.target.value) }))} /></label>
-            <Button type="submit">Register</Button>
-          </form>
-
-          <h4>Registered models</h4>
-          <div className="data-list">
-            {rtModels.map((m) => (
-              <article key={m.public_id}>
-                <strong>{m.name}</strong> — {m.quantization} — {m.context_length} tokens
-                <div><small>{m.path}</small></div>
-              </article>
-            ))}
-            {!rtModels.length && <div className="notice">No models registered yet.</div>}
-          </div>
-
-          <h4>Diagnostics</h4>
-          {rtDiagnostics && (
-            <section className="metric-grid">
-              <StatusCard label="Registered models" value={rtDiagnostics.registered_model_count} tone="neutral" />
-              <StatusCard label="Total generations" value={rtDiagnostics.statistics.total_generations} tone="neutral" />
-              <StatusCard label="Health" value={rtDiagnostics.health.status} tone={rtDiagnostics.health.status === 'healthy' ? 'good' : rtDiagnostics.health.status === 'unhealthy' ? 'waiting' : 'neutral'} />
-              <StatusCard label="Memory measurement" value={rtDiagnostics.statistics.memory_measurement} tone="neutral" />
-            </section>
-          )}
-        </>
+        <RuntimeTab
+          rtStatus={rtStatus} rtStats={rtStats} rtBusy={rtBusy} rtModels={rtModels} runRuntimeAction={runRuntimeAction}
+          rtRegisterForm={rtRegisterForm} setRtRegisterForm={setRtRegisterForm} submitRegisterModel={submitRegisterModel}
+          rtDiagnostics={rtDiagnostics}
+        />
       )}
 
       {tab === 'Response Quality' && (

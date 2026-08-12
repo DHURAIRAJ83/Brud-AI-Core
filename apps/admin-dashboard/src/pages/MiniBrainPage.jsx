@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import Button from '../components/Button.jsx'
+import ErrorBanner from '../components/ErrorBanner.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { formatMessageText } from '../utils/markdown.jsx'
 import {
@@ -2535,7 +2537,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
       return (
         <div className="notice" key={providerKey}>
           <p>{providerKey} is not yet configured / இன்னும் அமைக்கப்படவில்லை.</p>
-          <button disabled={psBusy} onClick={() => createPsProvider(providerKey)}>Create {providerKey} setting</button>
+          <Button disabled={psBusy} onClick={() => createPsProvider(providerKey)}>Create {providerKey} setting</Button>
         </div>
       )
     }
@@ -2563,19 +2565,19 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 value={psSecretInputs[inputKey] || ''}
                 onChange={(e) => setPsSecretInputs((prev) => ({ ...prev, [inputKey]: e.target.value }))}
               />
-              <button disabled={psBusy || !psSecretInputs[inputKey]} onClick={() => savePsSecret(provider.public_id, secretName)}>Save</button>
+              <Button disabled={psBusy || !psSecretInputs[inputKey]} onClick={() => savePsSecret(provider.public_id, secretName)}>Save</Button>
               {existing && existing.is_set && (
                 <>
                   <span> {existing.masked_indicator} saved {existing.updated_at}</span>
-                  <button disabled={psBusy} onClick={() => deletePsSecret(provider.public_id, secretName)}>Remove</button>
+                  <Button disabled={psBusy} onClick={() => deletePsSecret(provider.public_id, secretName)}>Remove</Button>
                 </>
               )}
             </div>
           )
         })}
-        <button disabled={psBusy} onClick={() => runPsTestConnection(provider.public_id)}>Test Connection / இணைப்பை சோதிக்க</button>
+        <Button disabled={psBusy} onClick={() => runPsTestConnection(provider.public_id)}>Test Connection / இணைப்பை சோதிக்க</Button>
         {testResult && <pre className="notice">{JSON.stringify(testResult, null, 2)}</pre>}
-        <button disabled={psBusy} onClick={() => archivePsProvider(provider.public_id)}>Archive</button>
+        <Button disabled={psBusy} onClick={() => archivePsProvider(provider.public_id)}>Archive</Button>
       </div>
     )
   }
@@ -3161,7 +3163,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             knowledge, memory, and suggestion interface below is a documented placeholder.
           </p>
         </div>
-        <button onClick={load}>Refresh</button>
+        <Button onClick={load}>Refresh</Button>
       </header>
 
       {runtimeHealth && (
@@ -3220,9 +3222,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
             placeholder="What is the test phrase in the uploaded MB35 document?"
           />
         </label>
-        <button type="button" onClick={sendGroundedChat} disabled={gcSending || !gcQuestion.trim()} style={{ marginTop: '10px' }}>
+        <Button type="button" onClick={sendGroundedChat} disabled={gcSending || !gcQuestion.trim()} style={{ marginTop: '10px' }}>
           {gcSending ? 'Sending…' : 'Send'}
-        </button>
+        </Button>
         {gcError && <div className="form-error" role="alert" style={{ marginTop: '10px' }}>{gcError}</div>}
         {gcResult && (
           <div style={{ marginTop: '14px' }}>
@@ -3247,10 +3249,10 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
       <div className="dataset-tabs">
         {tabs.map((value) => (
-          <button key={value} className={tab === value ? 'active' : ''} onClick={() => selectTab(value)}>{value}</button>
+          <Button key={value} className={tab === value ? 'active' : ''} onClick={() => selectTab(value)}>{value}</Button>
         ))}
       </div>
-      {error && <div className="form-error" role="alert">{error}</div>}
+      {error && <ErrorBanner message={error} onRetry={() => selectTab(tab)} />}
       {notice && <div className="success-note" role="status">{notice}</div>}
 
       {tab === 'Overview' && (
@@ -3265,8 +3267,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <StatusCard label="Memory" value="not implemented" tone="neutral" />
           </section>
           <div className="form-row">
-            <button onClick={toggle} disabled={busy}>{status?.enabled ? 'Disable Brud Mini Brain' : 'Enable Brud Mini Brain'}</button>
-            <button onClick={runHealthCheck}>Run health check</button>
+            <Button onClick={toggle} disabled={busy}>{status?.enabled ? 'Disable Brud Mini Brain' : 'Enable Brud Mini Brain'}</Button>
+            <Button onClick={runHealthCheck}>Run health check</Button>
           </div>
           <div className="notice">
             Brud Mini Brain never modifies existing data directly, never executes training or
@@ -3288,7 +3290,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             </select>
           </label>
           <p className="notice">Runtime backend: <strong>{settings.config?.runtime_backend ?? 'none'}</strong> -- MB-01 supports no other value; no model is downloaded or loaded in this phase.</p>
-          <button type="submit">Save configuration</button>
+          <Button type="submit">Save configuration</Button>
         </form>
       )}
 
@@ -3328,14 +3330,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
           </p>
           <div className="dataset-tabs">
             {knowledgeSubTabs.map((value) => (
-              <button key={value} className={knowledgeSubTab === value ? 'active' : ''} onClick={() => selectKnowledgeSubTab(value)}>{value}</button>
+              <Button key={value} className={knowledgeSubTab === value ? 'active' : ''} onClick={() => selectKnowledgeSubTab(value)}>{value}</Button>
             ))}
           </div>
 
           {knowledgeSubTab === 'Domains' && (
             <>
               {kcDomains.length === 0 && (
-                <div className="form-row"><button onClick={seedKnowledge}>Seed default knowledge</button></div>
+                <div className="form-row"><Button onClick={seedKnowledge}>Seed default knowledge</Button></div>
               )}
               <section className="metric-grid">
                 {kcDomains.map((domain) => (
@@ -3349,7 +3351,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <>
               <form className="inline-form training-form" onSubmit={runKnowledgeSearch}>
                 <label>Search<input value={kcQuery} onChange={(e) => setKcQuery(e.target.value)} placeholder="title, keyword, API, service..." /></label>
-                <button type="submit">Search</button>
+                <Button type="submit">Search</Button>
               </form>
               <div className="data-list">
                 {kcResults.map((item) => (
@@ -3379,7 +3381,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {knowledgeSubTab === 'Validation' && (
             <>
-              <div className="form-row"><button onClick={runValidation}>Run validation</button></div>
+              <div className="form-row"><Button onClick={runValidation}>Run validation</Button></div>
               {kcValidation && (
                 <>
                   <section className="metric-grid">
@@ -3428,7 +3430,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           </p>
           <form className="inline-form training-form" onSubmit={runIntelligenceAnalysis}>
             <label>Question<input value={ieQuestion} onChange={(e) => setIeQuestion(e.target.value)} placeholder="e.g. How do I train the tokenizer?" /></label>
-            <button type="submit" disabled={ieBusy || !ieQuestion}>{ieBusy ? 'Analyzing…' : 'Analyze'}</button>
+            <Button type="submit" disabled={ieBusy || !ieQuestion}>{ieBusy ? 'Analyzing…' : 'Analyze'}</Button>
           </form>
 
           {ieResult && (
@@ -3515,9 +3517,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
           </section>
 
           <div className="form-row">
-            <button onClick={() => runRuntimeAction('load')} disabled={rtBusy || !rtModels.length}>Load</button>
-            <button onClick={() => runRuntimeAction('unload')} disabled={rtBusy}>Unload</button>
-            <button onClick={() => runRuntimeAction('reload')} disabled={rtBusy}>Reload</button>
+            <Button onClick={() => runRuntimeAction('load')} disabled={rtBusy || !rtModels.length}>Load</Button>
+            <Button onClick={() => runRuntimeAction('unload')} disabled={rtBusy}>Unload</Button>
+            <Button onClick={() => runRuntimeAction('reload')} disabled={rtBusy}>Reload</Button>
           </div>
           {rtStatus?.last_error && <div className="form-error" role="alert">{rtStatus.last_error}</div>}
 
@@ -3527,7 +3529,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <label>Path<input value={rtRegisterForm.path} onChange={(e) => setRtRegisterForm((p) => ({ ...p, path: e.target.value }))} placeholder="/path/to/model.gguf" /></label>
             <label>Quantization<input value={rtRegisterForm.quantization} onChange={(e) => setRtRegisterForm((p) => ({ ...p, quantization: e.target.value }))} /></label>
             <label>Context length<input type="number" value={rtRegisterForm.context_length} onChange={(e) => setRtRegisterForm((p) => ({ ...p, context_length: Number(e.target.value) }))} /></label>
-            <button type="submit">Register</button>
+            <Button type="submit">Register</Button>
           </form>
 
           <h4>Registered models</h4>
@@ -3570,7 +3572,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <form className="inline-form training-form" onSubmit={runQualityGenerate}>
             <label>Question<input value={qQuestion} onChange={(e) => setQQuestion(e.target.value)} placeholder="e.g. How does dataset duplicate detection work?" /></label>
-            <button type="submit" disabled={qBusy || !qQuestion}>{qBusy ? 'Generating + checking…' : 'Generate and check quality'}</button>
+            <Button type="submit" disabled={qBusy || !qQuestion}>{qBusy ? 'Generating + checking…' : 'Generate and check quality'}</Button>
           </form>
 
           {qResult && (
@@ -3657,7 +3659,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <form className="inline-form training-form" onSubmit={runCapabilityGenerate}>
             <label>Question<input value={capQuestion} onChange={(e) => setCapQuestion(e.target.value)} placeholder="e.g. How does dataset duplicate detection work?" /></label>
-            <button type="submit" disabled={capBusy || !capQuestion}>{capBusy ? 'Generating…' : 'Generate with capability optimization'}</button>
+            <Button type="submit" disabled={capBusy || !capQuestion}>{capBusy ? 'Generating…' : 'Generate with capability optimization'}</Button>
           </form>
 
           {capResult && (
@@ -3711,12 +3713,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <form className="inline-form training-form" onSubmit={runDatasetIntelligenceReport}>
             <label>Dataset source public ID<input value={diSourceId} onChange={(e) => setDiSourceId(e.target.value)} placeholder="source public_id from Dataset Studio" /></label>
-            <button type="submit" disabled={diBusy || !diSourceId}>{diBusy ? 'Analyzing…' : 'Run full report'}</button>
+            <Button type="submit" disabled={diBusy || !diSourceId}>{diBusy ? 'Analyzing…' : 'Run full report'}</Button>
           </form>
 
           <div className="dataset-tabs">
             {diSubTabs.map((value) => (
-              <button key={value} className={diSubTab === value ? 'active' : ''} onClick={() => setDiSubTab(value)}>{value}</button>
+              <Button key={value} className={diSubTab === value ? 'active' : ''} onClick={() => setDiSubTab(value)}>{value}</Button>
             ))}
           </div>
 
@@ -3849,18 +3851,18 @@ export default function MiniBrainPage({ initialTab } = {}) {
             it. Uses the same source ID entered above.
           </p>
           <div className="form-row">
-            <button onClick={toggleAdvanced}>{showAdvanced ? 'Hide advanced section' : 'Show advanced section'}</button>
+            <Button onClick={toggleAdvanced}>{showAdvanced ? 'Hide advanced section' : 'Show advanced section'}</Button>
           </div>
 
           {showAdvanced && (
             <>
               <form className="inline-form training-form" onSubmit={runAdvancedReport}>
-                <button type="submit" disabled={advBusy || !diSourceId}>{advBusy ? 'Analyzing…' : 'Run advanced report'}</button>
+                <Button type="submit" disabled={advBusy || !diSourceId}>{advBusy ? 'Analyzing…' : 'Run advanced report'}</Button>
               </form>
 
               <div className="dataset-tabs">
                 {advancedSubTabs.map((value) => (
-                  <button key={value} className={advSubTab === value ? 'active' : ''} onClick={() => setAdvSubTab(value)}>{value}</button>
+                  <Button key={value} className={advSubTab === value ? 'active' : ''} onClick={() => setAdvSubTab(value)}>{value}</Button>
                 ))}
               </div>
 
@@ -3977,9 +3979,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <ul className="notice">
                 {lsSessions.map((s) => (
                   <li key={s.public_id}>
-                    <button className={lsSelectedId === s.public_id ? 'active' : ''} onClick={() => selectLsSession(s.public_id)}>
+                    <Button className={lsSelectedId === s.public_id ? 'active' : ''} onClick={() => selectLsSession(s.public_id)}>
                       {s.public_id.slice(0, 8)} -- {s.stage} ({s.status})
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!lsSessions.length && <li>No sessions yet.</li>}
@@ -3995,7 +3997,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     {(lsProfiles.length ? lsProfiles : ['default']).map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </label>
-                <button type="submit" disabled={lsBusy || !lsCreateForm.dataset_source_public_id}>{lsBusy ? 'Working…' : 'Create session'}</button>
+                <Button type="submit" disabled={lsBusy || !lsCreateForm.dataset_source_public_id}>{lsBusy ? 'Working…' : 'Create session'}</Button>
               </form>
             </div>
 
@@ -4015,7 +4017,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {lsSession.stage === 'dataset_validation' && (
                     <div className="notice">
                       <p>Stage 2/3: run dataset validation (MB-05 + MB-05.1 readiness and advanced analysis).</p>
-                      <button onClick={runLsValidateDataset} disabled={lsBusy}>Validate dataset</button>
+                      <Button onClick={runLsValidateDataset} disabled={lsBusy}>Validate dataset</Button>
                     </div>
                   )}
 
@@ -4023,8 +4025,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>Stage 4: admin decision gate on dataset readiness.</p>
                       <pre className="notice">{JSON.stringify(lsSession.dataset_readiness_report?.training_readiness, null, 2)}</pre>
-                      <button onClick={() => runLsDecideDataset('approve')} disabled={lsBusy}>Approve</button>{' '}
-                      <button onClick={() => runLsDecideDataset('reject')} disabled={lsBusy}>Reject</button>
+                      <Button onClick={() => runLsDecideDataset('approve')} disabled={lsBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runLsDecideDataset('reject')} disabled={lsBusy}>Reject</Button>
                     </div>
                   )}
 
@@ -4038,12 +4040,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
                         <label>RAG Sandbox experiment public ID<input value={lsRagForm.rag_sandbox_experiment_public_id} onChange={(e) => setLsRagForm({ ...lsRagForm, rag_sandbox_experiment_public_id: e.target.value })} /></label>
                         <label>Retrieval run public ID<input value={lsRagForm.retrieval_run_public_id} onChange={(e) => setLsRagForm({ ...lsRagForm, retrieval_run_public_id: e.target.value })} /></label>
                         <label>Generation assignment public ID<input value={lsRagForm.generation_assignment_public_id} onChange={(e) => setLsRagForm({ ...lsRagForm, generation_assignment_public_id: e.target.value })} /></label>
-                        <button type="submit" disabled={lsBusy}>Run generation + evaluation</button>
+                        <Button type="submit" disabled={lsBusy}>Run generation + evaluation</Button>
                       </form>
                       {lsSession.rag_evaluation_report?.status === 'pending_human_review' && (
                         <>
                           <p>{lsSession.rag_evaluation_report.reason}</p>
-                          <button onClick={runLsFinalizeRag} disabled={lsBusy}>Retry finalize (after human review)</button>
+                          <Button onClick={runLsFinalizeRag} disabled={lsBusy}>Retry finalize (after human review)</Button>
                         </>
                       )}
                     </div>
@@ -4056,8 +4058,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                         production_rag_readiness: lsSession.rag_evaluation_report?.production_rag_readiness,
                         blocking_reasons: lsSession.rag_evaluation_report?.blocking_reasons,
                       }, null, 2)}</pre>
-                      <button onClick={() => runLsDecideRag('approve')} disabled={lsBusy}>Approve</button>{' '}
-                      <button onClick={() => runLsDecideRag('reject')} disabled={lsBusy}>Reject</button>
+                      <Button onClick={() => runLsDecideRag('approve')} disabled={lsBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runLsDecideRag('reject')} disabled={lsBusy}>Reject</Button>
                     </div>
                   )}
 
@@ -4076,7 +4078,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             {lsProfiles.map((p) => <option key={p} value={p}>{p}</option>)}
                           </select>
                         </label>
-                        <button type="submit" disabled={lsBusy}>Submit training request</button>
+                        <Button type="submit" disabled={lsBusy}>Submit training request</Button>
                       </form>
                     </div>
                   )}
@@ -4085,10 +4087,10 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>Stage 8: read-only training monitoring. No pause/resume/cancel control exists
                       here -- MB-06 never intervenes in a running job.</p>
-                      <button onClick={runLsMonitorTraining} disabled={lsBusy}>Refresh monitor</button>
+                      <Button onClick={runLsMonitorTraining} disabled={lsBusy}>Refresh monitor</Button>
                       {lsMonitor && <pre className="notice">{JSON.stringify(lsMonitor.job, null, 2)}</pre>}
                       <p>Once the job reaches a terminal status (completed/failed/paused/cancelled):</p>
-                      <button onClick={runLsAnalyzeTraining} disabled={lsBusy}>Analyze training result</button>
+                      <Button onClick={runLsAnalyzeTraining} disabled={lsBusy}>Analyze training result</Button>
                     </div>
                   )}
 
@@ -4099,7 +4101,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <form className="inline-form training-form" onSubmit={submitLsBenchmark}>
                         <label>Fixture set public ID<input value={lsBenchmarkForm.model_evaluation_fixture_set_public_id} onChange={(e) => setLsBenchmarkForm({ ...lsBenchmarkForm, model_evaluation_fixture_set_public_id: e.target.value })} /></label>
                         <label>Candidate core model version public ID<input value={lsBenchmarkForm.candidate_core_model_version_public_id} onChange={(e) => setLsBenchmarkForm({ ...lsBenchmarkForm, candidate_core_model_version_public_id: e.target.value })} /></label>
-                        <button type="submit" disabled={lsBusy}>Run benchmark</button>
+                        <Button type="submit" disabled={lsBusy}>Run benchmark</Button>
                       </form>
                     </div>
                   )}
@@ -4109,7 +4111,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Stage 11: compare the new benchmark run against a previous production run.</p>
                       <form className="inline-form training-form" onSubmit={submitLsCompareModels}>
                         <label>Previous benchmark run public ID<input value={lsCompareForm.previous_benchmark_run_public_id} onChange={(e) => setLsCompareForm({ previous_benchmark_run_public_id: e.target.value })} /></label>
-                        <button type="submit" disabled={lsBusy}>Compare models</button>
+                        <Button type="submit" disabled={lsBusy}>Compare models</Button>
                       </form>
                     </div>
                   )}
@@ -4119,7 +4121,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Stage 12/13: generate deterministic recommendations and assemble the final
                       learning report for admin review.</p>
                       <pre className="notice">{JSON.stringify(lsSession.comparison_report, null, 2)}</pre>
-                      <button onClick={runLsRecommendations} disabled={lsBusy}>Generate recommendations + report</button>
+                      <Button onClick={runLsRecommendations} disabled={lsBusy}>Generate recommendations + report</Button>
                     </div>
                   )}
 
@@ -4127,10 +4129,10 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>Admin reviews the full learning report and decides.</p>
                       <pre className="notice">{JSON.stringify(lsSession.recommendation_report?.recommendations, null, 2)}</pre>
-                      <button onClick={() => runLsAdminReview('reject')} disabled={lsBusy}>Reject</button>{' '}
-                      <button onClick={() => runLsAdminReview('retrain')} disabled={lsBusy}>Retrain</button>{' '}
-                      <button onClick={() => runLsAdminReview('fine_tune')} disabled={lsBusy}>Fine tune</button>{' '}
-                      <button onClick={() => runLsAdminReview('accept')} disabled={lsBusy}>Accept</button>
+                      <Button onClick={() => runLsAdminReview('reject')} disabled={lsBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runLsAdminReview('retrain')} disabled={lsBusy}>Retrain</Button>{' '}
+                      <Button onClick={() => runLsAdminReview('fine_tune')} disabled={lsBusy}>Fine tune</Button>{' '}
+                      <Button onClick={() => runLsAdminReview('accept')} disabled={lsBusy}>Accept</Button>
                     </div>
                   )}
 
@@ -4142,7 +4144,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <form className="inline-form training-form" onSubmit={submitLsReleaseCandidate}>
                         <label>Checkpoint public ID<input value={lsReleaseForm.checkpoint_public_id} onChange={(e) => setLsReleaseForm({ ...lsReleaseForm, checkpoint_public_id: e.target.value })} /></label>
                         <label>Override comment (if quality warning)<input value={lsReleaseForm.override_comment} onChange={(e) => setLsReleaseForm({ ...lsReleaseForm, override_comment: e.target.value })} /></label>
-                        <button type="submit" disabled={lsBusy}>Create release candidate</button>
+                        <Button type="submit" disabled={lsBusy}>Create release candidate</Button>
                       </form>
                     </div>
                   )}
@@ -4191,9 +4193,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <ul className="notice">
                 {rpSessions.map((s) => (
                   <li key={s.public_id}>
-                    <button className={rpSelectedId === s.public_id ? 'active' : ''} onClick={() => selectRpSession(s.public_id)}>
+                    <Button className={rpSelectedId === s.public_id ? 'active' : ''} onClick={() => selectRpSession(s.public_id)}>
                       {s.public_id.slice(0, 8)} -- {s.stage} ({s.status})
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!rpSessions.length && <li>No sessions yet.</li>}
@@ -4207,7 +4209,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <label>Target quantizations (comma separated)<input value={rpCreateForm.target_quantizations} onChange={(e) => setRpCreateForm({ ...rpCreateForm, target_quantizations: e.target.value })} /></label>
                 <label>Dataset version public ID (optional)<input value={rpCreateForm.dataset_version_public_id} onChange={(e) => setRpCreateForm({ ...rpCreateForm, dataset_version_public_id: e.target.value })} /></label>
                 <label>Evaluation run public ID (optional)<input value={rpCreateForm.model_evaluation_run_public_id} onChange={(e) => setRpCreateForm({ ...rpCreateForm, model_evaluation_run_public_id: e.target.value })} /></label>
-                <button type="submit" disabled={rpBusy || !rpCreateForm.core_model_version_public_id}>{rpBusy ? 'Working…' : 'Create session'}</button>
+                <Button type="submit" disabled={rpBusy || !rpCreateForm.core_model_version_public_id}>{rpBusy ? 'Working…' : 'Create session'}</Button>
               </form>
             </div>
 
@@ -4226,7 +4228,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rpSession.stage === 'checkpoint_validation' && (
                     <div className="notice">
                       <p>Stage 2: validate the checkpoint (exists, readable, metadata, corruption).</p>
-                      <button onClick={runRpValidateCheckpoint} disabled={rpBusy}>Validate checkpoint</button>
+                      <Button onClick={runRpValidateCheckpoint} disabled={rpBusy}>Validate checkpoint</Button>
                       {rpSession.checkpoint_validation_report?.status === 'Invalid' && (
                         <ul>{rpSession.checkpoint_validation_report.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
                       )}
@@ -4238,14 +4240,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Stage 3: plan the PyTorch to GGUF tensor mapping. No permute is applied -- Brud's
                       own RoPE convention already matches ggml's native "llama" architecture directly
                       (empirically verified).</p>
-                      <button onClick={runRpConvert} disabled={rpBusy}>Convert model</button>
+                      <Button onClick={runRpConvert} disabled={rpBusy}>Convert model</Button>
                     </div>
                   )}
 
                   {rpSession.stage === 'quantization' && (
                     <div className="notice">
                       <p>Stage 4: write a real GGUF file per requested quantization level.</p>
-                      <button onClick={runRpQuantize} disabled={rpBusy}>Quantize + export</button>
+                      <Button onClick={runRpQuantize} disabled={rpBusy}>Quantize + export</Button>
                     </div>
                   )}
 
@@ -4265,21 +4267,21 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Stage 5/6: verify GGUF file integrity, then compatibility with MB-04 Runtime
                       (a real load + real generation smoke test, on a throwaway backend instance --
                       never the live Runtime singleton before admin approval).</p>
-                      <button onClick={runRpVerify} disabled={rpBusy}>Verify</button>
+                      <Button onClick={runRpVerify} disabled={rpBusy}>Verify</Button>
                     </div>
                   )}
 
                   {rpSession.stage === 'compatibility_validation' && (
                     <div className="notice">
                       <p>Stage 6: compatibility check did not complete on the first pass -- retry.</p>
-                      <button onClick={runRpVerify} disabled={rpBusy}>Retry verify</button>
+                      <Button onClick={runRpVerify} disabled={rpBusy}>Retry verify</Button>
                     </div>
                   )}
 
                   {rpSession.stage === 'performance_validation' && (
                     <div className="notice">
                       <p>Stage 7: measure real load time, memory, tokens/sec, and latency.</p>
-                      <button onClick={runRpPerformance} disabled={rpBusy}>Measure performance</button>
+                      <Button onClick={runRpPerformance} disabled={rpBusy}>Measure performance</Button>
                       {rpSession.performance_report?.levels && (
                         <pre className="notice">{JSON.stringify(rpSession.performance_report.levels, null, 2)}</pre>
                       )}
@@ -4294,7 +4296,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <form className="inline-form training-form" onSubmit={submitRpCreateVersion}>
                         <label>Version (Brud-X.Y)<input value={rpVersionForm.version} onChange={(e) => setRpVersionForm({ ...rpVersionForm, version: e.target.value })} placeholder="Brud-0.1" /></label>
                         <label>Prerelease label (optional)<input value={rpVersionForm.prerelease_label} onChange={(e) => setRpVersionForm({ ...rpVersionForm, prerelease_label: e.target.value })} /></label>
-                        <button type="submit" disabled={rpBusy}>Create release version</button>
+                        <Button type="submit" disabled={rpBusy}>Create release version</Button>
                       </form>
                     </div>
                   )}
@@ -4306,9 +4308,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                         ready_for_admin_review: rpSession.release_report?.ready_for_admin_review,
                         blocking_reasons: rpSession.release_report?.blocking_reasons,
                       }, null, 2)}</pre>
-                      <button onClick={() => runRpAdminReview('reject')} disabled={rpBusy}>Reject</button>{' '}
-                      <button onClick={() => runRpAdminReview('archive')} disabled={rpBusy}>Archive</button>{' '}
-                      <button onClick={() => runRpAdminReview('approve')} disabled={rpBusy}>Approve</button>
+                      <Button onClick={() => runRpAdminReview('reject')} disabled={rpBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runRpAdminReview('archive')} disabled={rpBusy}>Archive</Button>{' '}
+                      <Button onClick={() => runRpAdminReview('approve')} disabled={rpBusy}>Approve</Button>
                     </div>
                   )}
 
@@ -4325,7 +4327,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             ))}
                           </select>
                         </label>
-                        <button type="submit" disabled={rpBusy || !rpActivateLevel}>Activate</button>
+                        <Button type="submit" disabled={rpBusy || !rpActivateLevel}>Activate</Button>
                       </form>
                     </div>
                   )}
@@ -4343,7 +4345,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <div className="notice">
                     <form className="inline-form training-form" onSubmit={submitRpEvaluateRollback}>
                       <label>Target version to evaluate<input value={rpRollbackEvalForm.target_version} onChange={(e) => setRpRollbackEvalForm({ target_version: e.target.value })} /></label>
-                      <button type="submit" disabled={rpBusy}>Evaluate rollback target</button>
+                      <Button type="submit" disabled={rpBusy}>Evaluate rollback target</Button>
                     </form>
                     {rpRollbackEval && (
                       <pre className="notice">{JSON.stringify(rpRollbackEval, null, 2)}</pre>
@@ -4351,7 +4353,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <form className="inline-form training-form" onSubmit={submitRpExecuteRollback}>
                       <label>Target release public ID<input value={rpRollbackExecuteForm.target_release_public_id} onChange={(e) => setRpRollbackExecuteForm({ ...rpRollbackExecuteForm, target_release_public_id: e.target.value })} /></label>
                       <label>Reason<input value={rpRollbackExecuteForm.reason} onChange={(e) => setRpRollbackExecuteForm({ ...rpRollbackExecuteForm, reason: e.target.value })} /></label>
-                      <button type="submit" disabled={rpBusy}>Execute rollback</button>
+                      <Button type="submit" disabled={rpBusy}>Execute rollback</Button>
                     </form>
                   </div>
 
@@ -4390,9 +4392,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <ul className="notice">
                 {clSessions.map((s) => (
                   <li key={s.public_id}>
-                    <button className={clSelectedId === s.public_id ? 'active' : ''} onClick={() => selectClSession(s.public_id)}>
+                    <Button className={clSelectedId === s.public_id ? 'active' : ''} onClick={() => selectClSession(s.public_id)}>
                       {s.public_id.slice(0, 8)} -- {s.stage} ({s.status})
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!clSessions.length && <li>No learning cycles yet.</li>}
@@ -4401,7 +4403,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <h4>New learning cycle</h4>
               <form className="inline-form training-form" onSubmit={submitClCreateSession}>
                 <label>Cycle window (days, intent only -- see diagnostics)<input type="number" min="1" max="365" value={clCycleWindowDays} onChange={(e) => setClCycleWindowDays(Number(e.target.value))} /></label>
-                <button type="submit" disabled={clBusy}>{clBusy ? 'Working…' : 'Start learning cycle'}</button>
+                <Button type="submit" disabled={clBusy}>{clBusy ? 'Working…' : 'Start learning cycle'}</Button>
               </form>
             </div>
 
@@ -4420,7 +4422,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {clSession.stage === 'feedback_collection' && (
                     <div className="notice">
                       <p>Stage 1: collect real Public Chat routing + feedback evidence (approved logs only -- no raw text is ever read).</p>
-                      <button onClick={runClCollectFeedback} disabled={clBusy}>Collect feedback</button>
+                      <Button onClick={runClCollectFeedback} disabled={clBusy}>Collect feedback</Button>
                     </div>
                   )}
                   {clSession.feedback_report?.total_conversations_observed !== undefined && (
@@ -4430,28 +4432,28 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {clSession.stage === 'failure_analysis' && (
                     <div className="notice">
                       <p>Stage 2: classify failures -- no answer, blocked, timeout, low confidence, wrong answer.</p>
-                      <button onClick={runClAnalyzeFailures} disabled={clBusy}>Analyze failures</button>
+                      <Button onClick={runClAnalyzeFailures} disabled={clBusy}>Analyze failures</Button>
                     </div>
                   )}
 
                   {clSession.stage === 'hallucination_analysis' && (
                     <div className="notice">
                       <p>Stage 3: hallucination signal from the routing pipeline's own real evidence_status field.</p>
-                      <button onClick={runClAnalyzeHallucinations} disabled={clBusy}>Analyze hallucinations</button>
+                      <Button onClick={runClAnalyzeHallucinations} disabled={clBusy}>Analyze hallucinations</Button>
                     </div>
                   )}
 
                   {clSession.stage === 'knowledge_gap_analysis' && (
                     <div className="notice">
                       <p>Stage 4: aggregate the existing Knowledge Gap Registry's own cases -- read-only, never writes back to it.</p>
-                      <button onClick={runClAnalyzeKnowledgeGaps} disabled={clBusy}>Analyze knowledge gaps</button>
+                      <Button onClick={runClAnalyzeKnowledgeGaps} disabled={clBusy}>Analyze knowledge gaps</Button>
                     </div>
                   )}
 
                   {clSession.stage === 'weak_topic_detection' && (
                     <div className="notice">
                       <p>Stage 5: rank domains by a disclosed weakness index (no true per-domain accuracy % is measurable from real data today).</p>
-                      <button onClick={runClDetectWeakTopics} disabled={clBusy}>Detect weak topics</button>
+                      <Button onClick={runClDetectWeakTopics} disabled={clBusy}>Detect weak topics</Button>
                     </div>
                   )}
                   {clSession.weak_topic_report?.topics && (
@@ -4461,34 +4463,34 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {clSession.stage === 'difficulty_analysis' && (
                     <div className="notice">
                       <p>Stage 6: Easy/Medium/Hard/Expert/Unknown, reusing MB-05.1's difficulty scoring unchanged.</p>
-                      <button onClick={runClAnalyzeDifficulty} disabled={clBusy}>Analyze difficulty</button>
+                      <Button onClick={runClAnalyzeDifficulty} disabled={clBusy}>Analyze difficulty</Button>
                     </div>
                   )}
 
                   {clSession.stage === 'dataset_recommendation' && (
                     <div className="notice">
                       <p>Stage 7: recommend dataset formats per weak domain, each with a WHY.</p>
-                      <button onClick={runClRecommendDatasets} disabled={clBusy}>Recommend datasets</button>
+                      <Button onClick={runClRecommendDatasets} disabled={clBusy}>Recommend datasets</Button>
                     </div>
                   )}
 
                   {clSession.stage === 'training_recommendation' && (
                     <div className="notice">
                       <p>Stage 8: No Training / Fine Tune / Continue Training / Full Retraining, with WHY.</p>
-                      <button onClick={runClRecommendTraining} disabled={clBusy}>Recommend training action</button>
+                      <Button onClick={runClRecommendTraining} disabled={clBusy}>Recommend training action</Button>
                     </div>
                   )}
 
                   {clSession.stage === 'priority_ranking' && !clSession.continuous_learning_report?.overall_health && (
                     <div className="notice">
                       <p>Stage 9: rank recommendations using the Knowledge Gap Registry's own real priority scores.</p>
-                      <button onClick={runClRankPriorities} disabled={clBusy}>Rank priorities</button>
+                      <Button onClick={runClRankPriorities} disabled={clBusy}>Rank priorities</Button>
                     </div>
                   )}
                   {clSession.stage === 'priority_ranking' && clSession.priority_report?.training_recommendation && (
                     <div className="notice">
                       <p>Stage 10: assemble the final Continuous Learning Report.</p>
-                      <button onClick={runClGenerateReport} disabled={clBusy}>Generate report</button>
+                      <Button onClick={runClGenerateReport} disabled={clBusy}>Generate report</Button>
                     </div>
                   )}
 
@@ -4496,8 +4498,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>Admin reviews the full Continuous Learning Report and decides.</p>
                       <pre className="notice">{JSON.stringify(clSession.continuous_learning_report, null, 2)}</pre>
-                      <button onClick={() => runClAdminReview('reject')} disabled={clBusy}>Reject</button>{' '}
-                      <button onClick={() => runClAdminReview('approve')} disabled={clBusy}>Approve</button>
+                      <Button onClick={() => runClAdminReview('reject')} disabled={clBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runClAdminReview('approve')} disabled={clBusy}>Approve</Button>
                     </div>
                   )}
 
@@ -4550,7 +4552,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <label>Model version public ID (optional)<input value={clcMemoryForm.model_version_public_id} onChange={(e) => setClcMemoryForm({ ...clcMemoryForm, model_version_public_id: e.target.value })} /></label>
               <label>Dataset version public ID (optional)<input value={clcMemoryForm.dataset_version_public_id} onChange={(e) => setClcMemoryForm({ ...clcMemoryForm, dataset_version_public_id: e.target.value })} /></label>
               <label>Improvement notes<input value={clcMemoryForm.improvement_notes} onChange={(e) => setClcMemoryForm({ ...clcMemoryForm, improvement_notes: e.target.value })} /></label>
-              <button type="submit" disabled={clcBusy || !clcMemoryForm.continuous_learning_session_public_id}>Record memory</button>
+              <Button type="submit" disabled={clcBusy || !clcMemoryForm.continuous_learning_session_public_id}>Record memory</Button>
             </form>
           </div>
 
@@ -4560,15 +4562,15 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <ul className="notice">
                 {clcSessionsList.map((s) => (
                   <li key={s.public_id}>
-                    <button className={clcSelectedId === s.public_id ? 'active' : ''} onClick={() => selectClcSession(s.public_id)}>
+                    <Button className={clcSelectedId === s.public_id ? 'active' : ''} onClick={() => selectClcSession(s.public_id)}>
                       {s.public_id.slice(0, 8)} -- {s.stage} ({s.status})
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!clcSessionsList.length && <li>No planning cycles yet.</li>}
               </ul>
               <form className="inline-form training-form" onSubmit={submitClcCreateSession}>
-                <button type="submit" disabled={clcBusy}>{clcBusy ? 'Working…' : 'Start planning cycle'}</button>
+                <Button type="submit" disabled={clcBusy}>{clcBusy ? 'Working…' : 'Start planning cycle'}</Button>
               </form>
             </div>
 
@@ -4586,7 +4588,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {clcSessionData.stage === 'knowledge_gap_evolution' && (
                     <div className="notice">
                       <p>Knowledge Gap Evolution: compares recent MB-08 reports for recurring weaknesses.</p>
-                      <button onClick={runClcEvolveKnowledgeGaps} disabled={clcBusy}>Evolve knowledge gaps</button>
+                      <Button onClick={runClcEvolveKnowledgeGaps} disabled={clcBusy}>Evolve knowledge gaps</Button>
                     </div>
                   )}
                   {clcSessionData.knowledge_gap_evolution_report?.recurring_weak_domains && (
@@ -4596,7 +4598,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {clcSessionData.stage === 'learning_queue' && (
                     <div className="notice">
                       <p>Learning Queue: prioritized topics only -- never creates a dataset.</p>
-                      <button onClick={runClcBuildLearningQueue} disabled={clcBusy}>Build learning queue</button>
+                      <Button onClick={runClcBuildLearningQueue} disabled={clcBusy}>Build learning queue</Button>
                     </div>
                   )}
                   {clcSessionData.learning_queue_report?.queue && (
@@ -4608,7 +4610,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Local Draft Planner: structure only -- never invents facts, never claims verification.</p>
                       <form className="inline-form training-form" onSubmit={submitClcBuildDraft}>
                         <label>Topic (optional -- defaults to top queue item)<input value={clcDraftTopic} onChange={(e) => setClcDraftTopic(e.target.value)} /></label>
-                        <button type="submit" disabled={clcBusy}>Build draft outline</button>
+                        <Button type="submit" disabled={clcBusy}>Build draft outline</Button>
                       </form>
                     </div>
                   )}
@@ -4621,7 +4623,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Multi-Provider Consensus Planner: prepares a request only -- Brud AI never calls a provider automatically.</p>
                       <form className="inline-form training-form" onSubmit={submitClcPrepareProviderRequest}>
                         <label>Providers (comma separated: claude, openai, gemini, openrouter, local_only)<input value={clcProviders} onChange={(e) => setClcProviders(e.target.value)} /></label>
-                        <button type="submit" disabled={clcBusy}>Prepare provider request</button>
+                        <Button type="submit" disabled={clcBusy}>Prepare provider request</Button>
                       </form>
                     </div>
                   )}
@@ -4637,7 +4639,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             }} />
                           </label>
                         ))}
-                        <button type="submit" disabled={clcBusy}>Ingest provider results</button>
+                        <Button type="submit" disabled={clcBusy}>Ingest provider results</Button>
                       </form>
                     </div>
                   )}
@@ -4650,7 +4652,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Dataset Evolution Planner: recommends merge/extend/replace/split/ignore -- never performs the merge.</p>
                       <form className="inline-form training-form" onSubmit={submitClcPlanDatasetEvolution}>
                         <label>Existing dataset source public ID (optional)<input value={clcExistingDatasetId} onChange={(e) => setClcExistingDatasetId(e.target.value)} /></label>
-                        <button type="submit" disabled={clcBusy}>Plan dataset evolution</button>
+                        <Button type="submit" disabled={clcBusy}>Plan dataset evolution</Button>
                       </form>
                     </div>
                   )}
@@ -4658,20 +4660,20 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {clcSessionData.stage === 'knowledge_roadmap' && (
                     <div className="notice">
                       <p>Knowledge Roadmap: strengths, weaknesses, missing knowledge, future priorities.</p>
-                      <button onClick={runClcBuildRoadmap} disabled={clcBusy}>Build roadmap</button>
+                      <Button onClick={runClcBuildRoadmap} disabled={clcBusy}>Build roadmap</Button>
                     </div>
                   )}
 
                   {clcSessionData.stage === 'recommendation' && !clcSessionData.planning_report?.next_action && (
                     <div className="notice">
                       <p>Learning Recommendation Engine: one of No Action / Collect More Data / Local Draft / External Provider Consensus / RAG Evaluation / Training Candidate.</p>
-                      <button onClick={runClcGenerateRecommendation} disabled={clcBusy}>Generate recommendation</button>
+                      <Button onClick={runClcGenerateRecommendation} disabled={clcBusy}>Generate recommendation</Button>
                     </div>
                   )}
                   {clcSessionData.stage === 'recommendation' && clcSessionData.recommendation_report?.action && !clcSessionData.planning_report?.next_action && (
                     <div className="notice">
                       <p>Recommended: <strong>{clcSessionData.recommendation_report.action}</strong> -- {clcSessionData.recommendation_report.why}</p>
-                      <button onClick={runClcGenerateReport} disabled={clcBusy}>Generate admin planning report</button>
+                      <Button onClick={runClcGenerateReport} disabled={clcBusy}>Generate admin planning report</Button>
                     </div>
                   )}
 
@@ -4679,12 +4681,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>Admin Planning Report ready for review.</p>
                       <pre className="notice">{JSON.stringify(clcSessionData.planning_report, null, 2)}</pre>
-                      <button onClick={() => runClcAdminReview('reject')} disabled={clcBusy}>Reject</button>{' '}
-                      <button onClick={() => runClcAdminReview('edit')} disabled={clcBusy}>Edit</button>{' '}
-                      <button onClick={() => runClcAdminReview('approve_draft')} disabled={clcBusy}>Approve Draft</button>{' '}
-                      <button onClick={() => runClcAdminReview('request_provider_consensus')} disabled={clcBusy}>Request Provider Consensus</button>{' '}
-                      <button onClick={() => runClcAdminReview('send_to_rag')} disabled={clcBusy}>Send to RAG</button>{' '}
-                      <button onClick={() => runClcAdminReview('archive')} disabled={clcBusy}>Archive</button>
+                      <Button onClick={() => runClcAdminReview('reject')} disabled={clcBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runClcAdminReview('edit')} disabled={clcBusy}>Edit</Button>{' '}
+                      <Button onClick={() => runClcAdminReview('approve_draft')} disabled={clcBusy}>Approve Draft</Button>{' '}
+                      <Button onClick={() => runClcAdminReview('request_provider_consensus')} disabled={clcBusy}>Request Provider Consensus</Button>{' '}
+                      <Button onClick={() => runClcAdminReview('send_to_rag')} disabled={clcBusy}>Send to RAG</Button>{' '}
+                      <Button onClick={() => runClcAdminReview('archive')} disabled={clcBusy}>Archive</Button>
                     </div>
                   )}
 
@@ -4720,7 +4722,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {rcSubTabs.map((t) => (
-              <button key={t} className={rcSubTab === t ? 'active' : ''} onClick={() => setRcSubTab(t)}>{t}</button>
+              <Button key={t} className={rcSubTab === t ? 'active' : ''} onClick={() => setRcSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -4746,16 +4748,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {rcSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={rcSelectedId === s.public_id ? 'active' : ''} onClick={() => selectRcSession(s.public_id)}>
+                        <Button className={rcSelectedId === s.public_id ? 'active' : ''} onClick={() => selectRcSession(s.public_id)}>
                           {s.topic} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!rcSessionsList.length && <li>No research sessions yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitRcCreateSession}>
                     <label>Topic<input value={rcNewTopic} onChange={(e) => setRcNewTopic(e.target.value)} placeholder="e.g. Photosynthesis" /></label>
-                    <button type="submit" disabled={rcBusy || !rcNewTopic.trim()}>{rcBusy ? 'Working…' : 'Start research session'}</button>
+                    <Button type="submit" disabled={rcBusy || !rcNewTopic.trim()}>{rcBusy ? 'Working…' : 'Start research session'}</Button>
                   </form>
                 </div>
                 <div>
@@ -4781,9 +4783,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 {rcProviders.map((p) => (
                   <li key={p.provider_key}>
                     <strong>{p.display_name}</strong> ({p.provider_key}) -- {p.status} -- {p.requires_external_call ? 'external call' : 'no external call'} -- {p.description}{' '}
-                    <button onClick={() => toggleRcProviderStatus(p.provider_key, p.status)} disabled={rcBusy}>
+                    <Button onClick={() => toggleRcProviderStatus(p.provider_key, p.status)} disabled={rcBusy}>
                       {p.status === 'active' ? 'Deactivate' : 'Activate'}
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!rcProviders.length && <li>No providers registered.</li>}
@@ -4796,7 +4798,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <input type="checkbox" checked={rcNewProviderForm.requires_external_call} onChange={(e) => setRcNewProviderForm({ ...rcNewProviderForm, requires_external_call: e.target.checked })} />
                   {' '}Requires external call
                 </label>
-                <button type="submit" disabled={rcBusy || !rcNewProviderForm.provider_key || !rcNewProviderForm.display_name}>Add provider</button>
+                <Button type="submit" disabled={rcBusy || !rcNewProviderForm.provider_key || !rcNewProviderForm.display_name}>Add provider</Button>
               </form>
             </>
           )}
@@ -4811,7 +4813,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Builds a set of research questions, folding in evidence from an already-completed MB-09 Planning Center cycle if one is supplied.</p>
                       <form className="inline-form training-form" onSubmit={submitRcResearchRequest}>
                         <label>MB-09 planning session public ID (optional)<input value={rcPlanningCenterId} onChange={(e) => setRcPlanningCenterId(e.target.value)} /></label>
-                        <button type="submit" disabled={rcBusy}>Prepare research request</button>
+                        <Button type="submit" disabled={rcBusy}>Prepare research request</Button>
                       </form>
                     </div>
                   )}
@@ -4828,7 +4830,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                         {rcMode === 'multi_provider' && (
                           <label>Provider keys (comma separated)<input value={rcProviderKeys} onChange={(e) => setRcProviderKeys(e.target.value)} /></label>
                         )}
-                        <button type="submit" disabled={rcBusy}>Select mode</button>
+                        <Button type="submit" disabled={rcBusy}>Select mode</Button>
                       </form>
                     </div>
                   )}
@@ -4850,14 +4852,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>Local Draft: uses Mini Brain's own existing evidence -- Knowledge Roadmap, Learning Queue, Dataset Intelligence, Continuous Learning History (read via MB-09, read-only).</p>
                       <form className="inline-form training-form" onSubmit={submitRcBuildLocalDraft}>
                         <label>Existing dataset source public ID (optional)<input value={rcExistingDatasetId} onChange={(e) => setRcExistingDatasetId(e.target.value)} /></label>
-                        <button type="submit" disabled={rcBusy}>Build local draft</button>
+                        <Button type="submit" disabled={rcBusy}>Build local draft</Button>
                       </form>
                     </div>
                   )}
                   {rcSessionData.stage === 'provider_request' && (
                     <div className="notice">
                       <p>Prepares a Provider Request Package only -- Brud AI never calls a provider automatically. The admin runs these providers externally.</p>
-                      <button onClick={runRcPrepareProviderRequestPackage} disabled={rcBusy}>Prepare provider request package</button>
+                      <Button onClick={runRcPrepareProviderRequestPackage} disabled={rcBusy}>Prepare provider request package</Button>
                     </div>
                   )}
                   {rcSessionData.provider_request?.status && (
@@ -4874,7 +4876,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             }} />
                           </label>
                         ))}
-                        <button type="submit" disabled={rcBusy}>Ingest provider results</button>
+                        <Button type="submit" disabled={rcBusy}>Ingest provider results</Button>
                       </form>
                     </div>
                   )}
@@ -4914,7 +4916,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rcSessionData.stage === 'dataset_draft' && (
                     <div className="notice">
                       <p>Assembles the draft only -- <code>verified: false</code>, needs admin review. MB-10 never creates a final dataset; Dataset Studio remains the only place that happens.</p>
-                      <button onClick={runRcBuildDatasetDraft} disabled={rcBusy}>Build dataset draft</button>
+                      <Button onClick={runRcBuildDatasetDraft} disabled={rcBusy}>Build dataset draft</Button>
                     </div>
                   )}
                   {rcSessionData.recommendation_report?.recommendation && (
@@ -4926,14 +4928,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rcSessionData.stage === 'awaiting_draft_review' && (
                     <div className="notice">
                       <p>Admin decision (accept, then send-to-RAG, is a two-step confirmation -- RAG FIRST POLICY):</p>
-                      <button onClick={() => runRcAdminReviewDraft('reject')} disabled={rcBusy}>Reject</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('edit')} disabled={rcBusy}>Edit</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('accept_draft')} disabled={rcBusy}>Accept Draft</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('request_more_research')} disabled={rcBusy}>Request More Research</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('request_different_providers')} disabled={rcBusy}>Request Different Providers</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('request_local_draft')} disabled={rcBusy}>Request Local Draft</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('send_to_rag')} disabled={rcBusy || rcSessionData.draft_admin_decision !== 'accept_draft'}>Send to RAG</button>{' '}
-                      <button onClick={() => runRcAdminReviewDraft('archive')} disabled={rcBusy}>Archive</button>
+                      <Button onClick={() => runRcAdminReviewDraft('reject')} disabled={rcBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('edit')} disabled={rcBusy}>Edit</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('accept_draft')} disabled={rcBusy}>Accept Draft</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('request_more_research')} disabled={rcBusy}>Request More Research</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('request_different_providers')} disabled={rcBusy}>Request Different Providers</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('request_local_draft')} disabled={rcBusy}>Request Local Draft</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('send_to_rag')} disabled={rcBusy || rcSessionData.draft_admin_decision !== 'accept_draft'}>Send to RAG</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewDraft('archive')} disabled={rcBusy}>Archive</Button>
                     </div>
                   )}
                 </>
@@ -4952,8 +4954,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>RAG Sandbox experiment public ID<input value={rcRagForm.rag_sandbox_experiment_public_id} onChange={(e) => setRcRagForm({ ...rcRagForm, rag_sandbox_experiment_public_id: e.target.value })} /></label>
                       <label>Retrieval run public ID<input value={rcRagForm.retrieval_run_public_id} onChange={(e) => setRcRagForm({ ...rcRagForm, retrieval_run_public_id: e.target.value })} /></label>
                       <label>Generation assignment public ID<input value={rcRagForm.generation_assignment_public_id} onChange={(e) => setRcRagForm({ ...rcRagForm, generation_assignment_public_id: e.target.value })} /></label>
-                      <button type="submit" disabled={rcBusy}>Run RAG generation + evaluation</button>
-                      <button type="button" onClick={runRcFinalizeRagEvaluation} disabled={rcBusy}>Finalize report (retry after human review)</button>
+                      <Button type="submit" disabled={rcBusy}>Run RAG generation + evaluation</Button>
+                      <Button type="button" onClick={runRcFinalizeRagEvaluation} disabled={rcBusy}>Finalize report (retry after human review)</Button>
                     </form>
                   )}
                   {rcSessionData.rag_report && Object.keys(rcSessionData.rag_report).length > 0 && (
@@ -4961,8 +4963,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {rcSessionData.stage === 'awaiting_rag_review' && (
                     <div className="notice">
-                      <button onClick={() => runRcAdminReviewRag('approve')} disabled={rcBusy}>Approve</button>{' '}
-                      <button onClick={() => runRcAdminReviewRag('reject')} disabled={rcBusy}>Reject</button>
+                      <Button onClick={() => runRcAdminReviewRag('approve')} disabled={rcBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runRcAdminReviewRag('reject')} disabled={rcBusy}>Reject</Button>
                     </div>
                   )}
                 </>
@@ -4977,7 +4979,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   <p className="notice">Eligibility check only -- never a training trigger. Training Engine only accepts admin-approved + RAG-approved datasets, and only ever starts through MB-06's own UI.</p>
                   {rcSessionData.stage === 'training_gate' && (
-                    <button onClick={runRcCheckTrainingGate} disabled={rcBusy}>Check training gate</button>
+                    <Button onClick={runRcCheckTrainingGate} disabled={rcBusy}>Check training gate</Button>
                   )}
                   {rcSessionData.training_gate_report && Object.keys(rcSessionData.training_gate_report).length > 0 && (
                     <pre className="notice">{JSON.stringify(rcSessionData.training_gate_report, null, 2)}</pre>
@@ -4985,7 +4987,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rcSessionData.training_gate_report?.eligible && (
                     <form className="inline-form training-form" onSubmit={submitRcAnalyzeTrainingReport}>
                       <label>MB-06 Learning Supervisor session public ID (once training has completed there)<input value={rcTrainingReportMb06Id} onChange={(e) => setRcTrainingReportMb06Id(e.target.value)} /></label>
-                      <button type="submit" disabled={rcBusy}>Analyze training report (read-only)</button>
+                      <Button type="submit" disabled={rcBusy}>Analyze training report (read-only)</Button>
                     </form>
                   )}
                 </>
@@ -4999,7 +5001,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {rcSessionData && (
                 <>
                   <p className="notice">Assembled on demand from fields already on the session -- pure merge, nothing recomputed, nothing stored separately.</p>
-                  <button onClick={runRcGenerateReport} disabled={rcBusy}>Generate research report</button>
+                  <Button onClick={runRcGenerateReport} disabled={rcBusy}>Generate research report</Button>
                   {rcReport && <pre className="notice">{JSON.stringify(rcReport, null, 2)}</pre>}
                 </>
               )}
@@ -5019,7 +5021,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 {rcSessionData && (
                   <form className="inline-form training-form" onSubmit={submitRcRecordMemory}>
                     <label>Notes<input value={rcMemoryNotes} onChange={(e) => setRcMemoryNotes(e.target.value)} /></label>
-                    <button type="submit" disabled={rcBusy}>Record memory snapshot for selected session</button>
+                    <Button type="submit" disabled={rcBusy}>Record memory snapshot for selected session</Button>
                   </form>
                 )}
               </div>
@@ -5056,7 +5058,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {deSubTabs.map((t) => (
-              <button key={t} className={deSubTab === t ? 'active' : ''} onClick={() => setDeSubTab(t)}>{t}</button>
+              <Button key={t} className={deSubTab === t ? 'active' : ''} onClick={() => setDeSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -5081,16 +5083,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {deSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={deSelectedId === s.public_id ? 'active' : ''} onClick={() => selectDeSession(s.public_id)}>
+                        <Button className={deSelectedId === s.public_id ? 'active' : ''} onClick={() => selectDeSession(s.public_id)}>
                           {s.dataset_source_public_id.slice(0, 10)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!deSessionsList.length && <li>No evolution cycles yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitDeCreateSession}>
                     <label>Dataset source public ID<input value={deNewSourceId} onChange={(e) => setDeNewSourceId(e.target.value)} placeholder="source public_id from Dataset Studio" /></label>
-                    <button type="submit" disabled={deBusy || !deNewSourceId.trim()}>{deBusy ? 'Working…' : 'Start evolution cycle'}</button>
+                    <Button type="submit" disabled={deBusy || !deNewSourceId.trim()}>{deBusy ? 'Working…' : 'Start evolution cycle'}</Button>
                   </form>
                 </div>
                 <div>
@@ -5117,7 +5119,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {deSessionData.stage === 'knowledge_evolution' && (
                     <div className="notice">
                       <p>Combines the current dataset's real MB-05/MB-05.1 analysis with recent closed MB-08/MB-09/MB-10 evidence into one evolution analysis, dependency graph, coverage classification, and knowledge-relationship report.</p>
-                      <button onClick={runDeKnowledgeEvolution} disabled={deBusy}>Run knowledge evolution analysis</button>
+                      <Button onClick={runDeKnowledgeEvolution} disabled={deBusy}>Run knowledge evolution analysis</Button>
                     </div>
                   )}
                   {deSessionData.evolution_analysis?.evolution_pressure !== undefined && (
@@ -5145,7 +5147,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {deSessionData.stage === 'dataset_evolution' && (
                     <div className="notice">
                       <p>Plans expansion action, version projection, knowledge-factory content recommendations, a synthetic-dataset design, and predicted quality evolution. Recommends only -- never performs any of it.</p>
-                      <button onClick={runDeDatasetEvolution} disabled={deBusy}>Plan dataset evolution</button>
+                      <Button onClick={runDeDatasetEvolution} disabled={deBusy}>Plan dataset evolution</Button>
                     </div>
                   )}
                   {deSessionData.expansion_plan?.action && (
@@ -5175,7 +5177,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {deSessionData.stage === 'evolution_simulation' && (
                     <div className="notice">
                       <p>Simulation only -- no benchmark runs, no model is evaluated, no RAG query executes.</p>
-                      <button onClick={runDeSimulation} disabled={deBusy}>Run evolution simulation</button>
+                      <Button onClick={runDeSimulation} disabled={deBusy}>Run evolution simulation</Button>
                     </div>
                   )}
                   {deSessionData.simulation_report?.expected_improvement !== undefined && (
@@ -5194,29 +5196,29 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {deSessionData.stage === 'recommendation' && !deSessionData.recommendation_report?.recommendation && (
                     <div className="notice">
                       <p>One of: Continue Current Dataset / Expand Dataset / Split Dataset / Replace Dataset / Research More / Collect More Data / Wait / Reject -- with WHY, evidence, confidence, and risk.</p>
-                      <button onClick={runDeGenerateRecommendation} disabled={deBusy}>Generate recommendation</button>
+                      <Button onClick={runDeGenerateRecommendation} disabled={deBusy}>Generate recommendation</Button>
                     </div>
                   )}
                   {deSessionData.recommendation_report?.recommendation && deSessionData.stage === 'recommendation' && !deSessionData.evolution_report?.ready_for_admin_review && (
                     <div className="notice">
                       <p>Recommended: <strong>{deSessionData.recommendation_report.recommendation}</strong> (confidence {deSessionData.recommendation_report.confidence}, risk {deSessionData.recommendation_report.risk}) -- {deSessionData.recommendation_report.why}</p>
-                      <button onClick={runDeGenerateReport} disabled={deBusy}>Generate evolution report</button>
+                      <Button onClick={runDeGenerateReport} disabled={deBusy}>Generate evolution report</Button>
                     </div>
                   )}
                   {deSessionData.stage === 'awaiting_admin_review' && (
                     <div className="notice">
                       <p>Evolution Report ready for review.</p>
                       <pre className="notice">{JSON.stringify(deSessionData.evolution_report, null, 2)}</pre>
-                      <button onClick={() => runDeAdminReview('approve_evolution')} disabled={deBusy}>Approve Evolution</button>{' '}
-                      <button onClick={() => runDeAdminReview('edit_plan')} disabled={deBusy}>Edit Plan</button>{' '}
-                      <button onClick={() => runDeAdminReview('research_more')} disabled={deBusy}>Research More</button>{' '}
-                      <button onClick={() => runDeAdminReview('request_provider_consensus')} disabled={deBusy}>Request Provider Consensus</button>{' '}
-                      <button onClick={() => runDeAdminReview('expand_dataset')} disabled={deBusy}>Expand Dataset</button>{' '}
-                      <button onClick={() => runDeAdminReview('split_dataset')} disabled={deBusy}>Split Dataset</button>{' '}
-                      <button onClick={() => runDeAdminReview('merge_dataset')} disabled={deBusy}>Merge Dataset</button>{' '}
-                      <button onClick={() => runDeAdminReview('archive_plan')} disabled={deBusy}>Archive Plan</button>{' '}
-                      <button onClick={() => runDeAdminReview('reject')} disabled={deBusy}>Reject</button>{' '}
-                      <button onClick={() => runDeAdminReview('send_to_rag')} disabled={deBusy || deSessionData.draft_admin_decision !== 'approve_evolution'}>Send to RAG</button>
+                      <Button onClick={() => runDeAdminReview('approve_evolution')} disabled={deBusy}>Approve Evolution</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('edit_plan')} disabled={deBusy}>Edit Plan</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('research_more')} disabled={deBusy}>Research More</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('request_provider_consensus')} disabled={deBusy}>Request Provider Consensus</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('expand_dataset')} disabled={deBusy}>Expand Dataset</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('split_dataset')} disabled={deBusy}>Split Dataset</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('merge_dataset')} disabled={deBusy}>Merge Dataset</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('archive_plan')} disabled={deBusy}>Archive Plan</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('reject')} disabled={deBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runDeAdminReview('send_to_rag')} disabled={deBusy || deSessionData.draft_admin_decision !== 'approve_evolution'}>Send to RAG</Button>
                     </div>
                   )}
                   {deSessionData.stage === 'closed' && (
@@ -5240,8 +5242,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>RAG Sandbox experiment public ID<input value={deRagForm.rag_sandbox_experiment_public_id} onChange={(e) => setDeRagForm({ ...deRagForm, rag_sandbox_experiment_public_id: e.target.value })} /></label>
                       <label>Retrieval run public ID<input value={deRagForm.retrieval_run_public_id} onChange={(e) => setDeRagForm({ ...deRagForm, retrieval_run_public_id: e.target.value })} /></label>
                       <label>Generation assignment public ID<input value={deRagForm.generation_assignment_public_id} onChange={(e) => setDeRagForm({ ...deRagForm, generation_assignment_public_id: e.target.value })} /></label>
-                      <button type="submit" disabled={deBusy}>Run RAG generation + evaluation</button>
-                      <button type="button" onClick={runDeFinalizeRagEvaluation} disabled={deBusy}>Finalize report (retry after human review)</button>
+                      <Button type="submit" disabled={deBusy}>Run RAG generation + evaluation</Button>
+                      <Button type="button" onClick={runDeFinalizeRagEvaluation} disabled={deBusy}>Finalize report (retry after human review)</Button>
                     </form>
                   )}
                   {deSessionData.rag_report && Object.keys(deSessionData.rag_report).length > 0 && (
@@ -5249,8 +5251,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {deSessionData.stage === 'awaiting_rag_review' && (
                     <div className="notice">
-                      <button onClick={() => runDeAdminReviewRag('approve')} disabled={deBusy}>Approve</button>{' '}
-                      <button onClick={() => runDeAdminReviewRag('reject')} disabled={deBusy}>Reject</button>
+                      <Button onClick={() => runDeAdminReviewRag('approve')} disabled={deBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runDeAdminReviewRag('reject')} disabled={deBusy}>Reject</Button>
                     </div>
                   )}
                 </>
@@ -5293,7 +5295,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {pcSubTabs.map((t) => (
-              <button key={t} className={pcSubTab === t ? 'active' : ''} onClick={() => setPcSubTab(t)}>{t}</button>
+              <Button key={t} className={pcSubTab === t ? 'active' : ''} onClick={() => setPcSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -5317,16 +5319,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {pcSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={pcSelectedId === s.public_id ? 'active' : ''} onClick={() => selectPcSession(s.public_id)}>
+                        <Button className={pcSelectedId === s.public_id ? 'active' : ''} onClick={() => selectPcSession(s.public_id)}>
                           {s.topic} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!pcSessionsList.length && <li>No pipelines yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitPcCreateSession}>
                     <label>Topic<input value={pcNewTopic} onChange={(e) => setPcNewTopic(e.target.value)} placeholder="matches the topic used in MB-09/MB-10" /></label>
-                    <button type="submit" disabled={pcBusy || !pcNewTopic.trim()}>{pcBusy ? 'Working…' : 'Start pipeline'}</button>
+                    <Button type="submit" disabled={pcBusy || !pcNewTopic.trim()}>{pcBusy ? 'Working…' : 'Start pipeline'}</Button>
                   </form>
                 </div>
                 <div>
@@ -5355,22 +5357,22 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <p>Every link is dependency-checked -- linking out of order is rejected with the exact reason.</p>
                   <form className="inline-form training-form" onSubmit={submitPcLinkResearch}>
                     <label>MB-09 planning session public ID<input value={pcMb09Id} onChange={(e) => setPcMb09Id(e.target.value)} /></label>
-                    <button type="submit" disabled={pcBusy || !pcMb09Id.trim()}>Link Research (MB-09)</button>
+                    <Button type="submit" disabled={pcBusy || !pcMb09Id.trim()}>Link Research (MB-09)</Button>
                   </form>
                   <form className="inline-form training-form" onSubmit={submitPcLinkResearchCenter}>
                     <label>MB-10 research session public ID<input value={pcMb10Id} onChange={(e) => setPcMb10Id(e.target.value)} /></label>
-                    <button type="submit" disabled={pcBusy || !pcMb10Id.trim()}>Link Provider Consensus / Draft (MB-10)</button>
+                    <Button type="submit" disabled={pcBusy || !pcMb10Id.trim()}>Link Provider Consensus / Draft (MB-10)</Button>
                   </form>
-                  <button onClick={runPcRefreshResearchCenter} disabled={pcBusy}>Refresh MB-10 link (check for draft readiness)</button>
+                  <Button onClick={runPcRefreshResearchCenter} disabled={pcBusy}>Refresh MB-10 link (check for draft readiness)</Button>
                   <form className="inline-form training-form" onSubmit={submitPcLinkDatasetEvolution}>
                     <label>MB-11 evolution session public ID<input value={pcMb11Id} onChange={(e) => setPcMb11Id(e.target.value)} /></label>
-                    <button type="submit" disabled={pcBusy || !pcMb11Id.trim()}>Link Dataset Evolution (MB-11)</button>
+                    <Button type="submit" disabled={pcBusy || !pcMb11Id.trim()}>Link Dataset Evolution (MB-11)</Button>
                   </form>
                   <form className="inline-form training-form" onSubmit={submitPcLinkTraining}>
                     <label>MB-06 learning session public ID<input value={pcMb06Id} onChange={(e) => setPcMb06Id(e.target.value)} /></label>
-                    <button type="submit" disabled={pcBusy || !pcMb06Id.trim()}>Link Training (MB-06)</button>
+                    <Button type="submit" disabled={pcBusy || !pcMb06Id.trim()}>Link Training (MB-06)</Button>
                   </form>
-                  <button onClick={runPcRefreshTraining} disabled={pcBusy}>Refresh MB-06 link (check for training/benchmark/release progress)</button>
+                  <Button onClick={runPcRefreshTraining} disabled={pcBusy}>Refresh MB-06 link (check for training/benchmark/release progress)</Button>
                 </div>
               )}
             </>
@@ -5382,7 +5384,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {pcSessionData && (
                 <>
                   <p className="notice">Reads whichever RAG report MB-11 or MB-06 already produced -- verifies citations, evidence, hallucination rate, and admin approval. Never calls RAG Sandbox itself. On failure, the pipeline returns to Dataset Planned.</p>
-                  <button onClick={runPcRunRagFirstEnforcement} disabled={pcBusy}>Run RAG First Enforcement</button>
+                  <Button onClick={runPcRunRagFirstEnforcement} disabled={pcBusy}>Run RAG First Enforcement</Button>
                   {pcSessionData.rag_first_report && Object.keys(pcSessionData.rag_first_report).length > 0 && (
                     <pre className="notice">{JSON.stringify(pcSessionData.rag_first_report, null, 2)}</pre>
                   )}
@@ -5397,8 +5399,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {pcSessionData && (
                 <>
                   <p className="notice">Unified readiness score combines already-computed signals from MB-05, MB-05.1, MB-06, MB-08, MB-09, MB-10, and MB-11 -- omitting any source not yet linked, never treating it as zero.</p>
-                  <button onClick={runPcGenerateTrainingReadiness} disabled={pcBusy}>Generate training readiness report</button>{' '}
-                  <button onClick={runPcGenerateTimeline} disabled={pcBusy}>Generate lifecycle timeline</button>
+                  <Button onClick={runPcGenerateTrainingReadiness} disabled={pcBusy}>Generate training readiness report</Button>{' '}
+                  <Button onClick={runPcGenerateTimeline} disabled={pcBusy}>Generate lifecycle timeline</Button>
                   {pcSessionData.training_readiness_report?.unified_readiness_score !== undefined && (
                     <pre className="notice">{JSON.stringify(pcSessionData.training_readiness_report, null, 2)}</pre>
                   )}
@@ -5416,7 +5418,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {pcSessionData && (
                 <>
                   <p className="notice">Simulation only -- expected benchmark, reasoning, Tamil quality, English quality, memory, and hallucination-reduction gains, derived from MB-11's own projection and, once linked, MB-06's real benchmark comparison.</p>
-                  <button onClick={runPcPredictImprovement} disabled={pcBusy}>Predict improvement</button>
+                  <Button onClick={runPcPredictImprovement} disabled={pcBusy}>Predict improvement</Button>
                   {pcSessionData.improvement_prediction?.expected_benchmark_gain !== undefined && (
                     <pre className="notice">{JSON.stringify(pcSessionData.improvement_prediction, null, 2)}</pre>
                   )}
@@ -5431,8 +5433,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {pcSessionData && (
                 <>
                   <div className="notice">
-                    <button onClick={runPcGenerateRecommendation} disabled={pcBusy}>Generate recommendation</button>{' '}
-                    <button onClick={runPcGenerateReport} disabled={pcBusy}>Generate master pipeline report</button>
+                    <Button onClick={runPcGenerateRecommendation} disabled={pcBusy}>Generate recommendation</Button>{' '}
+                    <Button onClick={runPcGenerateReport} disabled={pcBusy}>Generate master pipeline report</Button>
                   </div>
                   {pcSessionData.recommendation_report?.action && (
                     <p className="notice">Recommended: <strong>{pcSessionData.recommendation_report.action}</strong> (confidence {pcSessionData.recommendation_report.confidence}, risk {pcSessionData.recommendation_report.risk}) -- {pcSessionData.recommendation_report.why}</p>
@@ -5442,15 +5444,15 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   <div className="notice">
                     <p>Admin Decision Center -- always available, no decision executes anything:</p>
-                    <button onClick={() => runPcAdminDecide('continue')} disabled={pcBusy}>Continue</button>{' '}
-                    <button onClick={() => runPcAdminDecide('pause')} disabled={pcBusy}>Pause</button>{' '}
-                    <button onClick={() => runPcAdminDecide('research_more')} disabled={pcBusy}>Research More</button>{' '}
-                    <button onClick={() => runPcAdminDecide('request_providers')} disabled={pcBusy}>Request Providers</button>{' '}
-                    <button onClick={() => runPcAdminDecide('improve_dataset')} disabled={pcBusy}>Improve Dataset</button>{' '}
-                    <button onClick={() => runPcAdminDecide('retry_rag')} disabled={pcBusy}>Retry RAG</button>{' '}
-                    <button onClick={() => runPcAdminDecide('approve_training')} disabled={pcBusy}>Approve Training</button>{' '}
-                    <button onClick={() => runPcAdminDecide('reject')} disabled={pcBusy}>Reject</button>{' '}
-                    <button onClick={() => runPcAdminDecide('archive')} disabled={pcBusy}>Archive</button>
+                    <Button onClick={() => runPcAdminDecide('continue')} disabled={pcBusy}>Continue</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('pause')} disabled={pcBusy}>Pause</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('research_more')} disabled={pcBusy}>Research More</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('request_providers')} disabled={pcBusy}>Request Providers</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('improve_dataset')} disabled={pcBusy}>Improve Dataset</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('retry_rag')} disabled={pcBusy}>Retry RAG</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('approve_training')} disabled={pcBusy}>Approve Training</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('reject')} disabled={pcBusy}>Reject</Button>{' '}
+                    <Button onClick={() => runPcAdminDecide('archive')} disabled={pcBusy}>Archive</Button>
                   </div>
                 </>
               )}
@@ -5492,7 +5494,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {liSubTabs.map((t) => (
-              <button key={t} className={liSubTab === t ? 'active' : ''} onClick={() => setLiSubTab(t)}>{t}</button>
+              <Button key={t} className={liSubTab === t ? 'active' : ''} onClick={() => setLiSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -5517,16 +5519,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {liSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={liSelectedId === s.public_id ? 'active' : ''} onClick={() => selectLiSession(s.public_id)}>
+                        <Button className={liSelectedId === s.public_id ? 'active' : ''} onClick={() => selectLiSession(s.public_id)}>
                           {s.dataset_source_public_id.slice(0, 10)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!liSessionsList.length && <li>No language cycles yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitLiCreateSession}>
                     <label>Dataset source public ID<input value={liNewSourceId} onChange={(e) => setLiNewSourceId(e.target.value)} placeholder="source public_id from Dataset Studio" /></label>
-                    <button type="submit" disabled={liBusy || !liNewSourceId.trim()}>{liBusy ? 'Working…' : 'Start language cycle'}</button>
+                    <Button type="submit" disabled={liBusy || !liNewSourceId.trim()}>{liBusy ? 'Working…' : 'Start language cycle'}</Button>
                   </form>
                 </div>
                 <div>
@@ -5553,7 +5555,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'language_scan' && (
                     <div className="notice">
                       <p>Reuses MB-05's real language distribution (Tamil/English/Tanglish/Mixed) for this dataset.</p>
-                      <button onClick={runLiLanguageScan} disabled={liBusy}>Run language scan</button>
+                      <Button onClick={runLiLanguageScan} disabled={liBusy}>Run language scan</Button>
                     </div>
                   )}
                   {liSessionData.language_scan_report?.dominant_language && (
@@ -5572,7 +5574,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'unicode_validation' && (
                     <div className="notice">
                       <p>Reuses core_model.corpus.unicode_normalization (replacement/mojibake/combining-mark checks) and the Tamil Fluency Validator's orphan vowel-sign detection.</p>
-                      <button onClick={runLiUnicodeValidation} disabled={liBusy}>Run Unicode &amp; Tamil character validation</button>
+                      <Button onClick={runLiUnicodeValidation} disabled={liBusy}>Run Unicode &amp; Tamil character validation</Button>
                     </div>
                   )}
                   {liSessionData.unicode_report?.unicode_score !== undefined && (
@@ -5591,7 +5593,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'spell_analysis' && (
                     <div className="notice">
                       <p>Matches text against the existing, admin-curated Document Tamil Correction Registry's active rules only -- never a fabricated dictionary.</p>
-                      <button onClick={runLiSpellAnalysis} disabled={liBusy}>Run spell analysis</button>
+                      <Button onClick={runLiSpellAnalysis} disabled={liBusy}>Run spell analysis</Button>
                     </div>
                   )}
                   {liSessionData.spell_report?.spell_score !== undefined && (
@@ -5600,7 +5602,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'grammar_analysis' && (
                     <div className="notice">
                       <p>Script-structural heuristics only -- real grammatical analysis (verb agreement, gender, number, case, tense) is honestly NOT implemented; see disclosure in the result.</p>
-                      <button onClick={runLiGrammarAnalysis} disabled={liBusy}>Run grammar &amp; sentence quality analysis</button>
+                      <Button onClick={runLiGrammarAnalysis} disabled={liBusy}>Run grammar &amp; sentence quality analysis</Button>
                     </div>
                   )}
                   {liSessionData.grammar_report?.grammar_confidence !== undefined && (
@@ -5622,7 +5624,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'ocr_analysis' && (
                     <div className="notice">
                       <p>Never edits automatically -- only reports possible OCR mistakes with a confidence band and suggested correction. An admin must apply any accepted correction manually through Dataset Studio.</p>
-                      <button onClick={runLiOcrAnalysis} disabled={liBusy}>Run OCR correction planning</button>
+                      <Button onClick={runLiOcrAnalysis} disabled={liBusy}>Run OCR correction planning</Button>
                     </div>
                   )}
                   {liSessionData.ocr_report?.ocr_score !== undefined && (
@@ -5641,7 +5643,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'tanglish_analysis' && (
                     <div className="notice">
                       <p>Tanglish -&gt; Tamil (existing MB-04A dictionary) and Tamil -&gt; Tanglish (existing Phase 10A phonetic transliterator) -- never overwrites the original text.</p>
-                      <button onClick={runLiTanglishAnalysis} disabled={liBusy}>Run Tanglish analysis</button>
+                      <Button onClick={runLiTanglishAnalysis} disabled={liBusy}>Run Tanglish analysis</Button>
                     </div>
                   )}
                   {liSessionData.tanglish_report?.forward && (
@@ -5660,7 +5662,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'translation_analysis' && (
                     <div className="notice">
                       <p>No Tamil&lt;-&gt;English translation engine exists in this codebase -- this only validates already-claimed pairs (none, for a monolingual dataset), never invents a translation.</p>
-                      <button onClick={runLiTranslationAnalysis} disabled={liBusy}>Run translation analysis</button>
+                      <Button onClick={runLiTranslationAnalysis} disabled={liBusy}>Run translation analysis</Button>
                     </div>
                   )}
                   {liSessionData.translation_report?.pairs_analyzed !== undefined && (
@@ -5679,7 +5681,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {liSessionData.stage === 'dataset_draft_generation' && (
                     <div className="notice">
                       <p>For a Tamil-dominant dataset: a real Tanglish draft (deterministic transliteration). No English draft is ever fabricated -- no translation engine exists. Always <code>verified: false</code>.</p>
-                      <button onClick={runLiDatasetDraft} disabled={liBusy}>Generate language dataset draft</button>
+                      <Button onClick={runLiDatasetDraft} disabled={liBusy}>Generate language dataset draft</Button>
                     </div>
                   )}
                   {liSessionData.dataset_draft_report?.applicable !== undefined && (
@@ -5697,7 +5699,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {liSessionData.stage === 'language_quality_score' && (
                     <div className="notice">
-                      <button onClick={runLiQualityScore} disabled={liBusy}>Compute language quality score</button>
+                      <Button onClick={runLiQualityScore} disabled={liBusy}>Compute language quality score</Button>
                     </div>
                   )}
                   {liSessionData.quality_score_report?.overall_language_quality !== undefined && (
@@ -5705,17 +5707,17 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {liSessionData.stage === 'language_report' && (
                     <div className="notice">
-                      <button onClick={runLiGenerateReport} disabled={liBusy}>Generate language report</button>
+                      <Button onClick={runLiGenerateReport} disabled={liBusy}>Generate language report</Button>
                     </div>
                   )}
                   {liSessionData.stage === 'awaiting_admin_review' && (
                     <div className="notice">
                       <p>Language Report ready for review.</p>
                       <pre className="notice">{JSON.stringify(liSessionData.language_report, null, 2)}</pre>
-                      <button onClick={() => runLiAdminReview('approve')} disabled={liBusy}>Approve</button>{' '}
-                      <button onClick={() => runLiAdminReview('reject')} disabled={liBusy}>Reject</button>{' '}
-                      <button onClick={() => runLiAdminReview('request_fix')} disabled={liBusy}>Request Fix</button>{' '}
-                      <button onClick={() => runLiAdminReview('archive')} disabled={liBusy}>Archive</button>
+                      <Button onClick={() => runLiAdminReview('approve')} disabled={liBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runLiAdminReview('reject')} disabled={liBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runLiAdminReview('request_fix')} disabled={liBusy}>Request Fix</Button>{' '}
+                      <Button onClick={() => runLiAdminReview('archive')} disabled={liBusy}>Archive</Button>
                     </div>
                   )}
                   {liSessionData.stage === 'certified' && (
@@ -5770,7 +5772,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {viSubTabs.map((t) => (
-              <button key={t} className={viSubTab === t ? 'active' : ''} onClick={() => setViSubTab(t)}>{t}</button>
+              <Button key={t} className={viSubTab === t ? 'active' : ''} onClick={() => setViSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -5796,9 +5798,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {viSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={viSelectedId === s.public_id ? 'active' : ''} onClick={() => selectViSession(s.public_id)}>
+                        <Button className={viSelectedId === s.public_id ? 'active' : ''} onClick={() => selectViSession(s.public_id)}>
                           {s.document_source_public_id.slice(0, 10)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!viSessionsList.length && <li>No vision cycles yet.</li>}
@@ -5806,7 +5808,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <form className="inline-form training-form" onSubmit={submitViCreateSession}>
                     <label>Document source public ID<input value={viNewDocumentSourceId} onChange={(e) => setViNewDocumentSourceId(e.target.value)} placeholder="document public_id from Document Workspace" /></label>
                     <label>Dataset source public ID (optional)<input value={viNewDatasetSourceId} onChange={(e) => setViNewDatasetSourceId(e.target.value)} placeholder="linked Dataset Studio source, optional" /></label>
-                    <button type="submit" disabled={viBusy || !viNewDocumentSourceId.trim()}>{viBusy ? 'Working…' : 'Start vision cycle'}</button>
+                    <Button type="submit" disabled={viBusy || !viNewDocumentSourceId.trim()}>{viBusy ? 'Working…' : 'Start vision cycle'}</Button>
                   </form>
                 </div>
                 <div>
@@ -5833,7 +5835,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'image_extraction' && (
                     <div className="notice">
                       <p>Extracts every real embedded image from the already-stored PDF via PyMuPDF -- the original document is never modified.</p>
-                      <button onClick={runViImageExtraction} disabled={viBusy}>Run image extraction</button>
+                      <Button onClick={runViImageExtraction} disabled={viBusy}>Run image extraction</Button>
                     </div>
                   )}
                   {viSessionData.image_extraction_report?.total_images !== undefined && (
@@ -5864,7 +5866,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'image_quality' && (
                     <div className="notice">
                       <p>Real pixel statistics via Pillow: resolution, brightness/contrast (grayscale histogram), a blur proxy (edge-variance), and rotation (real EXIF orientation tag). Crop and noise detection are honestly NOT implemented.</p>
-                      <button onClick={runViImageQuality} disabled={viBusy}>Run image quality analysis</button>
+                      <Button onClick={runViImageQuality} disabled={viBusy}>Run image quality analysis</Button>
                     </div>
                   )}
                   {viSessionData.quality_report?.average_quality_score !== undefined && (
@@ -5883,7 +5885,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'vision_understanding' && (
                     <div className="notice">
                       <p>No vision model exists anywhere in this codebase -- every extracted image is honestly reported as containing one <code>Unknown Object</code> placeholder with confidence 0.0, pending Stage 7 Admin Annotation. Nothing is ever invented.</p>
-                      <button onClick={runViVisionUnderstanding} disabled={viBusy}>Run vision understanding</button>
+                      <Button onClick={runViVisionUnderstanding} disabled={viBusy}>Run vision understanding</Button>
                     </div>
                   )}
                   {viSessionData.vision_understanding_report?.vision_model_available !== undefined && (
@@ -5913,7 +5915,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>Compares each page's real OCR text (already extracted by Document Workspace) against an optional linked dataset text. No vision model exists to describe image content for a true Image/OCR/Dataset three-way comparison -- this honestly compares only what is real and available. Never auto-corrects.</p>
                       <label>Dataset text to compare against (optional)<textarea rows={3} value={viDatasetTextInput} onChange={(e) => setViDatasetTextInput(e.target.value)} /></label>
-                      <button onClick={runViOcrCrossValidation} disabled={viBusy}>Run OCR cross validation</button>
+                      <Button onClick={runViOcrCrossValidation} disabled={viBusy}>Run OCR cross validation</Button>
                     </div>
                   )}
                   {viSessionData.ocr_cross_validation_report?.pages_compared !== undefined && (
@@ -5933,7 +5935,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <div className="notice">
                       <p>No image-captioning model exists anywhere in this codebase -- a caption is only ever populated from an admin-supplied caption, never generated automatically. Always <code>verified: false</code>.</p>
                       <label>Admin-supplied caption (optional)<textarea rows={2} value={viAdminCaptionInput} onChange={(e) => setViAdminCaptionInput(e.target.value)} /></label>
-                      <button onClick={runViCaption} disabled={viBusy}>Set caption</button>
+                      <Button onClick={runViCaption} disabled={viBusy}>Set caption</Button>
                     </div>
                   )}
                   {viSessionData.caption_report?.source && (
@@ -5952,7 +5954,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'bounding_box_planning' && (
                     <div className="notice">
                       <p>No object-detection model exists anywhere in this codebase -- no box is ever planned automatically. This only classifies already admin-drawn boxes; nothing is auto-accepted.</p>
-                      <button onClick={runViBoundingBoxPlan} disabled={viBusy}>Run bounding box planning</button>
+                      <Button onClick={runViBoundingBoxPlan} disabled={viBusy}>Run bounding box planning</Button>
                     </div>
                   )}
                   {viSessionData.bounding_box_report?.box_count !== undefined && (
@@ -6006,9 +6008,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             <label>Box height (0-1)<input value={viAnnotateBoxH} onChange={(e) => setViAnnotateBoxH(e.target.value)} /></label>
                           </>
                         )}
-                        <button type="submit" disabled={viBusy}>{viBusy ? 'Working…' : 'Apply annotation'}</button>
+                        <Button type="submit" disabled={viBusy}>{viBusy ? 'Working…' : 'Apply annotation'}</Button>
                       </form>
-                      <button onClick={runViFinishAnnotation} disabled={viBusy}>Finish annotation stage</button>
+                      <Button onClick={runViFinishAnnotation} disabled={viBusy}>Finish annotation stage</Button>
                     </div>
                   )}
                   {viSessionData.annotation_report?.total_annotations !== undefined && (
@@ -6027,7 +6029,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'knowledge_graph' && (
                     <div className="notice">
                       <p>Relationships (contains/inside/overlaps/near) are derived purely from real bounding-box geometry -- never a semantic or causal claim about what the objects actually depict.</p>
-                      <button onClick={runViKnowledgeGraph} disabled={viBusy}>Build knowledge graph</button>
+                      <Button onClick={runViKnowledgeGraph} disabled={viBusy}>Build knowledge graph</Button>
                     </div>
                   )}
                   {viSessionData.knowledge_graph_report?.node_count !== undefined && (
@@ -6046,7 +6048,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'qa_generation' && (
                     <div className="notice">
                       <p>Generates educational questions from admin-verified objects and caption -- always <code>verified: false</code>.</p>
-                      <button onClick={runViQaGeneration} disabled={viBusy}>Generate vision questions</button>
+                      <Button onClick={runViQaGeneration} disabled={viBusy}>Generate vision questions</Button>
                     </div>
                   )}
                   {viSessionData.qa_report?.question_count !== undefined && (
@@ -6065,7 +6067,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {viSessionData.stage === 'vision_dataset_draft' && (
                     <div className="notice">
                       <p>Assembles image metadata, OCR, caption, bounding boxes, objects, QA, and the knowledge graph into one draft. Nothing is inserted into Dataset Studio -- always <code>verified: false</code>.</p>
-                      <button onClick={runViDatasetDraft} disabled={viBusy}>Build vision dataset draft</button>
+                      <Button onClick={runViDatasetDraft} disabled={viBusy}>Build vision dataset draft</Button>
                     </div>
                   )}
                   {viSessionData.vision_dataset_draft_report?.status && (
@@ -6083,7 +6085,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {viSessionData.stage === 'vision_quality_score' && (
                     <div className="notice">
-                      <button onClick={runViQualityScore} disabled={viBusy}>Compute vision quality score</button>
+                      <Button onClick={runViQualityScore} disabled={viBusy}>Compute vision quality score</Button>
                     </div>
                   )}
                   {viSessionData.vision_quality_score_report?.overall_vision_score !== undefined && (
@@ -6091,17 +6093,17 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {viSessionData.stage === 'vision_report' && (
                     <div className="notice">
-                      <button onClick={runViGenerateReport} disabled={viBusy}>Generate vision report</button>
+                      <Button onClick={runViGenerateReport} disabled={viBusy}>Generate vision report</Button>
                     </div>
                   )}
                   {viSessionData.stage === 'awaiting_admin_review' && (
                     <div className="notice">
                       <p>Vision Report ready for review.</p>
                       <pre className="notice">{JSON.stringify(viSessionData.vision_report, null, 2)}</pre>
-                      <button onClick={() => runViAdminReview('approve')} disabled={viBusy}>Approve</button>{' '}
-                      <button onClick={() => runViAdminReview('reject')} disabled={viBusy}>Reject</button>{' '}
-                      <button onClick={() => runViAdminReview('request_fix')} disabled={viBusy}>Request Fix</button>{' '}
-                      <button onClick={() => runViAdminReview('archive')} disabled={viBusy}>Archive</button>
+                      <Button onClick={() => runViAdminReview('approve')} disabled={viBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runViAdminReview('reject')} disabled={viBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runViAdminReview('request_fix')} disabled={viBusy}>Request Fix</Button>{' '}
+                      <Button onClick={() => runViAdminReview('archive')} disabled={viBusy}>Archive</Button>
                     </div>
                   )}
                   {viSessionData.stage === 'certified' && (
@@ -6156,7 +6158,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {vmSubTabs.map((t) => (
-              <button key={t} className={vmSubTab === t ? 'active' : ''} onClick={() => setVmSubTab(t)}>{t}</button>
+              <Button key={t} className={vmSubTab === t ? 'active' : ''} onClick={() => setVmSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -6182,9 +6184,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {vmSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={vmSelectedId === s.public_id ? 'active' : ''} onClick={() => selectVmSession(s.public_id)}>
+                        <Button className={vmSelectedId === s.public_id ? 'active' : ''} onClick={() => selectVmSession(s.public_id)}>
                           {s.provider_key} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!vmSessionsList.length && <li>No vision model cycles yet.</li>}
@@ -6198,7 +6200,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                         ))}
                       </select>
                     </label>
-                    <button type="submit" disabled={vmBusy || !vmNewVisionSessionId.trim()}>{vmBusy ? 'Working…' : 'Start vision model cycle'}</button>
+                    <Button type="submit" disabled={vmBusy || !vmNewVisionSessionId.trim()}>{vmBusy ? 'Working…' : 'Start vision model cycle'}</Button>
                   </form>
                 </div>
                 <div>
@@ -6225,9 +6227,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <li key={p.provider_key}>
                     <strong>{p.display_name}</strong> ({p.provider_key}, {p.backend_type}/{p.hardware_target}) --{' '}
                     <span className={`pill ${p.status === 'active' ? 'good' : 'neutral'}`}>{p.status}</span>{' '}
-                    <button onClick={() => toggleVmProviderStatus(p.provider_key, p.status)} disabled={vmBusy}>
+                    <Button onClick={() => toggleVmProviderStatus(p.provider_key, p.status)} disabled={vmBusy}>
                       {p.status === 'active' ? 'Deactivate' : 'Activate'}
-                    </button>
+                    </Button>
                     <div>{p.description}</div>
                   </li>
                 ))}
@@ -6239,7 +6241,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vmSessionData.stage === 'image_load' && (
                     <div className="notice">
                       <p>Reads MB-14's own already-extracted image metadata read-only.</p>
-                      <button onClick={runVmImageLoad} disabled={vmBusy}>Load images from MB-14</button>
+                      <Button onClick={runVmImageLoad} disabled={vmBusy}>Load images from MB-14</Button>
                     </div>
                   )}
                   {vmSessionData.image_load_report?.image_count !== undefined && (
@@ -6250,7 +6252,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <p>No vision model file exists anywhere in this environment by default -- supply real paths only if one has been placed on disk. Otherwise every prediction stage will honestly report the provider unavailable.</p>
                       <label>Model path (optional)<input value={vmModelPath} onChange={(e) => setVmModelPath(e.target.value)} placeholder="/path/to/vision-model.gguf" /></label>
                       <label>CLIP mmproj path (optional, LLaVA only)<input value={vmMmprojPath} onChange={(e) => setVmMmprojPath(e.target.value)} placeholder="/path/to/mmproj.gguf" /></label>
-                      <button onClick={runVmProviderSelection} disabled={vmBusy}>Select provider</button>
+                      <Button onClick={runVmProviderSelection} disabled={vmBusy}>Select provider</Button>
                     </div>
                   )}
                   {vmSessionData.provider_report?.selected !== undefined && (
@@ -6269,7 +6271,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vmSessionData.stage === 'object_detection' && (
                     <div className="notice">
                       <p>Real bounding boxes are never produced by any provider in this codebase -- no detection-capable model architecture exists for any of them.</p>
-                      <button onClick={runVmObjectDetection} disabled={vmBusy}>Run object detection</button>
+                      <Button onClick={runVmObjectDetection} disabled={vmBusy}>Run object detection</Button>
                     </div>
                   )}
                   {vmSessionData.detection_report?.object_count !== undefined && (
@@ -6319,9 +6321,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             <label>Box height (0-1)<input value={vmReviewBoxH} onChange={(e) => setVmReviewBoxH(e.target.value)} /></label>
                           </>
                         )}
-                        <button type="submit" disabled={vmBusy}>{vmBusy ? 'Working…' : 'Apply review'}</button>
+                        <Button type="submit" disabled={vmBusy}>{vmBusy ? 'Working…' : 'Apply review'}</Button>
                       </form>
-                      <button onClick={runVmFinishReview} disabled={vmBusy}>Finish admin review stage</button>
+                      <Button onClick={runVmFinishReview} disabled={vmBusy}>Finish admin review stage</Button>
                     </div>
                   )}
                   {vmSessionData.admin_review_report?.total_predictions !== undefined && (
@@ -6339,7 +6341,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vmSessionData.stage === 'scene_detection' && (
                     <div className="notice">
-                      <button onClick={runVmSceneDetection} disabled={vmBusy}>Run scene detection</button>
+                      <Button onClick={runVmSceneDetection} disabled={vmBusy}>Run scene detection</Button>
                     </div>
                   )}
                   {vmSessionData.scene_report?.provider_available !== undefined && (
@@ -6357,7 +6359,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vmSessionData.stage === 'caption_generation' && (
                     <div className="notice">
-                      <button onClick={runVmCaption} disabled={vmBusy}>Run caption generation</button>
+                      <Button onClick={runVmCaption} disabled={vmBusy}>Run caption generation</Button>
                     </div>
                   )}
                   {vmSessionData.caption_report?.provider_available !== undefined && (
@@ -6376,7 +6378,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vmSessionData.stage === 'relationship_detection' && (
                     <div className="notice">
                       <p>Reuses MB-14's own real bounding-box geometry -- zero new relationship logic.</p>
-                      <button onClick={runVmRelationshipDetection} disabled={vmBusy}>Detect relationships (preview)</button>
+                      <Button onClick={runVmRelationshipDetection} disabled={vmBusy}>Detect relationships (preview)</Button>
                     </div>
                   )}
                   {vmSessionData.relationship_report?.node_count !== undefined && (
@@ -6385,7 +6387,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vmSessionData.stage === 'ocr_cross_validation' && (
                     <div className="notice">
                       <label>Dataset text to compare against (optional)<textarea rows={3} value={vmDatasetTextInput} onChange={(e) => setVmDatasetTextInput(e.target.value)} /></label>
-                      <button onClick={runVmOcrCrossValidation} disabled={vmBusy}>Run OCR/vision/dataset cross validation</button>
+                      <Button onClick={runVmOcrCrossValidation} disabled={vmBusy}>Run OCR/vision/dataset cross validation</Button>
                     </div>
                   )}
                   {vmSessionData.ocr_cross_validation_report?.status && (
@@ -6394,7 +6396,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vmSessionData.stage === 'knowledge_graph' && (
                     <div className="notice">
                       <p>Final knowledge graph, built from admin-approved predictions only.</p>
-                      <button onClick={runVmKnowledgeGraph} disabled={vmBusy}>Build final knowledge graph</button>
+                      <Button onClick={runVmKnowledgeGraph} disabled={vmBusy}>Build final knowledge graph</Button>
                     </div>
                   )}
                   {vmSessionData.knowledge_graph_report?.node_count !== undefined && (
@@ -6412,7 +6414,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vmSessionData.stage === 'correction_memory' && (
                     <div className="notice">
-                      <button onClick={runVmCorrectionMemory} disabled={vmBusy}>Summarize correction memory</button>
+                      <Button onClick={runVmCorrectionMemory} disabled={vmBusy}>Summarize correction memory</Button>
                     </div>
                   )}
                   {vmSessionData.correction_memory_report?.total_corrections !== undefined && (
@@ -6451,7 +6453,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vmSessionData.stage === 'quality_score' && (
                     <div className="notice">
-                      <button onClick={runVmQualityScore} disabled={vmBusy}>Compute AI-only quality score</button>
+                      <Button onClick={runVmQualityScore} disabled={vmBusy}>Compute AI-only quality score</Button>
                     </div>
                   )}
                   {vmSessionData.quality_report?.overall_vision_model_score !== undefined && (
@@ -6459,7 +6461,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {vmSessionData.stage === 'dataset_draft' && (
                     <div className="notice">
-                      <button onClick={runVmDatasetDraft} disabled={vmBusy}>Build vision model dataset draft</button>
+                      <Button onClick={runVmDatasetDraft} disabled={vmBusy}>Build vision model dataset draft</Button>
                     </div>
                   )}
                   {vmSessionData.dataset_draft_report?.status && (
@@ -6467,17 +6469,17 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {vmSessionData.stage === 'vision_report' && (
                     <div className="notice">
-                      <button onClick={runVmGenerateReport} disabled={vmBusy}>Generate vision model report</button>
+                      <Button onClick={runVmGenerateReport} disabled={vmBusy}>Generate vision model report</Button>
                     </div>
                   )}
                   {vmSessionData.stage === 'awaiting_admin_review' && (
                     <div className="notice">
                       <p>Vision Model Report ready for review.</p>
                       <pre className="notice">{JSON.stringify(vmSessionData.vision_report, null, 2)}</pre>
-                      <button onClick={() => runVmAdminReview('approve')} disabled={vmBusy}>Approve</button>{' '}
-                      <button onClick={() => runVmAdminReview('reject')} disabled={vmBusy}>Reject</button>{' '}
-                      <button onClick={() => runVmAdminReview('request_fix')} disabled={vmBusy}>Request Fix</button>{' '}
-                      <button onClick={() => runVmAdminReview('archive')} disabled={vmBusy}>Archive</button>
+                      <Button onClick={() => runVmAdminReview('approve')} disabled={vmBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runVmAdminReview('reject')} disabled={vmBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runVmAdminReview('request_fix')} disabled={vmBusy}>Request Fix</Button>{' '}
+                      <Button onClick={() => runVmAdminReview('archive')} disabled={vmBusy}>Archive</Button>
                     </div>
                   )}
                   {vmSessionData.stage === 'certified' && (
@@ -6531,7 +6533,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {mdSubTabs.map((t) => (
-              <button key={t} className={mdSubTab === t ? 'active' : ''} onClick={() => setMdSubTab(t)}>{t}</button>
+              <Button key={t} className={mdSubTab === t ? 'active' : ''} onClick={() => setMdSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -6556,9 +6558,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {mdSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={mdSelectedId === s.public_id ? 'active' : ''} onClick={() => selectMdSession(s.public_id)}>
+                        <Button className={mdSelectedId === s.public_id ? 'active' : ''} onClick={() => selectMdSession(s.public_id)}>
                           {s.document_source_public_id.slice(0, 10)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!mdSessionsList.length && <li>No multimodal dataset cycles yet.</li>}
@@ -6568,7 +6570,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <label>MB-14 vision session (optional)<input value={mdNewVisionSessionId} onChange={(e) => setMdNewVisionSessionId(e.target.value)} /></label>
                     <label>MB-13 language session (optional)<input value={mdNewLanguageSessionId} onChange={(e) => setMdNewLanguageSessionId(e.target.value)} /></label>
                     <label>MB-15 vision model session (optional)<input value={mdNewVisionModelSessionId} onChange={(e) => setMdNewVisionModelSessionId(e.target.value)} /></label>
-                    <button type="submit" disabled={mdBusy || !mdNewDocumentId.trim()}>{mdBusy ? 'Working…' : 'Start dataset cycle'}</button>
+                    <Button type="submit" disabled={mdBusy || !mdNewDocumentId.trim()}>{mdBusy ? 'Working…' : 'Start dataset cycle'}</Button>
                   </form>
                 </div>
                 <div>
@@ -6594,7 +6596,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {mdSessionData.stage === 'collect_sources' && (
                     <div className="notice">
-                      <button onClick={runMdCollectSources} disabled={mdBusy}>Collect sources</button>
+                      <Button onClick={runMdCollectSources} disabled={mdBusy}>Collect sources</Button>
                     </div>
                   )}
                   {mdSessionData.source_report?.available_source_count !== undefined && (
@@ -6603,7 +6605,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'merge_metadata' && (
                     <div className="notice">
                       <p>Merges the text section, image section, and a reference (never regenerated) knowledge graph into one unified object.</p>
-                      <button onClick={runMdMergeMetadata} disabled={mdBusy}>Merge metadata</button>
+                      <Button onClick={runMdMergeMetadata} disabled={mdBusy}>Merge metadata</Button>
                     </div>
                   )}
                   {mdSessionData.metadata_report?.is_multimodal !== undefined && (
@@ -6622,7 +6624,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'collect_text' && (
                     <div className="notice">
                       <p>Reuses MB-13's own already-computed language/Unicode/OCR/Tanglish reports when a Language Intelligence session is linked; otherwise language-quality fields are honestly unavailable.</p>
-                      <button onClick={runMdCollectText} disabled={mdBusy}>Collect text</button>
+                      <Button onClick={runMdCollectText} disabled={mdBusy}>Collect text</Button>
                     </div>
                   )}
                   {mdSessionData.text_section?.ocr_char_count !== undefined && (
@@ -6641,7 +6643,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'collect_images' && (
                     <div className="notice">
                       <p>Reuses MB-14's own image metadata/checksum/resolution/boxes/caption/objects/relationships/quality, plus MB-15's own vision-provider predictions and corrections when linked.</p>
-                      <button onClick={runMdCollectImages} disabled={mdBusy}>Collect images</button>
+                      <Button onClick={runMdCollectImages} disabled={mdBusy}>Collect images</Button>
                     </div>
                   )}
                   {mdSessionData.image_section?.image_count !== undefined && (
@@ -6660,7 +6662,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'conversation_builder' && (
                     <div className="notice">
                       <p>Builds User/Assistant turns only from real, already-computed data -- MB-14's own QA questions and real OCR text. Always <code>verified: false</code>.</p>
-                      <button onClick={runMdConversationBuilder} disabled={mdBusy}>Build conversations</button>
+                      <Button onClick={runMdConversationBuilder} disabled={mdBusy}>Build conversations</Button>
                     </div>
                   )}
                   {mdSessionData.conversation_report?.conversation_count !== undefined && (
@@ -6679,7 +6681,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'instruction_builder' && (
                     <div className="notice">
                       <p>Builds instruction/input/output triples from real transcription, caption, and object-list data. No summarization model exists in this codebase.</p>
-                      <button onClick={runMdInstructionBuilder} disabled={mdBusy}>Build instructions</button>
+                      <Button onClick={runMdInstructionBuilder} disabled={mdBusy}>Build instructions</Button>
                     </div>
                   )}
                   {mdSessionData.instruction_report?.instruction_count !== undefined && (
@@ -6715,7 +6717,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'dataset_draft' && (
                     <div className="notice">
                       <p>Assembles every record flavor (conversation, instruction, qa, caption, vision, grounding, reasoning, training) from already-built data. Nothing inserted into Dataset Studio.</p>
-                      <button onClick={runMdDatasetDraft} disabled={mdBusy}>Assemble dataset draft</button>
+                      <Button onClick={runMdDatasetDraft} disabled={mdBusy}>Assemble dataset draft</Button>
                     </div>
                   )}
                   {mdSessionData.dataset_draft_report?.record_count !== undefined && (
@@ -6736,12 +6738,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <h4>Split into a new draft</h4>
                       <form className="inline-form training-form" onSubmit={submitMdSplit}>
                         <label>Record public IDs (comma-separated)<input value={mdSplitRecordIds} onChange={(e) => setMdSplitRecordIds(e.target.value)} /></label>
-                        <button type="submit" disabled={mdBusy}>Split dataset</button>
+                        <Button type="submit" disabled={mdBusy}>Split dataset</Button>
                       </form>
                       <h4>Merge with other certified datasets</h4>
                       <form className="inline-form training-form" onSubmit={submitMdMerge}>
                         <label>Session public IDs incl. this one (comma-separated)<input value={mdMergeSessionIds} onChange={(e) => setMdMergeSessionIds(e.target.value)} /></label>
-                        <button type="submit" disabled={mdBusy}>Merge datasets</button>
+                        <Button type="submit" disabled={mdBusy}>Merge datasets</Button>
                       </form>
                     </>
                   )}
@@ -6754,9 +6756,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                         <option value="jsonl">jsonl</option>
                       </select>
                     </label>{' '}
-                    <button onClick={runMdExportDraft} disabled={mdBusy}>Export draft</button>{' '}
+                    <Button onClick={runMdExportDraft} disabled={mdBusy}>Export draft</Button>{' '}
                     {mdSessionData.stage !== 'certified' && (
-                      <button onClick={runMdDeleteDraft} disabled={mdBusy}>Delete draft</button>
+                      <Button onClick={runMdDeleteDraft} disabled={mdBusy}>Delete draft</Button>
                     )}
                     {mdExportResult && (
                       <pre className="notice">{mdExportResult.content}</pre>
@@ -6774,7 +6776,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {mdSessionData.stage === 'quality_analysis' && (
                     <div className="notice">
-                      <button onClick={runMdQualityAnalysis} disabled={mdBusy}>Run quality analysis</button>
+                      <Button onClick={runMdQualityAnalysis} disabled={mdBusy}>Run quality analysis</Button>
                     </div>
                   )}
                   {mdSessionData.quality_report?.overall_dataset_quality !== undefined && (
@@ -6783,7 +6785,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {mdSessionData.stage === 'duplicate_detection' && (
                     <div className="notice">
                       <p>Reuses the existing ExternalDatasetDuplicateService (Phase 12) -- never a new duplicate-matching implementation.</p>
-                      <button onClick={runMdDuplicateDetection} disabled={mdBusy}>Run duplicate detection</button>
+                      <Button onClick={runMdDuplicateDetection} disabled={mdBusy}>Run duplicate detection</Button>
                     </div>
                   )}
                   {mdSessionData.duplicate_report?.reused_service && (
@@ -6801,17 +6803,17 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {mdSessionData.stage === 'report' && (
                     <div className="notice">
-                      <button onClick={runMdGenerateReport} disabled={mdBusy}>Generate dataset report</button>
+                      <Button onClick={runMdGenerateReport} disabled={mdBusy}>Generate dataset report</Button>
                     </div>
                   )}
                   {mdSessionData.stage === 'awaiting_admin_review' && (
                     <div className="notice">
                       <p>Dataset Report ready for review.</p>
                       <pre className="notice">{JSON.stringify(mdSessionData.dataset_report, null, 2)}</pre>
-                      <button onClick={() => runMdAdminReview('approve')} disabled={mdBusy}>Approve</button>{' '}
-                      <button onClick={() => runMdAdminReview('reject')} disabled={mdBusy}>Reject</button>{' '}
-                      <button onClick={() => runMdAdminReview('request_changes')} disabled={mdBusy}>Request Changes</button>{' '}
-                      <button onClick={() => runMdAdminReview('archive')} disabled={mdBusy}>Archive</button>
+                      <Button onClick={() => runMdAdminReview('approve')} disabled={mdBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runMdAdminReview('reject')} disabled={mdBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runMdAdminReview('request_changes')} disabled={mdBusy}>Request Changes</Button>{' '}
+                      <Button onClick={() => runMdAdminReview('archive')} disabled={mdBusy}>Archive</Button>
                     </div>
                   )}
                   {mdSessionData.stage === 'certified' && (
@@ -6872,7 +6874,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {vrSubTabs.map((t) => (
-              <button key={t} className={vrSubTab === t ? 'active' : ''} onClick={() => setVrSubTab(t)}>{t}</button>
+              <Button key={t} className={vrSubTab === t ? 'active' : ''} onClick={() => setVrSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -6897,9 +6899,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {vrSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={vrSelectedId === s.public_id ? 'active' : ''} onClick={() => selectVrSession(s.public_id)}>
+                        <Button className={vrSelectedId === s.public_id ? 'active' : ''} onClick={() => selectVrSession(s.public_id)}>
                           {s.query.slice(0, 30)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!vrSessionsList.length && <li>No query sessions yet.</li>}
@@ -6907,7 +6909,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <form className="inline-form training-form" onSubmit={submitVrCreateSession}>
                     <label>MB-16 certified dataset session public ID<input value={vrNewDatasetSessionId} onChange={(e) => setVrNewDatasetSessionId(e.target.value)} /></label>
                     <label>Query<input value={vrNewQuery} onChange={(e) => setVrNewQuery(e.target.value)} placeholder="Where is the river located?" /></label>
-                    <button type="submit" disabled={vrBusy || !vrNewDatasetSessionId.trim() || !vrNewQuery.trim()}>{vrBusy ? 'Working…' : 'Ask'}</button>
+                    <Button type="submit" disabled={vrBusy || !vrNewDatasetSessionId.trim() || !vrNewQuery.trim()}>{vrBusy ? 'Working…' : 'Ask'}</Button>
                   </form>
                 </div>
                 <div>
@@ -6934,7 +6936,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <p><strong>Query:</strong> {vrSessionData.query}</p>
                   <p><strong>Detected language:</strong> {vrSessionData.query_language}</p>
                   {vrSessionData.stage === 'query_session' && (
-                    <button onClick={runVrTextRetrieval} disabled={vrBusy}>Run text retrieval</button>
+                    <Button onClick={runVrTextRetrieval} disabled={vrBusy}>Run text retrieval</Button>
                   )}
                 </div>
               )}
@@ -6949,7 +6951,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vrSessionData.stage === 'grounded_answer' && (
                     <div className="notice">
                       <p>Never generates free text -- the answer is built only from real, already-retrieved evidence snippets with citation markers. If evidence is insufficient, it says so honestly.</p>
-                      <button onClick={runVrAnswer} disabled={vrBusy}>Generate grounded answer</button>
+                      <Button onClick={runVrAnswer} disabled={vrBusy}>Generate grounded answer</Button>
                     </div>
                   )}
                   {vrSessionData.answer_report?.answer !== undefined && (
@@ -6971,7 +6973,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vrSessionData.stage === 'evidence_fusion' && (
                     <div className="notice">
-                      <button onClick={runVrEvidenceFusion} disabled={vrBusy}>Fuse evidence</button>
+                      <Button onClick={runVrEvidenceFusion} disabled={vrBusy}>Fuse evidence</Button>
                     </div>
                   )}
                   {vrSessionData.evidence_fusion_report?.evidence_count !== undefined && (
@@ -6999,7 +7001,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vrSessionData.stage === 'image_retrieval' && (
                     <div className="notice">
                       <p>No semantic image embedding exists in this codebase -- images are matched by their real, already-computed caption text only.</p>
-                      <button onClick={runVrImageRetrieval} disabled={vrBusy}>Retrieve images</button>
+                      <Button onClick={runVrImageRetrieval} disabled={vrBusy}>Retrieve images</Button>
                     </div>
                   )}
                   {vrSessionData.image_retrieval_report?.image_count !== undefined && (
@@ -7017,7 +7019,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vrSessionData.stage === 'ocr_retrieval' && (
                     <div className="notice">
-                      <button onClick={runVrOcrRetrieval} disabled={vrBusy}>Retrieve OCR text</button>
+                      <Button onClick={runVrOcrRetrieval} disabled={vrBusy}>Retrieve OCR text</Button>
                     </div>
                   )}
                   {vrSessionData.ocr_retrieval_report?.ocr_record_count !== undefined && (
@@ -7036,7 +7038,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vrSessionData.stage === 'object_retrieval' && (
                     <div className="notice">
                       <p>Reuses MB-15's admin-approved predictions when linked, otherwise MB-14's admin-annotated objects -- never a new detection pass.</p>
-                      <button onClick={runVrObjectRetrieval} disabled={vrBusy}>Retrieve objects</button>
+                      <Button onClick={runVrObjectRetrieval} disabled={vrBusy}>Retrieve objects</Button>
                     </div>
                   )}
                   {vrSessionData.object_retrieval_report?.object_count !== undefined && (
@@ -7055,7 +7057,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vrSessionData.stage === 'knowledge_graph_retrieval' && (
                     <div className="notice">
                       <p>Never regenerates a graph -- only filters MB-14/MB-15's already-built graph down to query-relevant edges.</p>
-                      <button onClick={runVrKnowledgeGraphRetrieval} disabled={vrBusy}>Retrieve graph edges</button>
+                      <Button onClick={runVrKnowledgeGraphRetrieval} disabled={vrBusy}>Retrieve graph edges</Button>
                     </div>
                   )}
                   {vrSessionData.knowledge_graph_retrieval_report?.matched_edge_count !== undefined && (
@@ -7073,7 +7075,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vrSessionData.stage === 'quality_evaluation' && (
                     <div className="notice">
-                      <button onClick={runVrQuality} disabled={vrBusy}>Evaluate RAG quality</button>
+                      <Button onClick={runVrQuality} disabled={vrBusy}>Evaluate RAG quality</Button>
                     </div>
                   )}
                   {vrSessionData.quality_report?.overall_rag_quality !== undefined && (
@@ -7092,7 +7094,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {vrSessionData.stage === 'hallucination_check' && (
                     <div className="notice">
                       <p>Every claim must trace to a real, cited evidence row -- reuses the production RAG system's own citation-validity and grounding-quality functions.</p>
-                      <button onClick={runVrHallucinationCheck} disabled={vrBusy}>Run hallucination check</button>
+                      <Button onClick={runVrHallucinationCheck} disabled={vrBusy}>Run hallucination check</Button>
                     </div>
                   )}
                   {vrSessionData.hallucination_report?.hallucination_risk !== undefined && (
@@ -7113,7 +7115,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {vrSessionData.stage === 'report' && (
                     <div className="notice">
-                      <button onClick={runVrGenerateReport} disabled={vrBusy}>Generate RAG report</button>
+                      <Button onClick={runVrGenerateReport} disabled={vrBusy}>Generate RAG report</Button>
                     </div>
                   )}
                   {vrSessionData.stage === 'awaiting_admin_review' && (
@@ -7153,14 +7155,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                             <label>Content snippet<input value={vrCorrectSnippet} onChange={(e) => setVrCorrectSnippet(e.target.value)} /></label>
                           </>
                         )}
-                        <button type="submit" disabled={vrBusy}>Apply correction</button>
+                        <Button type="submit" disabled={vrBusy}>Apply correction</Button>
                       </form>
 
                       <h4>Final decision</h4>
-                      <button onClick={() => runVrAdminReview('approve')} disabled={vrBusy}>Approve</button>{' '}
-                      <button onClick={() => runVrAdminReview('reject')} disabled={vrBusy}>Reject</button>{' '}
-                      <button onClick={() => runVrAdminReview('flag_hallucination')} disabled={vrBusy}>Flag Hallucination</button>{' '}
-                      <button onClick={() => runVrAdminReview('archive')} disabled={vrBusy}>Archive</button>
+                      <Button onClick={() => runVrAdminReview('approve')} disabled={vrBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runVrAdminReview('reject')} disabled={vrBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runVrAdminReview('flag_hallucination')} disabled={vrBusy}>Flag Hallucination</Button>{' '}
+                      <Button onClick={() => runVrAdminReview('archive')} disabled={vrBusy}>Archive</Button>
                     </div>
                   )}
                   {vrSessionData.stage === 'closed' && (
@@ -7216,7 +7218,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {tpSubTabs.map((t) => (
-              <button key={t} className={tpSubTab === t ? 'active' : ''} onClick={() => setTpSubTab(t)}>{t}</button>
+              <Button key={t} className={tpSubTab === t ? 'active' : ''} onClick={() => setTpSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -7241,16 +7243,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {tpSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={tpSelectedId === s.public_id ? 'active' : ''} onClick={() => selectTpSession(s.public_id)}>
+                        <Button className={tpSelectedId === s.public_id ? 'active' : ''} onClick={() => selectTpSession(s.public_id)}>
                           {s.topic.slice(0, 30)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!tpSessionsList.length && <li>No training pipeline sessions yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitTpCreateSession}>
                     <label>Topic<input value={tpNewTopic} onChange={(e) => setTpNewTopic(e.target.value)} placeholder="Mountain scene multimodal package" /></label>
-                    <button type="submit" disabled={tpBusy || !tpNewTopic.trim()}>{tpBusy ? 'Working…' : 'Create session'}</button>
+                    <Button type="submit" disabled={tpBusy || !tpNewTopic.trim()}>{tpBusy ? 'Working…' : 'Create session'}</Button>
                   </form>
                 </div>
                 <div>
@@ -7279,7 +7281,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-16 certified dataset session public ID(s), comma-separated
                         <input value={tpDatasetSessionIds} onChange={(e) => setTpDatasetSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={tpBusy || !tpDatasetSessionIds.trim()}>Collect certified datasets</button>
+                      <Button type="submit" disabled={tpBusy || !tpDatasetSessionIds.trim()}>Collect certified datasets</Button>
                     </form>
                   )}
                   {tpSessionData.dataset_collection_report?.ready !== undefined && (
@@ -7291,7 +7293,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-17 approved RAG session public ID(s), comma-separated, optional
                         <input value={tpRagSessionIds} onChange={(e) => setTpRagSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={tpBusy}>Collect grounded RAG memory</button>
+                      <Button type="submit" disabled={tpBusy}>Collect grounded RAG memory</Button>
                     </form>
                   )}
                   {tpSessionData.rag_memory_collection_report?.accepted_count !== undefined && (
@@ -7317,7 +7319,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {tpSessionData.stage === 'analyze_language' && (
                     <div className="notice">
-                      <button onClick={runTpAnalyzeLanguage} disabled={tpBusy}>Analyze language distribution</button>
+                      <Button onClick={runTpAnalyzeLanguage} disabled={tpBusy}>Analyze language distribution</Button>
                     </div>
                   )}
                   {tpSessionData.language_distribution_report?.session_count !== undefined && (
@@ -7336,7 +7338,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {tpSessionData.stage === 'analyze_vision' && (
                     <div className="notice">
                       <p>Aggregates MB-14's own real image metadata and MB-17's own confidence/hallucination fields -- no new detection or retrieval pass.</p>
-                      <button onClick={runTpAnalyzeVision} disabled={tpBusy}>Analyze vision &amp; grounding coverage</button>
+                      <Button onClick={runTpAnalyzeVision} disabled={tpBusy}>Analyze vision &amp; grounding coverage</Button>
                     </div>
                   )}
                   {tpSessionData.image_statistics_report?.image_count !== undefined && (
@@ -7364,7 +7366,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {tpSessionData.stage === 'analyze_tokenizer' && (
                     <div className="notice">
                       <p>No tokenizer model is loaded -- character-level and Unicode-category analysis only.</p>
-                      <button onClick={runTpAnalyzeTokenizer} disabled={tpBusy}>Analyze tokenizer coverage</button>
+                      <Button onClick={runTpAnalyzeTokenizer} disabled={tpBusy}>Analyze tokenizer coverage</Button>
                     </div>
                   )}
                   {tpSessionData.tokenizer_coverage_report?.total_character_count !== undefined && (
@@ -7383,7 +7385,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {tpSessionData.stage === 'plan_splits' && (
                     <form className="inline-form training-form" onSubmit={submitTpPlanSplits}>
                       <label>Seed (optional, deterministic if repeated)<input value={tpSplitSeed} onChange={(e) => setTpSplitSeed(e.target.value)} placeholder="20260101" /></label>
-                      <button type="submit" disabled={tpBusy}>Plan dataset splits</button>
+                      <Button type="submit" disabled={tpBusy}>Plan dataset splits</Button>
                     </form>
                   )}
                   {tpSessionData.splits_report?.seed !== undefined && (
@@ -7401,7 +7403,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {tpSessionData.stage === 'plan_curriculum' && (
                     <div className="notice">
-                      <button onClick={runTpPlanCurriculum} disabled={tpBusy}>Plan curriculum &amp; training recipe</button>
+                      <Button onClick={runTpPlanCurriculum} disabled={tpBusy}>Plan curriculum &amp; training recipe</Button>
                     </div>
                   )}
                   {tpSessionData.curriculum_report?.stage_count !== undefined && (
@@ -7420,7 +7422,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {tpSessionData.stage === 'estimate_hardware' && (
                     <div className="notice">
                       <p>All estimates are explicitly marked heuristic -- no benchmark is executed.</p>
-                      <button onClick={runTpEstimateHardware} disabled={tpBusy}>Estimate hardware &amp; storage</button>
+                      <Button onClick={runTpEstimateHardware} disabled={tpBusy}>Estimate hardware &amp; storage</Button>
                     </div>
                   )}
                   {tpSessionData.hardware_estimate_report?.estimated_token_count !== undefined && (
@@ -7439,7 +7441,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {tpSessionData.stage === 'build_package' && (
                     <div className="notice">
                       <p>Writes deterministic JSON metadata files only -- never model weights -- to this session's own artifact directory, with a SHA-256 checksum recorded for every file.</p>
-                      <button onClick={runTpBuildPackage} disabled={tpBusy}>Build training package</button>
+                      <Button onClick={runTpBuildPackage} disabled={tpBusy}>Build training package</Button>
                     </div>
                   )}
                   {tpSessionData.package_manifest?.artifact_count !== undefined && (
@@ -7464,7 +7466,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {tpSessionData.stage === 'generate_report' && (
                     <div className="notice">
-                      <button onClick={runTpGenerateReport} disabled={tpBusy}>Generate training readiness report</button>
+                      <Button onClick={runTpGenerateReport} disabled={tpBusy}>Generate training readiness report</Button>
                     </div>
                   )}
                   {tpSessionData.stage === 'awaiting_admin_review' && (
@@ -7474,9 +7476,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <pre className="notice">{JSON.stringify(tpSessionData.readiness_report, null, 2)}</pre>
 
                       <h4>Final decision</h4>
-                      <button onClick={() => runTpAdminReview('approve')} disabled={tpBusy}>Approve</button>{' '}
-                      <button onClick={() => runTpAdminReview('reject')} disabled={tpBusy}>Reject</button>{' '}
-                      <button onClick={() => runTpAdminReview('archive')} disabled={tpBusy}>Archive</button>
+                      <Button onClick={() => runTpAdminReview('approve')} disabled={tpBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runTpAdminReview('reject')} disabled={tpBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runTpAdminReview('archive')} disabled={tpBusy}>Archive</Button>
                     </div>
                   )}
                   {tpSessionData.stage === 'closed' && (
@@ -7531,7 +7533,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {ecSubTabs.map((t) => (
-              <button key={t} className={ecSubTab === t ? 'active' : ''} onClick={() => setEcSubTab(t)}>{t}</button>
+              <Button key={t} className={ecSubTab === t ? 'active' : ''} onClick={() => setEcSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -7556,16 +7558,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {ecSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={ecSelectedId === s.public_id ? 'active' : ''} onClick={() => selectEcSession(s.public_id)}>
+                        <Button className={ecSelectedId === s.public_id ? 'active' : ''} onClick={() => selectEcSession(s.public_id)}>
                           {s.topic.slice(0, 30)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!ecSessionsList.length && <li>No evaluation sessions yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitEcCreateSession}>
                     <label>Topic<input value={ecNewTopic} onChange={(e) => setEcNewTopic(e.target.value)} placeholder="Mountain scene evaluation" /></label>
-                    <button type="submit" disabled={ecBusy || !ecNewTopic.trim()}>{ecBusy ? 'Working…' : 'Create session'}</button>
+                    <Button type="submit" disabled={ecBusy || !ecNewTopic.trim()}>{ecBusy ? 'Working…' : 'Create session'}</Button>
                   </form>
                 </div>
                 <div>
@@ -7594,7 +7596,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-16 certified dataset session public ID(s), comma-separated
                         <input value={ecDatasetSessionIds} onChange={(e) => setEcDatasetSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={ecBusy || !ecDatasetSessionIds.trim()}>Collect certified datasets</button>
+                      <Button type="submit" disabled={ecBusy || !ecDatasetSessionIds.trim()}>Collect certified datasets</Button>
                     </form>
                   )}
                   {ecSessionData.dataset_collection_report?.accepted_count !== undefined && (
@@ -7606,7 +7608,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-17 approved RAG session public ID(s), comma-separated, optional
                         <input value={ecRagSessionIds} onChange={(e) => setEcRagSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={ecBusy}>Collect approved RAG sessions</button>
+                      <Button type="submit" disabled={ecBusy}>Collect approved RAG sessions</Button>
                     </form>
                   )}
                   {ecSessionData.rag_collection_report?.accepted_count !== undefined && (
@@ -7618,7 +7620,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-18 approved training package session public ID(s), comma-separated, optional
                         <input value={ecPackageSessionIds} onChange={(e) => setEcPackageSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={ecBusy}>Collect training packages</button>
+                      <Button type="submit" disabled={ecBusy}>Collect training packages</Button>
                     </form>
                   )}
                   {ecSessionData.package_collection_report?.accepted_count !== undefined && (
@@ -7636,7 +7638,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {ecSessionData.stage === 'run_language_benchmarks' && (
                     <div className="notice">
-                      <button onClick={runEcLanguageBenchmarks} disabled={ecBusy}>Run language benchmarks</button>
+                      <Button onClick={runEcLanguageBenchmarks} disabled={ecBusy}>Run language benchmarks</Button>
                     </div>
                   )}
                   {ecSessionData.language_benchmark_report?.records_analyzed !== undefined && (
@@ -7655,7 +7657,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {ecSessionData.stage === 'run_ocr_benchmarks' && (
                     <div className="notice">
                       <p>Reuses MB-14's own OCR cross-validator applied to MB-17's own already-retrieved evidence -- never a new OCR pass.</p>
-                      <button onClick={runEcOcrBenchmarks} disabled={ecBusy}>Run OCR benchmarks</button>
+                      <Button onClick={runEcOcrBenchmarks} disabled={ecBusy}>Run OCR benchmarks</Button>
                     </div>
                   )}
                   {ecSessionData.ocr_benchmark_report?.session_count !== undefined && (
@@ -7674,7 +7676,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {ecSessionData.stage === 'run_grounding_retrieval_benchmarks' && (
                     <div className="notice">
                       <p>Grounding and retrieval benchmarks run together as one combined stage.</p>
-                      <button onClick={runEcGroundingRetrievalBenchmarks} disabled={ecBusy}>Run grounding &amp; retrieval benchmarks</button>
+                      <Button onClick={runEcGroundingRetrievalBenchmarks} disabled={ecBusy}>Run grounding &amp; retrieval benchmarks</Button>
                     </div>
                   )}
                   {ecSessionData.grounding_benchmark_report?.session_count !== undefined && (
@@ -7704,7 +7706,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {ecSessionData.stage === 'run_multimodal_benchmarks' && (
                     <div className="notice">
-                      <button onClick={runEcMultimodalBenchmarks} disabled={ecBusy}>Run multimodal coverage benchmarks</button>
+                      <Button onClick={runEcMultimodalBenchmarks} disabled={ecBusy}>Run multimodal coverage benchmarks</Button>
                     </div>
                   )}
                   {ecSessionData.multimodal_benchmark_report?.total_record_count !== undefined && (
@@ -7723,7 +7725,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {ecSessionData.stage === 'run_package_benchmarks' && (
                     <div className="notice">
                       <p>Every checksum and file-existence check reads real files on disk -- this never modifies an MB-18 package.</p>
-                      <button onClick={runEcPackageBenchmarks} disabled={ecBusy}>Run package integrity benchmarks</button>
+                      <Button onClick={runEcPackageBenchmarks} disabled={ecBusy}>Run package integrity benchmarks</Button>
                     </div>
                   )}
                   {ecSessionData.package_benchmark_report?.package_count !== undefined && (
@@ -7744,7 +7746,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>Baseline evaluation session public ID (optional -- defaults to the most recent approved session)
                         <input value={ecBaselineSessionId} onChange={(e) => setEcBaselineSessionId(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={ecBusy}>Run regression comparison</button>
+                      <Button type="submit" disabled={ecBusy}>Run regression comparison</Button>
                     </form>
                   )}
                   {ecSessionData.regression_report?.has_baseline !== undefined && (
@@ -7762,7 +7764,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {ecSessionData.stage === 'generate_report' && (
                     <div className="notice">
-                      <button onClick={runEcGenerateReport} disabled={ecBusy}>Generate evaluation &amp; release readiness report</button>
+                      <Button onClick={runEcGenerateReport} disabled={ecBusy}>Generate evaluation &amp; release readiness report</Button>
                     </div>
                   )}
                   {ecSessionData.stage === 'awaiting_admin_review' && (
@@ -7773,9 +7775,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <pre className="notice">{JSON.stringify(ecSessionData.evaluation_report, null, 2)}</pre>
 
                       <h4>Final decision</h4>
-                      <button onClick={() => runEcAdminReview('approve')} disabled={ecBusy}>Approve</button>{' '}
-                      <button onClick={() => runEcAdminReview('reject')} disabled={ecBusy}>Reject</button>{' '}
-                      <button onClick={() => runEcAdminReview('archive')} disabled={ecBusy}>Archive</button>
+                      <Button onClick={() => runEcAdminReview('approve')} disabled={ecBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runEcAdminReview('reject')} disabled={ecBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runEcAdminReview('archive')} disabled={ecBusy}>Archive</Button>
                     </div>
                   )}
                   {ecSessionData.stage === 'closed' && (
@@ -7849,7 +7851,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {rgSubTabs.map((t) => (
-              <button key={t} className={rgSubTab === t ? 'active' : ''} onClick={() => setRgSubTab(t)}>{t}</button>
+              <Button key={t} className={rgSubTab === t ? 'active' : ''} onClick={() => setRgSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -7874,16 +7876,16 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {rgSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={rgSelectedId === s.public_id ? 'active' : ''} onClick={() => selectRgSession(s.public_id)}>
+                        <Button className={rgSelectedId === s.public_id ? 'active' : ''} onClick={() => selectRgSession(s.public_id)}>
                           {s.topic.slice(0, 30)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!rgSessionsList.length && <li>No release governance sessions yet.</li>}
                   </ul>
                   <form className="inline-form training-form" onSubmit={submitRgCreateSession}>
                     <label>Topic<input value={rgNewTopic} onChange={(e) => setRgNewTopic(e.target.value)} placeholder="Mountain scene release" /></label>
-                    <button type="submit" disabled={rgBusy || !rgNewTopic.trim()}>{rgBusy ? 'Working…' : 'Create session'}</button>
+                    <Button type="submit" disabled={rgBusy || !rgNewTopic.trim()}>{rgBusy ? 'Working…' : 'Create session'}</Button>
                   </form>
                 </div>
                 <div>
@@ -7912,7 +7914,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-16 certified dataset session public ID(s), comma-separated
                         <input value={rgDatasetSessionIds} onChange={(e) => setRgDatasetSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={rgBusy || !rgDatasetSessionIds.trim()}>Collect dataset evidence</button>
+                      <Button type="submit" disabled={rgBusy || !rgDatasetSessionIds.trim()}>Collect dataset evidence</Button>
                     </form>
                   )}
                   {rgSessionData.dataset_collection_report?.accepted_count !== undefined && (
@@ -7924,7 +7926,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-17 approved RAG session public ID(s), comma-separated, optional
                         <input value={rgRagSessionIds} onChange={(e) => setRgRagSessionIds(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={rgBusy}>Collect RAG evidence</button>
+                      <Button type="submit" disabled={rgBusy}>Collect RAG evidence</Button>
                     </form>
                   )}
                   {rgSessionData.rag_collection_report?.accepted_count !== undefined && (
@@ -7936,7 +7938,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-18 approved training package session public ID
                         <input value={rgPackageSessionId} onChange={(e) => setRgPackageSessionId(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={rgBusy || !rgPackageSessionId.trim()}>Collect training package</button>
+                      <Button type="submit" disabled={rgBusy || !rgPackageSessionId.trim()}>Collect training package</Button>
                     </form>
                   )}
                   {rgSessionData.training_package_collection_report?.accepted !== undefined && (
@@ -7948,7 +7950,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>MB-19 approved evaluation session public ID
                         <input value={rgEvaluationSessionId} onChange={(e) => setRgEvaluationSessionId(e.target.value)} />
                       </label>
-                      <button type="submit" disabled={rgBusy || !rgEvaluationSessionId.trim()}>Collect evaluation report</button>
+                      <Button type="submit" disabled={rgBusy || !rgEvaluationSessionId.trim()}>Collect evaluation report</Button>
                     </form>
                   )}
                   {rgSessionData.evaluation_collection_report?.accepted !== undefined && (
@@ -7967,7 +7969,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rgSessionData.stage === 'run_safety_gates' && (
                     <div className="notice">
                       <p>Ten deterministic checks against already-computed MB-17/MB-18/MB-19 signals -- any failed gate affects the final recommendation, never silently overridden.</p>
-                      <button onClick={runRgSafety} disabled={rgBusy}>Run safety gates</button>
+                      <Button onClick={runRgSafety} disabled={rgBusy}>Run safety gates</Button>
                     </div>
                   )}
                   {rgSessionData.safety_gate_report?.overall_status !== undefined && (
@@ -7989,7 +7991,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rgSessionData.stage === 'run_compliance_gates' && (
                     <div className="notice">
                       <p>A checklist only -- never a legal certification. Items not yet built at this stage (rollback plan, operator instructions, deployment prerequisites) are marked pending, not failing.</p>
-                      <button onClick={runRgCompliance} disabled={rgBusy}>Run compliance gates</button>
+                      <Button onClick={runRgCompliance} disabled={rgBusy}>Run compliance gates</Button>
                     </div>
                   )}
                   {rgSessionData.compliance_gate_report?.overall_status !== undefined && (
@@ -8008,7 +8010,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rgSessionData.stage === 'run_benchmark_gates' && (
                     <div className="notice">
                       <p>Consumes MB-19's own already-computed benchmark result rows -- never re-benchmarks anything.</p>
-                      <button onClick={runRgBenchmarks} disabled={rgBusy}>Run benchmark gates</button>
+                      <Button onClick={runRgBenchmarks} disabled={rgBusy}>Run benchmark gates</Button>
                     </div>
                   )}
                   {rgSessionData.benchmark_gate_report?.overall_benchmark_status !== undefined && (
@@ -8027,7 +8029,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rgSessionData.stage === 'build_risk_rollback' && (
                     <div className="notice">
                       <p>One risk entry per failed safety gate, missing compliance item, and failed/marginal benchmark metric -- never a speculative risk.</p>
-                      <button onClick={runRgBuildRiskRollback} disabled={rgBusy}>Build risk register &amp; rollback plan</button>
+                      <Button onClick={runRgBuildRiskRollback} disabled={rgBusy}>Build risk register &amp; rollback plan</Button>
                     </div>
                   )}
                   {rgSessionData.risk_rollback_report?.risk_register && (
@@ -8085,7 +8087,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {rgSessionData.stage === 'build_release_package' && (
                     <div className="notice">
                       <p>Writes 12 deterministic JSON governance files to this session's own release directory, with a SHA-256 checksum recorded for every file. No model weights, no deployment.</p>
-                      <button onClick={runRgBuildPackage} disabled={rgBusy}>Build release decision package</button>
+                      <Button onClick={runRgBuildPackage} disabled={rgBusy}>Build release decision package</Button>
                     </div>
                   )}
                   {rgSessionData.release_manifest?.artifact_count !== undefined && (
@@ -8110,7 +8112,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {rgSessionData.stage === 'generate_report' && (
                     <div className="notice">
-                      <button onClick={runRgGenerateReport} disabled={rgBusy}>Generate release readiness report</button>
+                      <Button onClick={runRgGenerateReport} disabled={rgBusy}>Generate release readiness report</Button>
                     </div>
                   )}
                   {rgSessionData.stage === 'awaiting_admin_review' && (
@@ -8122,9 +8124,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <pre className="notice">{JSON.stringify(rgSessionData.readiness_report, null, 2)}</pre>
 
                       <h4>Final decision</h4>
-                      <button onClick={() => runRgAdminReview('approve')} disabled={rgBusy}>Approve</button>{' '}
-                      <button onClick={() => runRgAdminReview('reject')} disabled={rgBusy}>Reject</button>{' '}
-                      <button onClick={() => runRgAdminReview('archive')} disabled={rgBusy}>Archive</button>
+                      <Button onClick={() => runRgAdminReview('approve')} disabled={rgBusy}>Approve</Button>{' '}
+                      <Button onClick={() => runRgAdminReview('reject')} disabled={rgBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runRgAdminReview('archive')} disabled={rgBusy}>Archive</Button>
                     </div>
                   )}
                   {rgSessionData.stage === 'closed' && (
@@ -8179,7 +8181,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {gaSubTabs.map((t) => (
-              <button key={t} className={gaSubTab === t ? 'active' : ''} onClick={() => setGaSubTab(t)}>{t}</button>
+              <Button key={t} className={gaSubTab === t ? 'active' : ''} onClick={() => setGaSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -8204,9 +8206,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <ul className="notice">
                     {gaSessionsList.map((s) => (
                       <li key={s.public_id}>
-                        <button className={gaSelectedId === s.public_id ? 'active' : ''} onClick={() => selectGaSession(s.public_id)}>
+                        <Button className={gaSelectedId === s.public_id ? 'active' : ''} onClick={() => selectGaSession(s.public_id)}>
                           {s.topic.slice(0, 26)} -- {s.stage} ({s.status})
-                        </button>
+                        </Button>
                       </li>
                     ))}
                     {!gaSessionsList.length && <li>No external AI gateway sessions yet.</li>}
@@ -8221,7 +8223,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     </label>
                     <label>MB-16 dataset session public ID(s), comma-separated, optional<input value={gaNewDatasetIds} onChange={(e) => setGaNewDatasetIds(e.target.value)} /></label>
                     <label>MB-17 RAG session public ID, optional<input value={gaNewRagId} onChange={(e) => setGaNewRagId(e.target.value)} /></label>
-                    <button type="submit" disabled={gaBusy || !gaNewTopic.trim()}>{gaBusy ? 'Working…' : 'Create session'}</button>
+                    <Button type="submit" disabled={gaBusy || !gaNewTopic.trim()}>{gaBusy ? 'Working…' : 'Create session'}</Button>
                   </form>
                 </div>
                 <div>
@@ -8250,7 +8252,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>Explicit authorization reason (required before any provider is ever called)
                         <input value={gaAuthorizationNote} onChange={(e) => setGaAuthorizationNote(e.target.value)} placeholder="testing public-style stress evaluation for release readiness" />
                       </label>
-                      <button type="submit" disabled={gaBusy || !gaAuthorizationNote.trim()}>Authorize</button>
+                      <Button type="submit" disabled={gaBusy || !gaAuthorizationNote.trim()}>Authorize</Button>
                     </form>
                   )}
                   {gaSessionData.authorization_report?.authorized !== undefined && (
@@ -8269,7 +8271,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {gaSessionData.stage === 'select_providers' && (
                     <form className="inline-form training-form" onSubmit={submitGaSelectProviders}>
                       <label>Requested provider key(s), comma-separated<input value={gaProviderKeys} onChange={(e) => setGaProviderKeys(e.target.value)} /></label>
-                      <button type="submit" disabled={gaBusy || !gaProviderKeys.trim()}>Select providers</button>
+                      <Button type="submit" disabled={gaBusy || !gaProviderKeys.trim()}>Select providers</Button>
                     </form>
                   )}
                   {gaSessionData.provider_selection_report?.selected_count !== undefined && (
@@ -8278,7 +8280,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {gaSessionData.stage === 'dispatch_requests' && (
                     <div className="notice">
                       <p>Dispatches the sanitized prompt to every selected provider. The full raw prompt is never persisted -- only its SHA-256 hash.</p>
-                      <button onClick={runGaDispatch} disabled={gaBusy}>Dispatch provider requests</button>
+                      <Button onClick={runGaDispatch} disabled={gaBusy}>Dispatch provider requests</Button>
                     </div>
                   )}
                   {gaSessionData.dispatch_report?.dispatched_count !== undefined && (
@@ -8297,13 +8299,13 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {gaSessionData.stage === 'sanitize_inputs' && gaSessionData.purpose === 'data_acquisition_assistance' && (
                     <form className="inline-form training-form" onSubmit={submitGaSanitize}>
                       <label>What data is missing? (admin-stated need)<input value={gaAdminStatedNeed} onChange={(e) => setGaAdminStatedNeed(e.target.value)} /></label>
-                      <button type="submit" disabled={gaBusy || !gaAdminStatedNeed.trim()}>Sanitize &amp; continue</button>
+                      <Button type="submit" disabled={gaBusy || !gaAdminStatedNeed.trim()}>Sanitize &amp; continue</Button>
                     </form>
                   )}
                   {gaSessionData.stage === 'sanitize_inputs' && gaSessionData.purpose === 'public_style_stress_test' && (
                     <div className="notice">
                       <p>Builds sanitized context from the session's own topic plus any linked MB-16/MB-17 sessions.</p>
-                      <button onClick={() => runGaAction(() => gaSanitize(gaSelectedId, ''))} disabled={gaBusy}>Sanitize inputs</button>
+                      <Button onClick={() => runGaAction(() => gaSanitize(gaSelectedId, ''))} disabled={gaBusy}>Sanitize inputs</Button>
                     </div>
                   )}
                   {gaSessionData.sanitization_report?.privacy_audit && (
@@ -8354,12 +8356,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {gaSessionData.stage === 'collect_responses' && (
                     <div className="notice">
-                      <button onClick={runGaCollect} disabled={gaBusy}>Collect provider responses</button>
+                      <Button onClick={runGaCollect} disabled={gaBusy}>Collect provider responses</Button>
                     </div>
                   )}
                   {gaSessionData.stage === 'normalize_responses' && (
                     <div className="notice">
-                      <button onClick={runGaNormalize} disabled={gaBusy}>Normalize responses</button>
+                      <Button onClick={runGaNormalize} disabled={gaBusy}>Normalize responses</Button>
                     </div>
                   )}
                   <h4>Provider runs ({gaProviderRunsList.length})</h4>
@@ -8382,7 +8384,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {gaSessionData.stage === 'analyze_agreement' && (
                     <div className="notice">
                       <p>No majority voting here ever produces an automatic truth decision.</p>
-                      <button onClick={runGaAnalyze} disabled={gaBusy}>Analyze agreement &amp; failures</button>
+                      <Button onClick={runGaAnalyze} disabled={gaBusy}>Analyze agreement &amp; failures</Button>
                     </div>
                   )}
                   {gaSessionData.agreement_report?.agreement && (
@@ -8401,7 +8403,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {gaSessionData.stage === 'build_evidence' && (
                     <div className="notice">
                       <p>Only hashes of raw provider text are included by default.</p>
-                      <button onClick={runGaBuildEvidence} disabled={gaBusy}>Build evidence bundle</button>
+                      <Button onClick={runGaBuildEvidence} disabled={gaBusy}>Build evidence bundle</Button>
                     </div>
                   )}
                   {gaSessionData.evidence_bundle?.provider_metadata && (
@@ -8419,7 +8421,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {gaSessionData.stage === 'generate_report' && (
                     <div className="notice">
-                      <button onClick={runGaGenerateReport} disabled={gaBusy}>Generate evaluation report</button>
+                      <Button onClick={runGaGenerateReport} disabled={gaBusy}>Generate evaluation report</Button>
                     </div>
                   )}
                   {gaSessionData.stage === 'awaiting_admin_review' && (
@@ -8430,15 +8432,15 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <pre className="notice">{JSON.stringify(gaSessionData.gateway_report, null, 2)}</pre>
 
                       <h4>Final decision (marks this evaluation session's own findings only)</h4>
-                      <button onClick={() => runGaAdminReview('accept')} disabled={gaBusy}>Accept</button>{' '}
-                      <button onClick={() => runGaAdminReview('reject')} disabled={gaBusy}>Reject</button>{' '}
-                      <button onClick={() => runGaAdminReview('needs_followup')} disabled={gaBusy}>Needs Follow-up</button>
+                      <Button onClick={() => runGaAdminReview('accept')} disabled={gaBusy}>Accept</Button>{' '}
+                      <Button onClick={() => runGaAdminReview('reject')} disabled={gaBusy}>Reject</Button>{' '}
+                      <Button onClick={() => runGaAdminReview('needs_followup')} disabled={gaBusy}>Needs Follow-up</Button>
                     </div>
                   )}
                   {gaSessionData.stage === 'reviewed' && (
                     <div className="notice">
                       <p>Reviewed with status <strong>{gaSessionData.status}</strong>.</p>
-                      <button onClick={runGaArchive} disabled={gaBusy}>Archive session</button>
+                      <Button onClick={runGaArchive} disabled={gaBusy}>Archive session</Button>
                     </div>
                   )}
                   {gaSessionData.stage === 'archived' && (
@@ -8491,7 +8493,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {teSubTabs.map((t) => (
-              <button key={t} className={teSubTab === t ? 'active' : ''} onClick={() => setTeSubTab(t)}>{t}</button>
+              <Button key={t} className={teSubTab === t ? 'active' : ''} onClick={() => setTeSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -8514,8 +8516,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {teJobData && (
                 <div className="notice">
                   <h4>Advance workflow</h4>
-                  {teJobData.stage === 'validate_release' && <button onClick={runTeValidateRelease} disabled={teBusy}>Validate release approval</button>}
-                  {teJobData.stage === 'validate_package' && <button onClick={runTeValidatePackage} disabled={teBusy}>Validate training package</button>}
+                  {teJobData.stage === 'validate_release' && <Button onClick={runTeValidateRelease} disabled={teBusy}>Validate release approval</Button>}
+                  {teJobData.stage === 'validate_package' && <Button onClick={runTeValidatePackage} disabled={teBusy}>Validate training package</Button>}
                   {teJobData.stage === 'validate_authorization' && <p>Authorize this job in the Authorization sub-tab.</p>}
                   {teJobData.stage === 'plan_resources' && <p>Plan resources in the Resources sub-tab.</p>}
                   {teJobData.stage === 'build_manifest' && <p>Build the training manifest in the Manifest sub-tab.</p>}
@@ -8538,9 +8540,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <ul className="notice">
                   {teJobsList.map((j) => (
                     <li key={j.public_id}>
-                      <button className={teSelectedId === j.public_id ? 'active' : ''} onClick={() => selectTeJob(j.public_id)}>
+                      <Button className={teSelectedId === j.public_id ? 'active' : ''} onClick={() => selectTeJob(j.public_id)}>
                         {j.topic.slice(0, 26)} -- {j.stage} ({j.status})
-                      </button>
+                      </Button>
                     </li>
                   ))}
                   {!teJobsList.length && <li>No training jobs yet.</li>}
@@ -8556,7 +8558,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <option value="gpu">gpu</option>
                     </select>
                   </label>
-                  <button type="submit" disabled={teBusy || !teNewTopic.trim() || !teNewPackageId.trim() || !teNewReleaseId.trim()}>{teBusy ? 'Working…' : 'Create job'}</button>
+                  <Button type="submit" disabled={teBusy || !teNewTopic.trim() || !teNewPackageId.trim() || !teNewReleaseId.trim()}>{teBusy ? 'Working…' : 'Create job'}</Button>
                 </form>
               </div>
               <div>
@@ -8576,7 +8578,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <label>Explicit authorization reason (required before this job may ever start)
                         <input value={teAuthorizationReason} onChange={(e) => setTeAuthorizationReason(e.target.value)} placeholder="approved for CPU-first simulation training run" />
                       </label>
-                      <button type="submit" disabled={teBusy || !teAuthorizationReason.trim()}>Authorize</button>
+                      <Button type="submit" disabled={teBusy || !teAuthorizationReason.trim()}>Authorize</Button>
                     </form>
                   )}
                   {teJobData.authorization_report?.authorized !== undefined && (
@@ -8595,7 +8597,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {teJobData.stage === 'plan_resources' && (
                     <div className="notice">
                       <p>Every figure here is heuristic -- never a real hardware benchmark.</p>
-                      <button onClick={runTePlanResources} disabled={teBusy}>Plan resources</button>
+                      <Button onClick={runTePlanResources} disabled={teBusy}>Plan resources</Button>
                     </div>
                   )}
                   {teJobData.resource_plan_report?.execution_mode && (
@@ -8613,7 +8615,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {teJobData.stage === 'build_manifest' && (
                     <div className="notice">
-                      <button onClick={runTeBuildManifest} disabled={teBusy}>Build training manifest</button>
+                      <Button onClick={runTeBuildManifest} disabled={teBusy}>Build training manifest</Button>
                     </div>
                   )}
                   {teJobData.training_manifest?.fingerprint && (
@@ -8631,7 +8633,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <>
                   {teJobData.stage === 'reserve_runtime' && (
                     <div className="notice">
-                      <button onClick={runTeReserveRuntime} disabled={teBusy}>Reserve runtime</button>
+                      <Button onClick={runTeReserveRuntime} disabled={teBusy}>Reserve runtime</Button>
                     </div>
                   )}
                   {teJobData.runtime_reservation_report?.reserved !== undefined && (
@@ -8639,19 +8641,19 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   )}
                   {teJobData.stage === 'start_training' && (
                     <div className="notice">
-                      <button onClick={runTeStart} disabled={teBusy}>Start training</button>
+                      <Button onClick={runTeStart} disabled={teBusy}>Start training</Button>
                     </div>
                   )}
                   {teJobData.status === 'running' && (
                     <div className="notice">
-                      <button onClick={runTePause} disabled={teBusy}>Pause</button>{' '}
-                      <button onClick={runTeCancel} disabled={teBusy}>Cancel</button>
+                      <Button onClick={runTePause} disabled={teBusy}>Pause</Button>{' '}
+                      <Button onClick={runTeCancel} disabled={teBusy}>Cancel</Button>
                     </div>
                   )}
                   {teJobData.status === 'paused' && (
                     <div className="notice">
-                      <button onClick={runTeResume} disabled={teBusy}>Resume</button>{' '}
-                      <button onClick={runTeCancel} disabled={teBusy}>Cancel</button>
+                      <Button onClick={runTeResume} disabled={teBusy}>Resume</Button>{' '}
+                      <Button onClick={runTeCancel} disabled={teBusy}>Cancel</Button>
                     </div>
                   )}
                 </>
@@ -8668,7 +8670,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <form className="inline-form training-form" onSubmit={submitTeStreamMetric}>
                       <label>Step<input type="number" min="0" value={teMetricStep} onChange={(e) => setTeMetricStep(e.target.value)} /></label>
                       <label>Epoch<input type="number" min="0" value={teMetricEpoch} onChange={(e) => setTeMetricEpoch(e.target.value)} /></label>
-                      <button type="submit" disabled={teBusy}>Stream metric</button>
+                      <Button type="submit" disabled={teBusy}>Stream metric</Button>
                     </form>
                   )}
                   <table>
@@ -8694,7 +8696,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <form className="inline-form training-form" onSubmit={submitTeSaveCheckpoint}>
                       <label>Step<input type="number" min="0" value={teCheckpointStep} onChange={(e) => setTeCheckpointStep(e.target.value)} /></label>
                       <label>Epoch<input type="number" min="0" value={teCheckpointEpoch} onChange={(e) => setTeCheckpointEpoch(e.target.value)} /></label>
-                      <button type="submit" disabled={teBusy}>Save checkpoint</button>
+                      <Button type="submit" disabled={teBusy}>Save checkpoint</Button>
                     </form>
                   )}
                   <ul className="notice">
@@ -8729,12 +8731,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {(teJobData.status === 'running' || teJobData.status === 'paused') && (
                     <div className="notice">
                       <p>Only finalize may set this job's status to completed.</p>
-                      <button onClick={runTeFinalize} disabled={teBusy}>Finalize training</button>
+                      <Button onClick={runTeFinalize} disabled={teBusy}>Finalize training</Button>
                     </div>
                   )}
                   {teJobData.stage === 'generate_report' && (
                     <div className="notice">
-                      <button onClick={runTeGenerateReport} disabled={teBusy}>Generate final report</button>
+                      <Button onClick={runTeGenerateReport} disabled={teBusy}>Generate final report</Button>
                     </div>
                   )}
                   {teJobData.final_report?.disclaimer && (
@@ -8753,7 +8755,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {!teJobData && <div className="notice">Select a job in Jobs first.</div>}
               {teJobData && (teJobData.status === 'completed' || teJobData.status === 'cancelled') && (
                 <div className="notice">
-                  <button onClick={runTeArchive} disabled={teBusy}>Archive job</button>
+                  <Button onClick={runTeArchive} disabled={teBusy}>Archive job</Button>
                 </div>
               )}
               {teJobData && teJobData.status === 'archived' && <div className="notice">Job archived.</div>}
@@ -8798,7 +8800,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {pcrSubTabs.map((t) => (
-              <button key={t} className={pcrSubTab === t ? 'active' : ''} onClick={() => setPcrSubTab(t)}>{t}</button>
+              <Button key={t} className={pcrSubTab === t ? 'active' : ''} onClick={() => setPcrSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -8827,9 +8829,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <ul className="notice">
                   {pcrSessionsList.map((s) => (
                     <li key={s.public_id}>
-                      <button className={pcrSelectedSessionId === s.public_id ? 'active' : ''} onClick={() => selectPcrSession(s.public_id)}>
+                      <Button className={pcrSelectedSessionId === s.public_id ? 'active' : ''} onClick={() => selectPcrSession(s.public_id)}>
                         {s.public_id.slice(0, 8)}… -- {s.language} -- {s.message_count} msg(s) -- {s.unresolved_count} unresolved -- {s.started_at}
-                      </button>
+                      </Button>
                     </li>
                   ))}
                   {!pcrSessionsList.length && <li>No active sessions.</li>}
@@ -8900,14 +8902,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <label>Minimum cluster frequency
                   <input type="number" min="1" value={pcrMinFrequency} onChange={(e) => setPcrMinFrequency(e.target.value)} />
                 </label>
-                <button type="submit" disabled={pcrBusy}>{pcrBusy ? 'Working…' : 'Generate candidates from clusters'}</button>
+                <Button type="submit" disabled={pcrBusy}>{pcrBusy ? 'Working…' : 'Generate candidates from clusters'}</Button>
               </form>
               <ul className="notice">
                 {pcrCandidatesList.map((c) => (
                   <li key={c.public_id}>
-                    <button className={pcrSelectedCandidateId === c.public_id ? 'active' : ''} onClick={() => selectPcrCandidate(c.public_id)}>
+                    <Button className={pcrSelectedCandidateId === c.public_id ? 'active' : ''} onClick={() => selectPcrCandidate(c.public_id)}>
                       {c.topic.slice(0, 30)} -- frequency {c.frequency} -- priority {c.priority_score} -- {c.recommended_action} -- {c.status}
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!pcrCandidatesList.length && <li>No candidates pending review.</li>}
@@ -8924,8 +8926,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   {pcrCandidateData.status === 'pending_admin_review' && (
                     <div className="notice">
                       <label>Review notes<input value={pcrReviewNotes} onChange={(e) => setPcrReviewNotes(e.target.value)} placeholder="optional notes" /></label>
-                      <button onClick={() => submitPcrReview('approve')} disabled={pcrBusy}>Approve</button>
-                      <button onClick={() => submitPcrReview('reject')} disabled={pcrBusy}>Reject</button>
+                      <Button onClick={() => submitPcrReview('approve')} disabled={pcrBusy}>Approve</Button>
+                      <Button onClick={() => submitPcrReview('reject')} disabled={pcrBusy}>Reject</Button>
                     </div>
                   )}
                   {pcrCandidateData.status !== 'pending_admin_review' && (
@@ -8964,8 +8966,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {pcrSubTab === 'Exports' && (
             <>
               <div className="notice">
-                <button onClick={runPcrExportAnalytics} disabled={pcrBusy}>Export analytics</button>
-                <button onClick={runPcrExportCandidates} disabled={pcrBusy}>Export candidates</button>
+                <Button onClick={runPcrExportAnalytics} disabled={pcrBusy}>Export analytics</Button>
+                <Button onClick={runPcrExportCandidates} disabled={pcrBusy}>Export candidates</Button>
               </div>
               {pcrExportResult && <pre className="notice">{JSON.stringify(pcrExportResult, null, 2)}</pre>}
             </>
@@ -9030,7 +9032,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {pgSubTabs.map((t) => (
-              <button key={t} className={pgSubTab === t ? 'active' : ''} onClick={() => setPgSubTab(t)}>{t}</button>
+              <Button key={t} className={pgSubTab === t ? 'active' : ''} onClick={() => setPgSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -9056,14 +9058,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <StatusCard label="Risk level" value={pgPluginData.risk_level || 'n/a'} tone="neutral" />
                   </section>
                   <h4>Advance workflow</h4>
-                  {pgPluginData.stage === 'register' && <button onClick={runPgValidate} disabled={pgBusy}>Validate manifest</button>}
-                  {pgPluginData.stage === 'validate_manifest' && <button onClick={runPgClassify} disabled={pgBusy}>Classify capabilities</button>}
-                  {pgPluginData.stage === 'classify_capabilities' && <button onClick={runPgRiskScore} disabled={pgBusy}>Compute risk score</button>}
-                  {pgPluginData.stage === 'compute_risk' && <button onClick={runPgSandbox} disabled={pgBusy}>Build sandbox profile</button>}
-                  {pgPluginData.stage === 'build_sandbox' && <button onClick={runPgFilesystemPolicy} disabled={pgBusy}>Build filesystem policy</button>}
-                  {pgPluginData.stage === 'build_filesystem_policy' && <button onClick={runPgNetworkPolicy} disabled={pgBusy}>Build network policy</button>}
+                  {pgPluginData.stage === 'register' && <Button onClick={runPgValidate} disabled={pgBusy}>Validate manifest</Button>}
+                  {pgPluginData.stage === 'validate_manifest' && <Button onClick={runPgClassify} disabled={pgBusy}>Classify capabilities</Button>}
+                  {pgPluginData.stage === 'classify_capabilities' && <Button onClick={runPgRiskScore} disabled={pgBusy}>Compute risk score</Button>}
+                  {pgPluginData.stage === 'compute_risk' && <Button onClick={runPgSandbox} disabled={pgBusy}>Build sandbox profile</Button>}
+                  {pgPluginData.stage === 'build_sandbox' && <Button onClick={runPgFilesystemPolicy} disabled={pgBusy}>Build filesystem policy</Button>}
+                  {pgPluginData.stage === 'build_filesystem_policy' && <Button onClick={runPgNetworkPolicy} disabled={pgBusy}>Build network policy</Button>}
                   {pgPluginData.stage === 'build_network_policy' && pgPluginData.status === 'disabled' && (
-                    <button onClick={runPgEnable} disabled={pgBusy}>Enable plugin (admin review)</button>
+                    <Button onClick={runPgEnable} disabled={pgBusy}>Enable plugin (admin review)</Button>
                   )}
                   {pgPluginData.stage === 'evaluate_permission' && <p>Evaluate and grant permissions in the Permissions sub-tab.</p>}
                   {pgPluginData.stage === 'grant_permission' && <p>Issue an execution token in the Runtime Events sub-tab.</p>}
@@ -9101,14 +9103,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <option value="marketplace_reference">marketplace_reference</option>
                   </select>
                 </label>
-                <button type="submit" disabled={pgBusy}>{pgBusy ? 'Working…' : 'Register plugin'}</button>
+                <Button type="submit" disabled={pgBusy}>{pgBusy ? 'Working…' : 'Register plugin'}</Button>
               </form>
               <ul className="notice">
                 {pgPluginsList.map((p) => (
                   <li key={p.public_id}>
-                    <button className={pgSelectedPluginId === p.public_id ? 'active' : ''} onClick={() => selectPgPlugin(p.public_id)}>
+                    <Button className={pgSelectedPluginId === p.public_id ? 'active' : ''} onClick={() => selectPgPlugin(p.public_id)}>
                       {p.name} v{p.version} -- {p.stage} -- {p.status} -- risk: {p.risk_level || 'n/a'}
-                    </button>
+                    </Button>
                   </li>
                 ))}
                 {!pgPluginsList.length && <li>No plugins registered yet.</li>}
@@ -9172,8 +9174,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <label>Scope key<input value={pgEvalScopeKey} onChange={(e) => setPgEvalScopeKey(e.target.value)} placeholder="filesystem.read.user_selected" required /></label>
                     <label><input type="checkbox" checked={pgEvalIsPublicChat} onChange={(e) => setPgEvalIsPublicChat(e.target.checked)} /> Is public chat</label>
                     <label>User ID hash (optional)<input value={pgEvalUserIdHash} onChange={(e) => setPgEvalUserIdHash(e.target.value)} /></label>
-                    <button type="submit" disabled={pgBusy}>Evaluate permission</button>
-                    <button type="button" onClick={runPgPolicyCheck} disabled={pgBusy || !pgEvalScopeKey}>Preview public policy check</button>
+                    <Button type="submit" disabled={pgBusy}>Evaluate permission</Button>
+                    <Button type="button" onClick={runPgPolicyCheck} disabled={pgBusy || !pgEvalScopeKey}>Preview public policy check</Button>
                   </form>
                   {pgEvalResult && <pre className="notice">{JSON.stringify(pgEvalResult, null, 2)}</pre>}
                   {pgPolicyCheckResult && <pre className="notice">{JSON.stringify(pgPolicyCheckResult, null, 2)}</pre>}
@@ -9182,10 +9184,10 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       <li key={p.public_id}>
                         {p.scope_key} -- decision: {p.decision} -- status: {p.status}
                         {p.status !== 'granted' && (
-                          <button onClick={() => runPgGrant(p.scope_key, pgEvalUserIdHash)} disabled={pgBusy}>Grant</button>
+                          <Button onClick={() => runPgGrant(p.scope_key, pgEvalUserIdHash)} disabled={pgBusy}>Grant</Button>
                         )}
                         {p.status === 'granted' && (
-                          <button onClick={() => runPgRevoke(p.scope_key)} disabled={pgBusy}>Revoke</button>
+                          <Button onClick={() => runPgRevoke(p.scope_key)} disabled={pgBusy}>Revoke</Button>
                         )}
                       </li>
                     ))}
@@ -9206,7 +9208,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <label>Raw user identity<input value={pgConsentUserIdentity} onChange={(e) => setPgConsentUserIdentity(e.target.value)} placeholder="never stored raw -- hashed immediately" required /></label>
                     <label><input type="checkbox" checked={pgConsentGiven} onChange={(e) => setPgConsentGiven(e.target.checked)} /> Consent given</label>
                     <label>TTL seconds (optional)<input value={pgConsentTtl} onChange={(e) => setPgConsentTtl(e.target.value)} /></label>
-                    <button type="submit" disabled={pgBusy}>Record consent</button>
+                    <Button type="submit" disabled={pgBusy}>Record consent</Button>
                   </form>
                   <ul className="notice">
                     {pgConsentsList.map((c) => (
@@ -9229,7 +9231,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <label>Raw user identity<input value={pgTokenUserIdentity} onChange={(e) => setPgTokenUserIdentity(e.target.value)} required /></label>
                     <label>Raw session identity<input value={pgTokenSessionIdentity} onChange={(e) => setPgTokenSessionIdentity(e.target.value)} required /></label>
                     <label>TTL seconds<input value={pgTokenTtl} onChange={(e) => setPgTokenTtl(e.target.value)} /></label>
-                    <button type="submit" disabled={pgBusy}>Issue execution token</button>
+                    <Button type="submit" disabled={pgBusy}>Issue execution token</Button>
                   </form>
                   {pgTokenResult && (
                     <div className="notice">
@@ -9238,11 +9240,11 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     </div>
                   )}
                   <div className="notice">
-                    <button onClick={runPgReportExecution} disabled={pgBusy}>Record an external execution report</button>
-                    <button onClick={runPgGenerateReport} disabled={pgBusy}>Generate governance report</button>
-                    {pgPluginData.status === 'enabled' && <button onClick={runPgDisable} disabled={pgBusy}>Disable plugin</button>}
+                    <Button onClick={runPgReportExecution} disabled={pgBusy}>Record an external execution report</Button>
+                    <Button onClick={runPgGenerateReport} disabled={pgBusy}>Generate governance report</Button>
+                    {pgPluginData.status === 'enabled' && <Button onClick={runPgDisable} disabled={pgBusy}>Disable plugin</Button>}
                     {(pgPluginData.status === 'disabled' || pgPluginData.status === 'enabled') && (
-                      <button onClick={runPgArchive} disabled={pgBusy}>Archive plugin</button>
+                      <Button onClick={runPgArchive} disabled={pgBusy}>Archive plugin</Button>
                     )}
                   </div>
                   <h4>Event log</h4>
@@ -9292,7 +9294,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {prSubTabs.map((t) => (
-              <button key={t} className={prSubTab === t ? 'active' : ''} onClick={() => setPrSubTab(t)}>{t}</button>
+              <Button key={t} className={prSubTab === t ? 'active' : ''} onClick={() => setPrSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -9328,7 +9330,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <label>Arguments (JSON)<textarea rows={3} value={prExecForm.arguments} onChange={(e) => setPrExecForm({ ...prExecForm, arguments: e.target.value })} /></label>
                 <label>Execution token (JSON)<textarea rows={4} value={prExecForm.execution_token} onChange={(e) => setPrExecForm({ ...prExecForm, execution_token: e.target.value })} required /></label>
                 <label>Timeout seconds<input value={prExecForm.timeout_seconds} onChange={(e) => setPrExecForm({ ...prExecForm, timeout_seconds: e.target.value })} /></label>
-                <button type="submit" disabled={prBusy}>{prBusy ? 'Executing…' : 'Execute'}</button>
+                <Button type="submit" disabled={prBusy}>{prBusy ? 'Executing…' : 'Execute'}</Button>
               </form>
               {prExecResult && <pre className="notice">{JSON.stringify(prExecResult, null, 2)}</pre>}
             </>
@@ -9339,11 +9341,11 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <ul className="notice">
                 {prExecutionsList.map((e) => (
                   <li key={e.public_id}>
-                    <button className={prSelectedExecutionId === e.public_id ? 'active' : ''} onClick={() => selectPrExecution(e.public_id)}>
+                    <Button className={prSelectedExecutionId === e.public_id ? 'active' : ''} onClick={() => selectPrExecution(e.public_id)}>
                       {e.plugin_public_id.slice(0, 8)}… -- {e.execution_mode} -- {e.status} -- {e.scope_key}
-                    </button>
+                    </Button>
                     {e.status === 'pending' && prSelectedExecutionId === e.public_id && (
-                      <button onClick={runPrCancel} disabled={prBusy}>Cancel</button>
+                      <Button onClick={runPrCancel} disabled={prBusy}>Cancel</Button>
                     )}
                   </li>
                 ))}
@@ -9370,9 +9372,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     {!(prLogs?.io || []).length && <li>No sanitized input/output recorded yet.</li>}
                   </ul>
                   <div className="notice">
-                    <button onClick={runPrGenerateReport} disabled={prBusy}>Generate report</button>
+                    <Button onClick={runPrGenerateReport} disabled={prBusy}>Generate report</Button>
                     {['completed', 'failed', 'timeout', 'denied', 'cancelled'].includes(prExecutionData.status) && (
-                      <button onClick={runPrArchive} disabled={prBusy}>Archive execution</button>
+                      <Button onClick={runPrArchive} disabled={prBusy}>Archive execution</Button>
                     )}
                   </div>
                   {prReportResult && <pre className="notice">{JSON.stringify(prReportResult, null, 2)}</pre>}
@@ -9443,7 +9445,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 <label>Arguments (JSON)<textarea rows={3} value={prPublicForm.arguments} onChange={(e) => setPrPublicForm({ ...prPublicForm, arguments: e.target.value })} /></label>
                 <label>Raw user identity<input value={prPublicForm.raw_user_identity} onChange={(e) => setPrPublicForm({ ...prPublicForm, raw_user_identity: e.target.value })} required /></label>
                 <label>Execution token (JSON)<textarea rows={4} value={prPublicForm.execution_token} onChange={(e) => setPrPublicForm({ ...prPublicForm, execution_token: e.target.value })} required /></label>
-                <button type="submit" disabled={prBusy}>{prBusy ? 'Executing…' : 'Execute as public chat'}</button>
+                <Button type="submit" disabled={prBusy}>{prBusy ? 'Executing…' : 'Execute as public chat'}</Button>
               </form>
               {prPublicResult && <pre className="notice">{JSON.stringify(prPublicResult, null, 2)}</pre>}
             </>
@@ -9469,7 +9471,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {!prExecutionData && <div className="notice">Select an execution in Active Executions first.</div>}
               {prExecutionData && (
                 <>
-                  <button onClick={runPrReportEvent} disabled={prBusy}>Record an admin note</button>
+                  <Button onClick={runPrReportEvent} disabled={prBusy}>Record an admin note</Button>
                   <ul className="notice">
                     {(prLogs?.events || []).map((ev) => <li key={ev.public_id}>{ev.created_at} -- {ev.event_type} -- {ev.stage || 'n/a'} -- {ev.message}</li>)}
                     {!(prLogs?.events || []).length && <li>No events yet.</li>}
@@ -9512,7 +9514,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {voSubTabs.map((t) => (
-              <button key={t} className={voSubTab === t ? 'active' : ''} onClick={() => setVoSubTab(t)}>{t}</button>
+              <Button key={t} className={voSubTab === t ? 'active' : ''} onClick={() => setVoSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -9543,7 +9545,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 {' '}I consent to microphone capture for this voice session
               </label>
               <div className="notice">
-                <button
+                <Button
                   disabled={!voConsent || voBusy}
                   className={voRecording ? 'active' : ''}
                   onMouseDown={startVoRecording}
@@ -9552,7 +9554,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   onTouchEnd={stopVoRecordingAndSend}
                 >
                   {voRecording ? '● Recording -- release to send' : '🎤 Hold to talk'}
-                </button>
+                </Button>
                 {voRecording && <span className="notice"> Recording…</span>}
               </div>
               {voSessionData && (
@@ -9590,7 +9592,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {voSubTab === 'STT' && (
             <>
-              <button disabled={voBusy} onClick={runVoTestStt}>Record 2s and run STT test</button>
+              <Button disabled={voBusy} onClick={runVoTestStt}>Record 2s and run STT test</Button>
               {voTestSttText && <pre className="notice">{JSON.stringify(voTestSttText, null, 2)}</pre>}
             </>
           )}
@@ -9602,7 +9604,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 onChange={(e) => setVoTestTtsForm({ text: e.target.value })}
                 placeholder="Text to synthesize"
               />
-              <button disabled={voBusy || !voTestTtsForm.text} onClick={runVoTestTts}>Run TTS test</button>
+              <Button disabled={voBusy || !voTestTtsForm.text} onClick={runVoTestTts}>Run TTS test</Button>
               {voTestTtsResult && <pre className="notice">{JSON.stringify(voTestTtsResult, null, 2)}</pre>}
             </>
           )}
@@ -9676,7 +9678,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {psSubTabs.map((t) => (
-              <button key={t} className={psSubTab === t ? 'active' : ''} onClick={() => setPsSubTab(t)}>{t}</button>
+              <Button key={t} className={psSubTab === t ? 'active' : ''} onClick={() => setPsSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -9783,7 +9785,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {lrSubTabs.map((t) => (
-              <button key={t} className={lrSubTab === t ? 'active' : ''} onClick={() => setLrSubTab(t)}>{t}</button>
+              <Button key={t} className={lrSubTab === t ? 'active' : ''} onClick={() => setLrSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -9798,7 +9800,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   <div key={m.public_id} className={m.role === 'admin' ? 'notice' : 'card'}>
                     <strong>{m.role}</strong> ({m.capability}){m.truncated ? ' [truncated]' : ''}
                     <div>{formatMessageText(m.sanitized_text)}</div>
-                    {m.role === 'assistant' && <button onClick={() => lrCopyMessage(m.sanitized_text)}>Copy</button>}
+                    {m.role === 'assistant' && <Button onClick={() => lrCopyMessage(m.sanitized_text)}>Copy</Button>}
                   </div>
                 ))}
                 {!lrMessagesList.length && <p className="notice">No messages yet -- ask a question below.</p>}
@@ -9810,8 +9812,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 onChange={(e) => setLrChatInput(e.target.value)}
               />
               <div>
-                <button disabled={lrBusy || !lrChatInput.trim()} onClick={sendLrChat}>Send</button>
-                <button disabled={lrBusy} onClick={startNewLrConversation}>New conversation</button>
+                <Button disabled={lrBusy || !lrChatInput.trim()} onClick={sendLrChat}>Send</Button>
+                <Button disabled={lrBusy} onClick={startNewLrConversation}>New conversation</Button>
               </div>
             </div>
           )}
@@ -9820,10 +9822,10 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <ul className="notice">
               {lrSessionsList.map((s) => (
                 <li key={s.public_id}>
-                  <button className={lrActiveSessionId === s.public_id ? 'active' : ''} onClick={() => selectLrSession(s.public_id)}>
+                  <Button className={lrActiveSessionId === s.public_id ? 'active' : ''} onClick={() => selectLrSession(s.public_id)}>
                     {s.title || s.public_id} -- {s.status} -- {s.total_messages} messages
-                  </button>
-                  <button disabled={lrBusy} onClick={() => deleteLrSession(s.public_id)}>Delete</button>
+                  </Button>
+                  <Button disabled={lrBusy} onClick={() => deleteLrSession(s.public_id)}>Delete</Button>
                 </li>
               ))}
               {!lrSessionsList.length && <li>No conversations yet.</li>}
@@ -9836,7 +9838,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <input value={lrExplainPageForm.page_id} onChange={(e) => setLrExplainPageForm((prev) => ({ ...prev, page_id: e.target.value }))} placeholder="e.g. mini_brain" />
               <label>Nav Key</label>
               <input value={lrExplainPageForm.nav_key} onChange={(e) => setLrExplainPageForm((prev) => ({ ...prev, nav_key: e.target.value }))} placeholder="e.g. Brud Mini Brain" />
-              <button type="submit" disabled={lrBusy}>Explain this page</button>
+              <Button type="submit" disabled={lrBusy}>Explain this page</Button>
             </form>
           )}
 
@@ -9844,7 +9846,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <form onSubmit={submitLrSummarizeReport} className="card">
               <label>Report JSON</label>
               <textarea rows={6} value={lrReportForm} onChange={(e) => setLrReportForm(e.target.value)} />
-              <button type="submit" disabled={lrBusy}>Summarize current report</button>
+              <Button type="submit" disabled={lrBusy}>Summarize current report</Button>
             </form>
           )}
 
@@ -9852,7 +9854,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <form onSubmit={submitLrSummarizeRegression} className="card">
               <label>Regression Result JSON</label>
               <textarea rows={6} value={lrRegressionForm} onChange={(e) => setLrRegressionForm(e.target.value)} />
-              <button type="submit" disabled={lrBusy}>Summarize regression</button>
+              <Button type="submit" disabled={lrBusy}>Summarize regression</Button>
             </form>
           )}
 
@@ -9860,7 +9862,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <form onSubmit={submitLrExplainError} className="card">
               <label>Error message</label>
               <textarea rows={4} value={lrErrorForm} onChange={(e) => setLrErrorForm(e.target.value)} />
-              <button type="submit" disabled={lrBusy || !lrErrorForm.trim()}>Explain error</button>
+              <Button type="submit" disabled={lrBusy || !lrErrorForm.trim()}>Explain error</Button>
             </form>
           )}
 
@@ -9869,7 +9871,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <form onSubmit={submitLrNextActions} className="card">
                 <label>Status Snapshot JSON</label>
                 <textarea rows={5} value={lrStatusSnapshotForm} onChange={(e) => setLrStatusSnapshotForm(e.target.value)} />
-                <button type="submit" disabled={lrBusy}>Next actions</button>
+                <Button type="submit" disabled={lrBusy}>Next actions</Button>
               </form>
               {lrNextActionsResult && (
                 <ul className="notice">
@@ -9901,7 +9903,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <input type="number" step="0.05" value={lrLocalModelConfig.temperature} onChange={(e) => setLrLocalModelConfig((prev) => ({ ...prev, temperature: e.target.value }))} />
               <label>Threads</label>
               <input type="number" value={lrLocalModelConfig.threads} onChange={(e) => setLrLocalModelConfig((prev) => ({ ...prev, threads: e.target.value }))} />
-              <button disabled={lrBusy} onClick={saveLrLocalModelConfig}>Save</button>
+              <Button disabled={lrBusy} onClick={saveLrLocalModelConfig}>Save</Button>
             </div>
           )}
 
@@ -9925,7 +9927,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {lcSubTabs.map((t) => (
-              <button key={t} className={lcSubTab === t ? 'active' : ''} onClick={() => setLcSubTab(t)}>{t}</button>
+              <Button key={t} className={lcSubTab === t ? 'active' : ''} onClick={() => setLcSubTab(t)}>{t}</Button>
             ))}
           </div>
 
@@ -9950,7 +9952,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {lcSubTab === 'Local Models' && (
             <div className="card">
-              <button disabled={lcSetupBusy} onClick={runLcScan}>Scan for local models</button>
+              <Button disabled={lcSetupBusy} onClick={runLcScan}>Scan for local models</Button>
               <table>
                 <thead><tr><th>Filename</th><th>Family</th><th>Quant</th><th>Size (GB)</th><th /></tr></thead>
                 <tbody>
@@ -9958,7 +9960,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                     <tr key={m.absolute_path}>
                       <td>{m.filename}</td><td>{m.inferred_family || '—'}</td><td>{m.inferred_quantization || '—'}</td>
                       <td>{m.size_gb}</td>
-                      <td><button onClick={() => selectLcScannedModel(m.absolute_path)}>Select</button></td>
+                      <td><Button onClick={() => selectLcScannedModel(m.absolute_path)}>Select</Button></td>
                     </tr>
                   ))}
                   {!lcScannedModels.length && <tr><td colSpan={5}>No scan run yet, or no GGUF files found.</td></tr>}
@@ -9969,7 +9971,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {lcSubTab === 'Recommendations' && (
             <div className="card">
-              <button disabled={lcSetupBusy} onClick={loadLcRecommendations}>Get recommendations</button>
+              <Button disabled={lcSetupBusy} onClick={loadLcRecommendations}>Get recommendations</Button>
               {lcRecommendationsData && lcRecommendationsData.top_recommendation && (
                 <div className="notice">
                   <strong>Best for this machine / இந்த கணினிக்கு சிறந்தது:</strong>{' '}
@@ -10011,8 +10013,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <label>Additional model directories (one per line, optional)</label>
               <textarea rows={3} value={lcLocalForm.additional_model_dirs} onChange={(e) => setLcLocalForm((prev) => ({ ...prev, additional_model_dirs: e.target.value }))} />
               <div>
-                <button disabled={lcSetupBusy} onClick={saveLcLocalModel}>Save</button>
-                <button disabled={lcSetupBusy || !lcLocalForm.model_path} onClick={testLcLocalModel}>Test local model</button>
+                <Button disabled={lcSetupBusy} onClick={saveLcLocalModel}>Save</Button>
+                <Button disabled={lcSetupBusy || !lcLocalForm.model_path} onClick={testLcLocalModel}>Test local model</Button>
               </div>
             </div>
           )}
@@ -10037,7 +10039,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                       {' '}Enabled / இயக்கப்பட்டது
                     </label>
                     <div>
-                      <button disabled={lcSetupBusy} onClick={() => saveLcProvider(p.provider_key)}>Save</button>
+                      <Button disabled={lcSetupBusy} onClick={() => saveLcProvider(p.provider_key)}>Save</Button>
                     </div>
                   </div>
                 )
@@ -10055,7 +10057,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {lcSubTab === 'Setup Guide' && (
             <div className="card">
-              <button disabled={lcSetupBusy} onClick={loadLcGuide}>Build setup guide</button>
+              <Button disabled={lcSetupBusy} onClick={loadLcGuide}>Build setup guide</Button>
               <ol>
                 {(lcGuide?.steps || []).map((s) => (
                   <li key={s.step}>
@@ -10100,13 +10102,13 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           <div className="dataset-tabs">
             {rmSubTabs.map((t) => (
-              <button key={t} className={rmSubTab === t ? 'active' : ''} onClick={() => setRmSubTab(t)}>{t}</button>
+              <Button key={t} className={rmSubTab === t ? 'active' : ''} onClick={() => setRmSubTab(t)}>{t}</Button>
             ))}
           </div>
 
           {rmSubTab === 'Overview' && (
             <div className="card">
-              <button disabled={rmBusy} onClick={installRecommendedModel}>Install Recommended Model / பரிந்துரைக்கப்பட்ட மாடலை நிறுவவும்</button>
+              <Button disabled={rmBusy} onClick={installRecommendedModel}>Install Recommended Model / பரிந்துரைக்கப்பட்ட மாடலை நிறுவவும்</Button>
               {rmStatusData?.current_model && (
                 <pre className="notice">{JSON.stringify(rmStatusData.current_model, null, 2)}</pre>
               )}
@@ -10120,7 +10122,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 {rmCatalogData.map((m) => (
                   <tr key={m.model_id}>
                     <td>{m.display_name}</td><td>{m.tier}</td><td>{m.recommended_ram_gb}</td><td>{m.tamil_support}</td>
-                    <td><button onClick={() => setRmSelectedModelId(m.model_id)}>Select</button></td>
+                    <td><Button onClick={() => setRmSelectedModelId(m.model_id)}>Select</Button></td>
                   </tr>
                 ))}
               </tbody>
@@ -10134,7 +10136,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 {rmInstalledList.map((m) => (
                   <tr key={m.public_id}>
                     <td>{m.model_name}</td><td>{m.status}</td><td>{m.file_size_bytes ? Math.round(m.file_size_bytes / (1024*1024)) + ' MB' : '—'}</td>
-                    <td><button disabled={rmBusy} onClick={() => runRmRemove(m.model_name)}>Remove</button></td>
+                    <td><Button disabled={rmBusy} onClick={() => runRmRemove(m.model_name)}>Remove</Button></td>
                   </tr>
                 ))}
                 {!rmInstalledList.length && <tr><td colSpan={4}>No models installed yet.</td></tr>}
@@ -10147,9 +10149,9 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <label>Model ID</label>
               <input value={rmSelectedModelId} onChange={(e) => setRmSelectedModelId(e.target.value)} placeholder="e.g. qwen2.5-1.5b-instruct-q4_k_m" />
               <div>
-                <button disabled={rmBusy || !rmSelectedModelId} onClick={runRmDownload}>Download</button>
-                <button disabled={rmBusy || !rmSelectedModelId} onClick={runRmVerify}>Verify</button>
-                <button disabled={rmBusy || !rmSelectedModelId} onClick={runRmInstallSelected}>Install</button>
+                <Button disabled={rmBusy || !rmSelectedModelId} onClick={runRmDownload}>Download</Button>
+                <Button disabled={rmBusy || !rmSelectedModelId} onClick={runRmVerify}>Verify</Button>
+                <Button disabled={rmBusy || !rmSelectedModelId} onClick={runRmInstallSelected}>Install</Button>
               </div>
               {rmLastActionResult && <pre className="notice">{JSON.stringify(rmLastActionResult, null, 2)}</pre>}
             </div>
@@ -10166,8 +10168,8 @@ export default function MiniBrainPage({ initialTab } = {}) {
               <label>Threads</label>
               <input type="number" value={rmLoadForm.threads} onChange={(e) => setRmLoadForm((prev) => ({ ...prev, threads: e.target.value }))} />
               <div>
-                <button disabled={rmBusy || !rmSelectedModelId} onClick={runRmLoad}>Load</button>
-                <button disabled={rmBusy} onClick={runRmUnload}>Unload</button>
+                <Button disabled={rmBusy || !rmSelectedModelId} onClick={runRmLoad}>Load</Button>
+                <Button disabled={rmBusy} onClick={runRmUnload}>Unload</Button>
               </div>
             </div>
           )}
@@ -10176,7 +10178,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
             <div className="card">
               <label>Prompt</label>
               <textarea rows={2} value={rmBenchmarkPrompt} onChange={(e) => setRmBenchmarkPrompt(e.target.value)} />
-              <button disabled={rmBusy || !rmSelectedModelId} onClick={runRmBenchmark}>Run Benchmark</button>
+              <Button disabled={rmBusy || !rmSelectedModelId} onClick={runRmBenchmark}>Run Benchmark</Button>
               {rmLastBenchmarkResult && (
                 <div className="notice">
                   Rating: {rmLastBenchmarkResult.rating_label?.en} / {rmLastBenchmarkResult.rating_label?.ta} --
@@ -10202,7 +10204,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {rmSubTab === 'Events' && (
             <>
-              <button disabled={rmBusy} onClick={loadRmEvents}>Load events</button>
+              <Button disabled={rmBusy} onClick={loadRmEvents}>Load events</Button>
               <ul className="notice">
                 {rmEventsList.map((e) => (
                   <li key={e.public_id}>{e.created_at} -- {e.model_name || 'n/a'} -- {e.event_type}</li>
@@ -10214,7 +10216,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
           {rmSubTab === 'History' && (
             <>
-              <button disabled={rmBusy} onClick={loadRmHistory}>Load history</button>
+              <Button disabled={rmBusy} onClick={loadRmHistory}>Load history</Button>
               <ul className="notice">
                 {rmMemoryList.map((m) => (
                   <li key={m.public_id}>{m.created_at} -- {m.model_name || 'n/a'} -- {m.event_type}</li>

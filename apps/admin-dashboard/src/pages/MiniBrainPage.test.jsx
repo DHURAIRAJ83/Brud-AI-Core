@@ -580,10 +580,9 @@ describe('MiniBrainPage', () => {
       await user.click(screen.getByRole('button', { name: 'Vision Intelligence' }))
       expect(await screen.findByText('Vision Intelligence unavailable.')).toBeInTheDocument()
 
-      // No dedicated Retry control exists until Step 2a's ErrorBanner
-      // adoption -- today, re-selecting the same tab re-runs its load
-      // function, which is the real, working retry path right now.
-      await user.click(screen.getByRole('button', { name: 'Vision Intelligence' }))
+      // Step 2a's ErrorBanner gives this a real Retry control, wired to
+      // re-select (and so re-load) the currently active tab.
+      await user.click(screen.getByRole('button', { name: 'Retry' }))
       await waitFor(() => expect(screen.queryByText('Vision Intelligence unavailable.')).not.toBeInTheDocument())
       expect(screen.getByText(/MB-14 -- Vision Intelligence/)).toBeInTheDocument()
     })

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button.jsx'
+import ChatPanel from '../components/chat/ChatPanel.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
+import { useToast } from '../components/Toast.jsx'
 import { formatMessageText } from '../utils/markdown.jsx'
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
@@ -28,7 +30,6 @@ import {
   listRuntimeModels, loadRuntimeModel, miniBrainDiagnostics, miniBrainHealth, miniBrainLogs,
   miniBrainRuntimeHealth,
   miniBrainSettings, miniBrainStatus, miniBrainVersion, qualityDiagnostics, qualityGenerate,
-  miniBrainDefaultRetrievalProfile, sendMiniBrainGroundedMessage,
   registerRuntimeModel, releasePipelineActivate, releasePipelineAdminReview, releasePipelineConvert,
   releasePipelineCreateSession, releasePipelineCreateVersion, releasePipelineDiagnostics,
   releasePipelineEvaluateRollback,
@@ -250,6 +251,7 @@ function mbQualityTone(status) {
 }
 
 export default function MiniBrainPage({ initialTab } = {}) {
+  const toast = useToast()
   // An explicit initialTab (the Admin Assistant widget's "Open Mini Brain
   // Assistant" deep-link) wins on first mount; otherwise the URL hash
   // controls the tab, same precedence order as the plan requires.
@@ -264,14 +266,6 @@ export default function MiniBrainPage({ initialTab } = {}) {
   const [version, setVersion] = useState(null)
   const [busy, setBusy] = useState(false)
   const [runtimeHealth, setRuntimeHealth] = useState(null)
-
-  // MB-37: temporary Grounded Chat test panel state -- not the floating widget.
-  const [gcProfileId, setGcProfileId] = useState('')
-  const [gcQuestion, setGcQuestion] = useState('')
-  const [gcSessionId, setGcSessionId] = useState(null)
-  const [gcSending, setGcSending] = useState(false)
-  const [gcResult, setGcResult] = useState(null)
-  const [gcError, setGcError] = useState('')
 
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('Domains')
   const [kcDomains, setKcDomains] = useState([])
@@ -3128,31 +3122,6 @@ export default function MiniBrainPage({ initialTab } = {}) {
     } catch (reason) { setError(reason.message) }
   }
 
-  async function sendGroundedChat() {
-    const trimmed = gcQuestion.trim()
-    if (!trimmed || gcSending) return
-    setGcSending(true)
-    setGcError('')
-    try {
-      // MB-43: leaving the profile field blank resolves the admin-chosen
-      // (or auto-detected) default at send time -- not a value cached
-      // when the tab loaded -- so switching the default on the RAG page
-      // takes effect on the very next message.
-      let profileId = gcProfileId.trim()
-      if (!profileId) {
-        const defaultProfile = await miniBrainDefaultRetrievalProfile()
-        profileId = defaultProfile.retrieval_profile_public_id ?? ''
-      }
-      const response = await sendMiniBrainGroundedMessage(gcSessionId, trimmed, profileId)
-      setGcSessionId(response.session.public_id)
-      setGcResult(response)
-    } catch (reason) {
-      setGcError(reason.message)
-    } finally {
-      setGcSending(false)
-    }
-  }
-
   return (
     <section className="documents-workspace">
       <header className="section-heading">
@@ -3200,52 +3169,12 @@ export default function MiniBrainPage({ initialTab } = {}) {
       <section className="card">
         <h3 style={{ margin: '0 0 6px' }}>Grounded Chat Test (MB-37)</h3>
         <p className="notice" style={{ marginTop: 0 }}>
-          Temporary admin-only test panel for the new grounded chat endpoint. Not the floating
-          Admin Assistant widget -- retrieval evidence is injected directly into the local Mini
-          Brain runtime's prompt.
+          Temporary admin-only test panel for the grounded chat endpoint. Not the floating Admin
+          Assistant widget -- retrieval evidence is injected directly into the local Mini Brain
+          runtime's prompt. Now backed by the same shared chat component used elsewhere, with real
+          markdown, citations, copy, and regenerate.
         </p>
-        <div className="form-row">
-          <label>
-            Retrieval Profile Public ID
-            <input
-              value={gcProfileId}
-              onChange={(event) => setGcProfileId(event.target.value)}
-              placeholder="leave blank to use the grounded-chat default profile"
-            />
-          </label>
-        </div>
-        <label style={{ display: 'block', marginTop: '10px' }}>
-          Question
-          <textarea
-            rows={3}
-            value={gcQuestion}
-            onChange={(event) => setGcQuestion(event.target.value)}
-            placeholder="What is the test phrase in the uploaded MB35 document?"
-          />
-        </label>
-        <Button type="button" onClick={sendGroundedChat} disabled={gcSending || !gcQuestion.trim()} style={{ marginTop: '10px' }}>
-          {gcSending ? 'Sending…' : 'Send'}
-        </Button>
-        {gcError && <div className="form-error" role="alert" style={{ marginTop: '10px' }}>{gcError}</div>}
-        {gcResult && (
-          <div style={{ marginTop: '14px' }}>
-            <p><strong>Answer:</strong> {gcResult.reply.sanitized_text}</p>
-            <p className="notice">Backend: {gcResult.backend_type} {gcResult.error_message ? `(error: ${gcResult.error_message})` : ''}</p>
-            <p><strong>Citations ({gcResult.citations.length}):</strong></p>
-            {gcResult.citations.length === 0 && <p className="notice">No citations -- no retrieval profile matched, or zero chunks retrieved.</p>}
-            {gcResult.citations.map((citation, index) => (
-              <div key={`${citation.source_public_id}-${index}`} className="card" style={{ marginTop: '8px' }}>
-                <div className="metric-grid">
-                  <StatusCard label="Rank" value={citation.rank} tone="neutral" />
-                  <StatusCard label="Score" value={citation.score.toFixed(3)} tone="neutral" />
-                  <StatusCard label="Source" value={citation.source_public_id.slice(0, 8)} tone="neutral" />
-                  <StatusCard label="Version" value={citation.source_version_public_id.slice(0, 8)} tone="neutral" />
-                </div>
-                <p className="notice" style={{ marginTop: '8px' }}>{citation.text_preview}</p>
-              </div>
-            ))}
-          </div>
-        )}
+        <ChatPanel variant="compact" toast={toast} suggestions={[]} />
       </section>
 
       <div className="dataset-tabs">

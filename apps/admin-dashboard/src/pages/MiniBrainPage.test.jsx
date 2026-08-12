@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ToastProvider } from '../components/Toast.jsx'
 import MiniBrainPage from './MiniBrainPage.jsx'
 
 // Phase 4A safety net: this file previously had zero test coverage (36
@@ -508,6 +509,10 @@ const TABS = [
   'Local Setup', 'Runtime Manager', 'Future Model',
 ]
 
+function renderPage(props) {
+  return render(<ToastProvider><MiniBrainPage {...props} /></ToastProvider>)
+}
+
 beforeEach(() => {
   window.location.hash = ''
 })
@@ -520,7 +525,7 @@ describe('MiniBrainPage', () => {
   describe('tab switching (smoke test across all 36 real top-level tabs)', () => {
     it.each(TABS)('opens the "%s" tab without throwing or showing a generic crash banner', async (tabName) => {
       const user = userEvent.setup()
-      render(<MiniBrainPage />)
+      renderPage()
       await screen.findByRole('heading', { name: 'Brud Mini Brain' })
       const button = screen.getByRole('button', { name: tabName })
       await user.click(button)
@@ -531,7 +536,7 @@ describe('MiniBrainPage', () => {
 
   describe('initialTab deep-link (Admin Assistant widget -> "Open Mini Brain Assistant")', () => {
     it('opens the tab requested via the initialTab prop', async () => {
-      render(<MiniBrainPage initialTab="Assistant Intelligence" />)
+      renderPage({ initialTab: "Assistant Intelligence" })
       await waitFor(() => expect(screen.getByRole('button', { name: 'Assistant Intelligence' })).toHaveClass('active'))
     })
   })
@@ -539,7 +544,7 @@ describe('MiniBrainPage', () => {
   describe('top-level tab hash persistence (mirrors ProductionReadinessPage.jsx)', () => {
     it('switching tabs updates window.location.hash', async () => {
       const user = userEvent.setup()
-      render(<MiniBrainPage />)
+      renderPage()
       await screen.findByRole('heading', { name: 'Brud Mini Brain' })
       await user.click(screen.getByRole('button', { name: 'Logs' }))
       await waitFor(() => expect(window.location.hash).toContain('tab=Logs'))
@@ -547,21 +552,30 @@ describe('MiniBrainPage', () => {
 
     it('mounting with a valid hash opens that tab', async () => {
       window.location.hash = '#Brud%20Mini%20Brain?tab=Runtime'
-      render(<MiniBrainPage />)
+      renderPage()
       await waitFor(() => expect(screen.getByRole('button', { name: 'Runtime' })).toHaveClass('active'))
     })
 
     it('an invalid hash falls back to Overview', async () => {
       window.location.hash = '#Brud%20Mini%20Brain?tab=NotARealTab'
-      render(<MiniBrainPage />)
+      renderPage()
       await waitFor(() => expect(screen.getByRole('button', { name: 'Overview' })).toHaveClass('active'))
     })
   })
 
-  // Step 3A replaces this panel's body with <ChatPanel variant="compact" />.
-  // Written now as the target spec for that step.
-  describe.skip('Grounded Chat Test (MB-37) panel (Step 3A)', () => {
-    it('sends through the real ChatPanel and renders a reply', async () => {})
+  describe('Grounded Chat Test (MB-37) panel (now the shared ChatPanel)', () => {
+    it('sends through the real ChatPanel and renders a reply', async () => {
+      const user = userEvent.setup()
+      api.lrChat.mockResolvedValue({
+        session: { public_id: 'sess-1' },
+        reply: { sanitized_text: 'Grounded chat test reply.' },
+      })
+      renderPage()
+      await screen.findByRole('heading', { name: 'Brud Mini Brain' })
+      await user.type(screen.getByLabelText('Message'), 'What is the test phrase?')
+      await user.click(screen.getByRole('button', { name: 'Send' }))
+      expect(await screen.findByText('Grounded chat test reply.')).toBeInTheDocument()
+    })
   })
 
   // Step 3B replaces the Chat sub-tab with <ChatPanel variant="full" />.
@@ -574,7 +588,7 @@ describe('MiniBrainPage', () => {
     it('shows the real error banner on failure, then recovers once the retry succeeds', async () => {
       const user = userEvent.setup()
       api.viSessions.mockRejectedValueOnce(new Error('Vision Intelligence unavailable.'))
-      render(<MiniBrainPage />)
+      renderPage()
       await screen.findByRole('heading', { name: 'Brud Mini Brain' })
 
       await user.click(screen.getByRole('button', { name: 'Vision Intelligence' }))

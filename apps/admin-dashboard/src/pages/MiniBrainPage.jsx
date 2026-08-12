@@ -5,7 +5,10 @@ import ErrorBanner from '../components/ErrorBanner.jsx'
 import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { useToast } from '../components/Toast.jsx'
+import DiagnosticsTab from './mini-brain/DiagnosticsTab.jsx'
+import LogsTab from './mini-brain/LogsTab.jsx'
 import OverviewTab from './mini-brain/OverviewTab.jsx'
+import SettingsTab from './mini-brain/SettingsTab.jsx'
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
   continuousLearningAnalyzeDifficulty, continuousLearningAnalyzeFailures,
@@ -3153,49 +3156,13 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
         <OverviewTab status={status} version={version} busy={busy} toggle={toggle} runHealthCheck={runHealthCheck} />
       )}
 
-      {tab === 'Settings' && settings && (
-        <form className="inline-form training-form" onSubmit={saveSettings}>
-          <h3>Configuration</h3>
-          <label>Log level
-            <select value={logLevel} onChange={(e) => setLogLevel(e.target.value)}>
-              <option value="debug">debug</option>
-              <option value="info">info</option>
-              <option value="warning">warning</option>
-              <option value="error">error</option>
-            </select>
-          </label>
-          <p className="notice">Runtime backend: <strong>{settings.config?.runtime_backend ?? 'none'}</strong> -- MB-01 supports no other value; no model is downloaded or loaded in this phase.</p>
-          <Button type="submit">Save configuration</Button>
-        </form>
+      {tab === 'Settings' && (
+        <SettingsTab settings={settings} logLevel={logLevel} setLogLevel={setLogLevel} saveSettings={saveSettings} />
       )}
 
-      {tab === 'Logs' && (
-        <div className="data-list">
-          <p className="notice">{logs.total} event(s) recorded, most recent first.</p>
-          {logs.items.map((item) => (
-            <article key={item.public_id}>
-              <strong>{item.event_type}</strong> — {item.level} — {item.message}
-              <div><small>{item.created_at}</small></div>
-            </article>
-          ))}
-        </div>
-      )}
+      {tab === 'Logs' && <LogsTab logs={logs} />}
 
-      {tab === 'Diagnostics' && diagnostics && (
-        <>
-          <section className="metric-grid">
-            <StatusCard label="Config issues" value={diagnostics.config_issues.length} tone={diagnostics.config_issues.length ? 'waiting' : 'good'} />
-            <StatusCard label="Event count" value={diagnostics.event_count} tone="neutral" />
-            <StatusCard label="Runtime backend" value={diagnostics.runtime_backend} tone="neutral" />
-            <StatusCard label="Model integrated" value={String(diagnostics.model_integrated)} tone="neutral" />
-          </section>
-          {diagnostics.config_issues.length > 0 && (
-            <div className="form-error" role="alert">
-              {diagnostics.config_issues.map((issue) => <div key={issue}>{issue}</div>)}
-            </div>
-          )}
-        </>
-      )}
+      {tab === 'Diagnostics' && <DiagnosticsTab diagnostics={diagnostics} />}
 
       {tab === 'Knowledge Core' && (
         <>

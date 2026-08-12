@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import StatusCard from '../components/StatusCard.jsx'
+import { formatMessageText } from '../utils/markdown.jsx'
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
   continuousLearningAnalyzeDifficulty, continuousLearningAnalyzeFailures,
@@ -2725,19 +2726,6 @@ export default function MiniBrainPage({ initialTab } = {}) {
       setNotice('Local model configuration saved / உள்ளூர் மாடல் அமைப்பு சேமிக்கப்பட்டது.')
       await loadLr()
     } catch (reason) { setError(reason.message) } finally { setLrBusy(false) }
-  }
-
-  function lrFormatMessageText(text) {
-    // Minimal hand-rolled markdown: **bold**, `code`, and newlines only --
-    // no markdown library exists anywhere in this frontend today.
-    const parts = String(text || '').split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
-    return parts.map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) return <strong key={index}>{part.slice(2, -2)}</strong>
-      if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>
-      return part.split('\n').map((line, lineIndex, arr) => (
-        <span key={`${index}-${lineIndex}`}>{line}{lineIndex < arr.length - 1 && <br />}</span>
-      ))
-    })
   }
 
   function lrCopyMessage(text) {
@@ -9809,7 +9797,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
                 {lrMessagesList.map((m) => (
                   <div key={m.public_id} className={m.role === 'admin' ? 'notice' : 'card'}>
                     <strong>{m.role}</strong> ({m.capability}){m.truncated ? ' [truncated]' : ''}
-                    <div>{lrFormatMessageText(m.sanitized_text)}</div>
+                    <div>{formatMessageText(m.sanitized_text)}</div>
                     {m.role === 'assistant' && <button onClick={() => lrCopyMessage(m.sanitized_text)}>Copy</button>}
                   </div>
                 ))}

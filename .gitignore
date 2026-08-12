@@ -23,6 +23,7 @@ data/core_models/pretraining/
 data/corpus_uploads/
 data/corpus_snapshots/
 data/corpus_exports/
+data/models/*.gguf
 models/checkpoints/*
 models/active/*
 models/exports/*
@@ -31,3 +32,24 @@ apps/admin-dashboard/e2e/.e2e-state.json
 apps/admin-dashboard/e2e/test-results/
 apps/admin-dashboard/playwright-report/
 apps/admin-dashboard/blob-report/
+
+# Local AI runtime artifacts
+models/*.gguf
+data/*.db
+*.sqlite
+*.sqlite3
+
+# Temp / audit scratch
+.audit_tmp/
+tmp/
+temp/
+
+# Test/build output
+test-results/
+playwright-report/
+coverage/
+.vitest/
+
+# OS cruft
+.DS_Store
+Thumbs.db

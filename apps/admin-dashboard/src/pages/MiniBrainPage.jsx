@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../components/Button.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
+import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { formatMessageText } from '../utils/markdown.jsx'
 import {
@@ -3257,15 +3258,19 @@ export default function MiniBrainPage({ initialTab } = {}) {
 
       {tab === 'Overview' && (
         <>
-          <section className="metric-grid">
-            <StatusCard label="Enabled" value={status ? String(status.enabled === 1 || status.enabled === true) : '...'} tone={status?.enabled ? 'good' : 'neutral'} />
-            <StatusCard label="Runtime status" value={status?.runtime_status ?? '...'} tone={status?.runtime_status === 'running' ? 'good' : 'neutral'} />
-            <StatusCard label="Health" value={status?.health?.status ?? '...'} tone={healthTone(status?.health?.status)} />
-            <StatusCard label="Version" value={version?.module_version ?? '...'} tone="neutral" />
-            <StatusCard label="Phase" value={version?.phase ?? '...'} tone="neutral" />
-            <StatusCard label="Model" value="not integrated" tone="neutral" />
-            <StatusCard label="Memory" value="not implemented" tone="neutral" />
-          </section>
+          {status && version ? (
+            <section className="metric-grid">
+              <StatusCard label="Enabled" value={String(status.enabled === 1 || status.enabled === true)} tone={status?.enabled ? 'good' : 'neutral'} />
+              <StatusCard label="Runtime status" value={status.runtime_status} tone={status?.runtime_status === 'running' ? 'good' : 'neutral'} />
+              <StatusCard label="Health" value={status.health?.status} tone={healthTone(status?.health?.status)} />
+              <StatusCard label="Version" value={version.module_version} tone="neutral" />
+              <StatusCard label="Phase" value={version.phase} tone="neutral" />
+              <StatusCard label="Model" value="not integrated" tone="neutral" />
+              <StatusCard label="Memory" value="not implemented" tone="neutral" />
+            </section>
+          ) : (
+            <Skeleton lines={3} />
+          )}
           <div className="form-row">
             <Button onClick={toggle} disabled={busy}>{status?.enabled ? 'Disable Brud Mini Brain' : 'Enable Brud Mini Brain'}</Button>
             <Button onClick={runHealthCheck}>Run health check</Button>
@@ -3504,17 +3509,21 @@ export default function MiniBrainPage({ initialTab } = {}) {
             is not installed and no <code>.gguf</code> file is provisioned. The full Model Manager
             below is real and working against that honest state.
           </p>
-          <section className="metric-grid">
-            <StatusCard label="Runtime status" value={rtStatus?.state ?? '...'} tone={rtStatus?.state === 'loaded' ? 'good' : rtStatus?.state === 'error' ? 'waiting' : 'neutral'} />
-            <StatusCard label="Current model" value={rtStatus?.current_model?.name ?? 'none'} tone="neutral" />
-            <StatusCard label="Model version" value={rtStatus?.current_model?.quantization ?? 'n/a'} tone="neutral" />
-            <StatusCard label="Context size" value={rtStatus?.current_model?.context_length ?? 'n/a'} tone="neutral" />
-            <StatusCard label="Load time" value={rtStats ? `${rtStats.last_load_time_ms ?? 'n/a'} ms` : '...'} tone="neutral" />
-            <StatusCard label="Response time" value={rtStats ? `${rtStats.last_response_time_ms ?? 'n/a'} ms` : '...'} tone="neutral" />
-            <StatusCard label="Available memory" value={rtStats ? `${Math.round(rtStats.available_memory_bytes / 1048576)} MB` : '...'} tone="neutral" />
-            <StatusCard label="Process CPU time" value={rtStats ? `${rtStats.process_cpu_time_seconds}s` : '...'} tone="neutral" />
-            <StatusCard label="Process peak memory" value={rtStats ? `${Math.round(rtStats.process_max_rss_kb / 1024)} MB` : '...'} tone="neutral" />
-          </section>
+          {rtStatus && rtStats ? (
+            <section className="metric-grid">
+              <StatusCard label="Runtime status" value={rtStatus.state} tone={rtStatus?.state === 'loaded' ? 'good' : rtStatus?.state === 'error' ? 'waiting' : 'neutral'} />
+              <StatusCard label="Current model" value={rtStatus.current_model?.name ?? 'none'} tone="neutral" />
+              <StatusCard label="Model version" value={rtStatus.current_model?.quantization ?? 'n/a'} tone="neutral" />
+              <StatusCard label="Context size" value={rtStatus.current_model?.context_length ?? 'n/a'} tone="neutral" />
+              <StatusCard label="Load time" value={`${rtStats.last_load_time_ms ?? 'n/a'} ms`} tone="neutral" />
+              <StatusCard label="Response time" value={`${rtStats.last_response_time_ms ?? 'n/a'} ms`} tone="neutral" />
+              <StatusCard label="Available memory" value={`${Math.round(rtStats.available_memory_bytes / 1048576)} MB`} tone="neutral" />
+              <StatusCard label="Process CPU time" value={`${rtStats.process_cpu_time_seconds}s`} tone="neutral" />
+              <StatusCard label="Process peak memory" value={`${Math.round(rtStats.process_max_rss_kb / 1024)} MB`} tone="neutral" />
+            </section>
+          ) : (
+            <Skeleton lines={3} />
+          )}
 
           <div className="form-row">
             <Button onClick={() => runRuntimeAction('load')} disabled={rtBusy || !rtModels.length}>Load</Button>
@@ -5040,7 +5049,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {rcSubTab === 'Diagnostics' && (
             <>
               {rcDiag && <pre className="notice">{JSON.stringify(rcDiag, null, 2)}</pre>}
-              {!rcDiag && <div className="notice">Loading diagnostics…</div>}
+              {!rcDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -5276,7 +5285,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {deSubTab === 'Diagnostics' && (
             <>
               {deDiag && <pre className="notice">{JSON.stringify(deDiag, null, 2)}</pre>}
-              {!deDiag && <div className="notice">Loading diagnostics…</div>}
+              {!deDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -5475,7 +5484,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {pcSubTab === 'Diagnostics' && (
             <>
               {pcDiag && <pre className="notice">{JSON.stringify(pcDiag, null, 2)}</pre>}
-              {!pcDiag && <div className="notice">Loading diagnostics…</div>}
+              {!pcDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -5751,7 +5760,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {liSubTab === 'Diagnostics' && (
             <>
               {liDiag && <pre className="notice">{JSON.stringify(liDiag, null, 2)}</pre>}
-              {!liDiag && <div className="notice">Loading diagnostics…</div>}
+              {!liDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -6137,7 +6146,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {viSubTab === 'Diagnostics' && (
             <>
               {viDiag && <pre className="notice">{JSON.stringify(viDiag, null, 2)}</pre>}
-              {!viDiag && <div className="notice">Loading diagnostics…</div>}
+              {!viDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -6513,7 +6522,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {vmSubTab === 'Diagnostics' && (
             <>
               {vmDiag && <pre className="notice">{JSON.stringify(vmDiag, null, 2)}</pre>}
-              {!vmDiag && <div className="notice">Loading diagnostics…</div>}
+              {!vmDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -6855,7 +6864,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {mdSubTab === 'Diagnostics' && (
             <>
               {mdDiag && <pre className="notice">{JSON.stringify(mdDiag, null, 2)}</pre>}
-              {!mdDiag && <div className="notice">Loading diagnostics…</div>}
+              {!mdDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -7199,7 +7208,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {vrSubTab === 'Diagnostics' && (
             <>
               {vrDiag && <pre className="notice">{JSON.stringify(vrDiag, null, 2)}</pre>}
-              {!vrDiag && <div className="notice">Loading diagnostics…</div>}
+              {!vrDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -7515,7 +7524,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {tpSubTab === 'Diagnostics' && (
             <>
               {tpDiag && <pre className="notice">{JSON.stringify(tpDiag, null, 2)}</pre>}
-              {!tpDiag && <div className="notice">Loading diagnostics…</div>}
+              {!tpDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -7831,7 +7840,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {ecSubTab === 'Diagnostics' && (
             <>
               {ecDiag && <pre className="notice">{JSON.stringify(ecDiag, null, 2)}</pre>}
-              {!ecDiag && <div className="notice">Loading diagnostics…</div>}
+              {!ecDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -8163,7 +8172,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {rgSubTab === 'Diagnostics' && (
             <>
               {rgDiag && <pre className="notice">{JSON.stringify(rgDiag, null, 2)}</pre>}
-              {!rgDiag && <div className="notice">Loading diagnostics…</div>}
+              {!rgDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -8475,7 +8484,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {gaSubTab === 'Diagnostics' && (
             <>
               {gaDiag && <pre className="notice">{JSON.stringify(gaDiag, null, 2)}</pre>}
-              {!gaDiag && <div className="notice">Loading diagnostics…</div>}
+              {!gaDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -8780,7 +8789,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {teSubTab === 'Diagnostics' && (
             <>
               {teDiag && <pre className="notice">{JSON.stringify(teDiag, null, 2)}</pre>}
-              {!teDiag && <div className="notice">Loading diagnostics…</div>}
+              {!teDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -8866,7 +8875,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {pcrSubTab === 'Analytics' && (
             <>
               {pcrAnalyticsData && <pre className="notice">{JSON.stringify(pcrAnalyticsData, null, 2)}</pre>}
-              {!pcrAnalyticsData && <div className="notice">Loading analytics…</div>}
+              {!pcrAnalyticsData && <Skeleton lines={2} />}
             </>
           )}
 
@@ -8976,7 +8985,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {pcrSubTab === 'Runtime Diagnostics' && (
             <>
               {pcrDiag && <pre className="notice">{JSON.stringify(pcrDiag, null, 2)}</pre>}
-              {!pcrDiag && <div className="notice">Loading diagnostics…</div>}
+              {!pcrDiag && <Skeleton lines={2} />}
             </>
           )}
 
@@ -9274,7 +9283,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {pgSubTab === 'Diagnostics' && (
             <>
               {pgDiag && <pre className="notice">{JSON.stringify(pgDiag, null, 2)}</pre>}
-              {!pgDiag && <div className="notice">Loading diagnostics…</div>}
+              {!pgDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -9493,7 +9502,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {prSubTab === 'Diagnostics' && (
             <>
               {prDiag && <pre className="notice">{JSON.stringify(prDiag, null, 2)}</pre>}
-              {!prDiag && <div className="notice">Loading diagnostics…</div>}
+              {!prDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -9620,7 +9629,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {voSubTab === 'Diagnostics' && (
             <>
               {voDiag && <pre className="notice">{JSON.stringify(voDiag, null, 2)}</pre>}
-              {!voDiag && <div className="notice">Loading diagnostics…</div>}
+              {!voDiag && <Skeleton lines={2} />}
             </>
           )}
 
@@ -9748,7 +9757,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {psSubTab === 'Diagnostics' && (
             <>
               {psDiag && <pre className="notice">{JSON.stringify(psDiag, null, 2)}</pre>}
-              {!psDiag && <div className="notice">Loading diagnostics…</div>}
+              {!psDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -9910,7 +9919,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {lrSubTab === 'Diagnostics' && (
             <>
               {lrDiag && <pre className="notice">{JSON.stringify(lrDiag, null, 2)}</pre>}
-              {!lrDiag && <div className="notice">Loading diagnostics…</div>}
+              {!lrDiag && <Skeleton lines={2} />}
             </>
           )}
         </>
@@ -9946,7 +9955,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
               {lcHardwareData && !lcHardwareData.psutil_available && (
                 <p className="notice">psutil is not installed -- using the standard-library fallback for hardware figures.</p>
               )}
-              {!lcHardwareData && <div className="notice">Loading hardware…</div>}
+              {!lcHardwareData && <Skeleton lines={2} />}
             </>
           )}
 
@@ -10044,14 +10053,14 @@ export default function MiniBrainPage({ initialTab } = {}) {
                   </div>
                 )
               })}
-              {!lcCatalog.length && <p className="notice">Loading provider catalog…</p>}
+              {!lcCatalog.length && <Skeleton lines={2} />}
             </>
           )}
 
           {lcSubTab === 'Diagnostics' && (
             <>
               {lcDiag && <pre className="notice">{JSON.stringify(lcDiag, null, 2)}</pre>}
-              {!lcDiag && <div className="notice">Loading diagnostics…</div>}
+              {!lcDiag && <Skeleton lines={2} />}
             </>
           )}
 
@@ -10198,7 +10207,7 @@ export default function MiniBrainPage({ initialTab } = {}) {
           {rmSubTab === 'Diagnostics' && (
             <>
               {rmHardwareData && <pre className="notice">{JSON.stringify(rmHardwareData, null, 2)}</pre>}
-              {!rmHardwareData && <div className="notice">Loading diagnostics…</div>}
+              {!rmHardwareData && <Skeleton lines={2} />}
             </>
           )}
 

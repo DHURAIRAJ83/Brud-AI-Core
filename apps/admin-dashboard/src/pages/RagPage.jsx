@@ -21,9 +21,12 @@ import {
   createRagSourceVersion,
   createRagSpace,
   createRagVectorIndex,
+  deactivateRagRetrievalProfile,
   executeRagEmbeddingRun,
   executeRagEvaluationRun,
   generateRagManifest,
+  miniBrainDefaultRetrievalProfile,
+  miniBrainSetDefaultRetrievalProfile,
   patchRagSource,
   postRagChatLabMessage,
   ragChunks,
@@ -34,6 +37,7 @@ import {
   ragEvaluationSuites,
   ragGroundedAnswer,
   ragKeywordIndex,
+  ragLatestVectorIndexForSpace,
   ragRetrievalProfiles,
   ragRetrieve,
   ragSources,
@@ -97,6 +101,11 @@ export default function RagPage() {
 
   const [profileForm, setProfileForm] = useState({ name: '' })
   const [selectedProfileId, setSelectedProfileId] = useState('')
+  const [defaultProfile, setDefaultProfile] = useState(null)
+  const [profileVectorIndexStatus, setProfileVectorIndexStatus] = useState({})
+  // MB-48: guards Validate/Activate/Deactivate/Set-as-default against a
+  // double-click firing two real mutations for the same profile.
+  const [profileActionBusy, setProfileActionBusy] = useState(false)
 
   const [retrieveQuery, setRetrieveQuery] = useState('')
   const [retrieveResult, setRetrieveResult] = useState(null)
@@ -133,6 +142,12 @@ export default function RagPage() {
         spaces: spaces.items ?? [], profiles: profiles.items ?? [],
         embeddingModels: embeddingModels.items ?? [], suites: suites.items ?? [],
       })
+      miniBrainDefaultRetrievalProfile().then(setDefaultProfile).catch(() => setDefaultProfile(null))
+      const spaceIds = [...new Set((profiles.items ?? []).map((p) => p.knowledge_space_public_id).filter(Boolean))]
+      const entries = await Promise.all(spaceIds.map((id) =>
+        ragLatestVectorIndexForSpace(id).then((result) => [id, result]).catch(() => [id, null])
+      ))
+      setProfileVectorIndexStatus(Object.fromEntries(entries))
     } catch (error) {
       setState((old) => ({ ...old, loading: false, error: error.message }))
     }
@@ -282,12 +297,32 @@ export default function RagPage() {
     catch (error) { setPanelError(error.message) }
   }
   async function runValidateProfile() {
+    if (profileActionBusy) return
+    setProfileActionBusy(true)
     try { await validateRagRetrievalProfile(selectedProfileId); setPanelError(''); await load() }
     catch (error) { setPanelError(error.message) }
+    finally { setProfileActionBusy(false) }
   }
   async function runActivateProfile() {
+    if (profileActionBusy) return
+    setProfileActionBusy(true)
     try { await activateRagRetrievalProfile(selectedProfileId); setPanelError(''); await load() }
     catch (error) { setPanelError(error.message) }
+    finally { setProfileActionBusy(false) }
+  }
+  async function runDeactivateProfile(id) {
+    if (profileActionBusy) return
+    setProfileActionBusy(true)
+    try { await deactivateRagRetrievalProfile(id); setPanelError(''); await load() }
+    catch (error) { setPanelError(error.message) }
+    finally { setProfileActionBusy(false) }
+  }
+  async function runSetDefaultProfile(id) {
+    if (profileActionBusy) return
+    setProfileActionBusy(true)
+    try { await miniBrainSetDefaultRetrievalProfile(id); setPanelError(''); await load() }
+    catch (error) { setPanelError(error.message) }
+    finally { setProfileActionBusy(false) }
   }
 
   async function runRetrieve(event) {
@@ -651,8 +686,56 @@ export default function RagPage() {
               {selectedProfileId && (
                 <div className="inline-form">
                   <span>Selected: {selectedProfileId.slice(0, 8)}</span>
-                  <button onClick={runValidateProfile}>Validate</button>
-                  <button onClick={runActivateProfile}>Activate</button>
+                  <button onClick={runValidateProfile} disabled={profileActionBusy}>{profileActionBusy ? 'Working…' : 'Validate'}</button>
+                  <button onClick={runActivateProfile} disabled={profileActionBusy}>{profileActionBusy ? 'Working…' : 'Activate'}</button>
+                </div>
+              )}
+
+              <h3>Retrieval Profile Management</h3>
+              <p className="notice">Only active profiles can be set as the default grounded-chat profile. Deactivating the current default falls back to auto-selection.</p>
+              {defaultProfile?.retrieval_profile_public_id && (
+                <p className="notice">Current grounded-chat default: {defaultProfile.name ?? defaultProfile.retrieval_profile_public_id.slice(0, 8)}</p>
+              )}
+              {(state.profiles ?? []).length === 0 && <article>No retrieval profiles yet.</article>}
+              {(state.profiles ?? []).length > 0 && (
+                <div style={{ overflowX: 'auto' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Knowledge space</th>
+                        <th>Vector index</th>
+                        <th>Default</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.profiles.map((item) => {
+                        const vectorIndex = profileVectorIndexStatus[item.knowledge_space_public_id]
+                        const isDefault = defaultProfile?.retrieval_profile_public_id === item.public_id
+                        return (
+                          <tr key={item.public_id}>
+                            <td>{item.name}</td>
+                            <td>{item.status}</td>
+                            <td>{item.knowledge_space_name ?? '--'}</td>
+                            <td>{vectorIndex ? vectorIndex.status : 'none built'}</td>
+                            <td>{isDefault ? 'default' : ''}</td>
+                            <td>
+                              <div className="inline-form">
+                                {item.status === 'active' && (
+                                  <button onClick={() => runDeactivateProfile(item.public_id)} disabled={profileActionBusy}>Deactivate</button>
+                                )}
+                                {item.status === 'active' && !isDefault && (
+                                  <button onClick={() => runSetDefaultProfile(item.public_id)} disabled={profileActionBusy}>Set as default</button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </>

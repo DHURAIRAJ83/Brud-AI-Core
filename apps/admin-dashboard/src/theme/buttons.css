@@ -1,0 +1,78 @@
+/* Phase 1 reusable button system. Applied only to net-new UI this phase
+   (ThemeSwitcher, CommandPalette, Breadcrumbs, Sidebar/Topbar pieces this
+   phase touches) -- the ~40 existing pages' comma-grouped button selectors
+   in index.css are untouched; later phases migrate them page by page.
+   `.btn*` class names are new/unused elsewhere, verified no collision. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
+  box-shadow: inset 0 1px 0 #ffffff40, 0 3px 8px #0000001a;
+}
+
+.btn:active:not(:disabled):not(.btn-loading) {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px #00000026;
+}
+
+.btn:disabled,
+.btn.btn-loading {
+  cursor: not-allowed;
+  opacity: 0.6;
+  box-shadow: none;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.btn-sm { padding: 6px 10px; font-size: 0.78rem; }
+.btn-md { padding: 10px 14px; font-size: 0.88rem; }
+.btn-lg { padding: 13px 20px; font-size: 1rem; }
+
+.btn-primary {
+  background: linear-gradient(180deg, var(--color-accent-strong), var(--color-accent));
+  color: var(--color-accent-contrast);
+}
+
+.btn-secondary {
+  background: linear-gradient(180deg, var(--color-sidebar-hover), var(--color-sidebar-surface));
+  color: #ffffff;
+}
+
+.btn-success {
+  background: linear-gradient(180deg, var(--color-success), color-mix(in srgb, var(--color-success) 80%, black));
+  color: #ffffff;
+}
+
+.btn-warning {
+  background: linear-gradient(180deg, var(--color-warning), color-mix(in srgb, var(--color-warning) 80%, black));
+  color: #3a2a06;
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-danger) 60%, #c0392b), var(--color-danger));
+  color: #4a1515;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text);
+  box-shadow: none;
+  border: 1px solid var(--color-border);
+}
+
+.btn-ghost:active:not(:disabled):not(.btn-loading) {
+  box-shadow: none;
+  background: var(--color-bg);
+}

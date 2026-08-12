@@ -27,6 +27,26 @@ export async function loginAsE2eAdmin(page) {
   return state
 }
 
+// Phase 1 grouped-navigation redesign moved every top-level sidebar page
+// except "Overview" behind a collapsible group toggle. Existing specs that
+// click a page's sidebar button directly (a pattern established before the
+// regrouping) need that page's group expanded first. Rather than hardcode
+// which group owns which key here (which would go stale on the next
+// regrouping), this expands every not-yet-open group toggle until the
+// target button is actually visible, then clicks it -- works whether the
+// page is ungrouped, already visible, or nested in any group.
+export async function openSidebarPage(page, key) {
+  const sidebar = page.getByRole('navigation', { name: 'Admin modules' })
+  const target = sidebar.getByRole('button', { name: key, exact: true })
+  if (!(await target.isVisible().catch(() => false))) {
+    const toggles = await sidebar.locator('.nav-group-toggle').all()
+    for (const toggle of toggles) {
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+    }
+  }
+  await target.click()
+}
+
 export const test = base.extend({
   state: async ({}, use) => {
     await use(readE2eState())

@@ -1,0 +1,634 @@
+/* Phase 1 styling for the new shell chrome: ThemeSwitcher, CommandPalette,
+   Breadcrumbs. Consumes the design tokens; existing page CSS is untouched. */
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.72rem;
+  color: var(--color-muted-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+
+.breadcrumb-separator {
+  margin: 0 var(--space-1);
+  color: var(--color-border-strong);
+}
+
+.theme-switcher {
+  position: relative;
+}
+
+.theme-switcher-modes {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.theme-picker {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 60;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  padding: var(--space-4);
+  min-width: 260px;
+}
+
+.theme-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+
+.theme-picker-grid label {
+  display: grid;
+  gap: var(--space-1);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.theme-picker-grid input[type='color'] {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.theme-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0d1a1966;
+  display: grid;
+  place-items: start center;
+  padding-top: 12vh;
+}
+
+.command-palette {
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(60vh, 480px);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  overflow: hidden;
+}
+
+.command-palette input[type='text'] {
+  flex: none;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-4);
+  font: inherit;
+  font-size: 1rem;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.command-palette input[type='text']:focus {
+  outline: none;
+}
+
+.command-palette ul {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2);
+  overflow-y: auto;
+}
+
+.command-palette-empty {
+  padding: var(--space-4);
+  color: var(--color-muted-text);
+  font-size: 0.88rem;
+}
+
+.command-palette li button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.command-palette li button.active,
+.command-palette li button:hover {
+  background: var(--color-bg);
+}
+
+.command-palette li button small {
+  color: var(--color-muted-text);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* At the same breakpoint the dashboard/topbar already collapse into their
+   mobile layout, the theme mode row (3 extra inline buttons) no longer
+   fits alongside the admin name + logout button without overflowing the
+   viewport -- hidden here rather than promising a mobile-optimized theme
+   switcher this phase never scoped. */
+@media (max-width: 800px) {
+  .theme-switcher { display: none; }
+}
+
+/* Phase 2 reliability primitives: Skeleton, Toast, ErrorBanner */
+
+.skeleton-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.skeleton-line {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-border) 25%, var(--color-surface-2, var(--color-bg)) 50%, var(--color-border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line { animation: none; }
+}
+
+@keyframes skeleton-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.toast-viewport {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 200;
+  display: grid;
+  gap: var(--space-2);
+  width: min(360px, calc(100vw - 32px));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-elevated);
+  font-size: 0.86rem;
+  color: var(--color-text);
+}
+
+.toast-success { border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-border)); }
+.toast-error { border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border)); }
+
+.toast-dismiss {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-muted-text);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.error-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-danger-bg);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+  color: var(--color-danger-text);
+}
+
+.error-banner strong { display: block; }
+.error-banner p { margin: 2px 0 0; }
+
+@media (max-width: 800px) {
+  .toast-viewport { right: 8px; bottom: 8px; left: 8px; width: auto; }
+}
+
+/* Overview page (Phase 2) */
+
+.overview-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 900px) {
+  .overview-card-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .overview-card-grid { grid-template-columns: 1fr; }
+}
+
+/* Data Workspace Wizard (Phase 2) */
+
+.wizard-shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: var(--space-6);
+  align-items: start;
+}
+
+.wizard-progress {
+  position: sticky;
+  top: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.wizard-progress-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+
+.wizard-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent-strong), var(--color-accent));
+  transition: width 0.2s ease;
+}
+
+.wizard-progress ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.wizard-step-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.wizard-step-button:disabled {
+  color: var(--color-muted-text);
+  cursor: not-allowed;
+}
+
+.wizard-step-button.active {
+  background: var(--color-bg);
+  font-weight: 700;
+}
+
+.wizard-step-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-border);
+  color: var(--color-text);
+  font-size: 0.72rem;
+}
+
+.wizard-step-button.completed .wizard-step-check {
+  background: var(--color-success);
+  color: white;
+}
+
+.wizard-progress li small {
+  display: block;
+  margin-left: calc(22px + var(--space-2) + var(--space-3));
+  color: var(--color-muted-text);
+  font-size: 0.68rem;
+}
+
+.wizard-content {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.wizard-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.wizard-diff-removed { background: var(--color-danger-bg); text-decoration: line-through; }
+.wizard-diff-added { background: var(--color-success-bg); }
+
+.wizard-diff-detached {
+  position: fixed;
+  top: 90px;
+  right: 24px;
+  bottom: 24px;
+  width: min(480px, calc(100vw - 48px));
+  z-index: 90;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  padding: var(--space-4);
+  overflow-y: auto;
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 800px) {
+  .wizard-shell { grid-template-columns: 1fr; }
+  .wizard-progress { position: static; }
+  .wizard-diff { grid-template-columns: 1fr; }
+}
+
+/* Shared chat components (Phase 3): ChatPanel, CitationCard, SessionList */
+
+.chat-panel {
+  display: grid;
+  gap: var(--space-4);
+  min-height: 0;
+}
+
+.chat-panel-full {
+  grid-template-columns: 260px 1fr;
+  align-items: start;
+  height: min(720px, calc(100vh - 220px));
+}
+
+.chat-panel-sessions {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+}
+
+.chat-panel-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  height: 100%;
+}
+
+.chat-panel-controls {
+  flex: none;
+  font-size: 0.85rem;
+}
+
+.chat-panel-messages {
+  flex: 1 1 auto;
+  min-height: 160px;
+  overflow-y: auto;
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+  padding: var(--space-2);
+  background: var(--color-bg);
+  border-radius: var(--radius-lg);
+}
+
+.chat-panel-empty {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-muted-text);
+}
+
+.chat-message {
+  max-width: min(560px, 90%);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.chat-message p { margin: 0; white-space: pre-wrap; }
+
+.chat-message-user {
+  justify-self: end;
+  background: var(--color-sidebar-surface);
+  color: #ffffff;
+  border-color: var(--color-sidebar-surface);
+}
+
+.chat-message-assistant { justify-self: start; }
+.chat-message-pending { color: var(--color-muted-text); font-style: italic; }
+
+.chat-message-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.chat-message-feedback-thanks { color: var(--color-muted-text); }
+
+.chat-message-citations {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.citation-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.citation-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+}
+
+.citation-card-meta { color: var(--color-muted-text); }
+.citation-card-preview { margin: var(--space-2) 0 0; font-size: 0.85rem; color: var(--color-ink-soft, var(--color-text)); }
+.citation-card-version { color: var(--color-muted-text); }
+
+.chat-panel-footer-actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chat-panel-input-row {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.chat-panel-input-row input {
+  flex: 1 1 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+
+.session-list {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.session-list input[type='search'] {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  font: inherit;
+}
+
+.session-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  overflow-y: auto;
+}
+
+.session-list li { display: flex; align-items: center; gap: var(--space-1); }
+
+.session-list li button:first-child {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: transparent;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.session-list li button:first-child.active { background: var(--color-bg); font-weight: 700; }
+.session-list li small { color: var(--color-muted-text); font-size: 0.72rem; }
+.session-list .session-status { font-size: 0.68rem; text-transform: uppercase; color: var(--color-muted-text); }
+
+.session-delete {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted-text);
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+@media (max-width: 800px) {
+  .chat-panel-full { grid-template-columns: 1fr; height: auto; }
+  .chat-panel-sessions { height: auto; max-height: 260px; }
+}
+
+/* Mini Brain Chat tab: a dedicated grid (not .training-grid's fixed
+   minmax(260px,420px) column, which is too narrow for the full chat panel
+   and -- since grid items default to min-width:auto -- let the chat panel's
+   intrinsic width silently overflow underneath the Runtime panel instead of
+   shrinking to fit). minmax(0, ...) on both tracks lets each column actually
+   shrink to its track width. */
+.assistant-center-chat-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--space-3, 1rem);
+  align-items: start;
+}
+
+.assistant-center-chat-pane { min-width: 0; }
+
+@media (max-width: 900px) {
+  .assistant-center-chat-grid { grid-template-columns: 1fr; }
+}
+
+/* Phase 3: hand-rolled drag/resize/dock/maximize for the floating Admin
+   Assistant widget -- no dependency added, matches Phases 1-2's discipline. */
+.assistant-drag-handle {
+  flex: 1 1 auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.assistant-drag-handle:active { cursor: grabbing; }
+
+.assistant-card-header-actions button[aria-pressed="true"] {
+  background: var(--color-accent, #65d5a7);
+  color: #0d1a19;
+}
+
+.assistant-card-docked-left,
+.assistant-card-docked-right,
+.assistant-card-fullscreen {
+  border-radius: 0;
+}
+
+.assistant-card-fullscreen { border-radius: 14px; }
+
+.assistant-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  border-right: 2px solid var(--color-border-strong, #b7c0cf);
+  border-bottom: 2px solid var(--color-border-strong, #b7c0cf);
+  border-radius: 0 0 4px 0;
+  opacity: 0.7;
+}
+
+.assistant-resize-handle:hover { opacity: 1; }

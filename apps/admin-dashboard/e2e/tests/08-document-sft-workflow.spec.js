@@ -33,11 +33,12 @@ pdf.close()
   return readFileSync(pdfPath)
 }
 
-// "Documents" lives inside the collapsible "Data" nav group, which starts
-// collapsed unless the active page is already within it (Sidebar.jsx) --
-// the toggle must be opened before the Documents button is reachable.
+// "Documents" lives inside the collapsible "Data Workspace" nav group,
+// which starts collapsed unless the active page is already within it
+// (Sidebar.jsx) -- the toggle must be opened before the Documents button
+// is reachable.
 async function openDocumentsPage(page) {
-  const dataToggle = page.getByRole('button', { name: 'Data', exact: true })
+  const dataToggle = page.getByRole('button', { name: 'Data Workspace', exact: true })
   if (await dataToggle.getAttribute('aria-expanded') !== 'true') await dataToggle.click()
   await page.getByRole('button', { name: 'Documents', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Documents', level: 2 })).toBeVisible()

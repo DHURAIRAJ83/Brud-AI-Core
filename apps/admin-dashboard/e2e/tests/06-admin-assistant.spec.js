@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures.js'
+import { expect, openSidebarPage, test } from '../fixtures.js'
 
 const FORBIDDEN_ACTION_MARKERS = [
   'approve_rag_promotion', 'approve_model_release', 'activate_rag', 'activate_model',
@@ -25,7 +25,7 @@ test.describe('Admin Assistant', () => {
   test('the full Admin Assistant page renders its three real sections', async ({
     authenticatedPage: page,
   }) => {
-    await page.getByRole('button', { name: 'Admin Assistant', exact: true }).click()
+    await openSidebarPage(page, 'Admin Assistant')
     // Topbar's own <h1> also reads "Admin Assistant" (it just echoes the
     // active page name) -- level:2 scopes to this page's own heading.
     await expect(page.getByRole('heading', { name: 'Admin Assistant', level: 2 })).toBeVisible()
@@ -38,7 +38,7 @@ test.describe('Admin Assistant', () => {
   test('never offers a production approve/activate/rollback action type', async ({
     authenticatedPage: page,
   }) => {
-    await page.getByRole('button', { name: 'Admin Assistant', exact: true }).click()
+    await openSidebarPage(page, 'Admin Assistant')
     await page
       .getByRole('navigation', { name: 'Admin Assistant sections' })
       .getByRole('button', { name: 'Propose an Action' })
@@ -62,7 +62,7 @@ test.describe('Admin Assistant', () => {
   test('a real propose -> review -> execute cycle runs a genuine safety check', async ({
     authenticatedPage: page,
   }) => {
-    await page.getByRole('button', { name: 'Admin Assistant', exact: true }).click()
+    await openSidebarPage(page, 'Admin Assistant')
     const nav = page.getByRole('navigation', { name: 'Admin Assistant sections' })
 
     await nav.getByRole('button', { name: 'Propose an Action' }).click()
@@ -103,7 +103,7 @@ test.describe('Admin Assistant', () => {
   test('the reply-language preference can be changed and is persisted', async ({
     authenticatedPage: page, state,
   }) => {
-    await page.getByRole('button', { name: 'Admin Assistant', exact: true }).click()
+    await openSidebarPage(page, 'Admin Assistant')
     await page.getByLabel('Reply language').selectOption('tamil')
     await expect(page.getByLabel('Reply language')).toHaveValue('tamil')
 

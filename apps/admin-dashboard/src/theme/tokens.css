@@ -1,0 +1,78 @@
+/* Phase 1 design tokens -- extracted verbatim from the existing hardcoded
+   palette in index.css so nothing shifts visually on adoption. Existing
+   page CSS keeps using its own literals unchanged; only new components
+   (Button, ThemeSwitcher, CommandPalette, Breadcrumbs) consume these. */
+:root {
+  /* Base surfaces (current default/light theme) */
+  --color-text: #1e2637;
+  --color-bg: #f3f5f8;
+  --color-surface: #ffffff;
+  --color-border: #dfe4eb;
+  --color-border-strong: #cdd4df;
+  --color-muted-text: #778294;
+  --color-label-text: #737d8d;
+
+  /* Sidebar -- a permanent dark brand surface, constant across all themes
+     (already dark in the "light" theme today; not a light-mode artifact). */
+  --color-sidebar-bg: #10192b;
+  --color-sidebar-surface: #18243a;
+  --color-sidebar-hover: #24334b;
+  --color-sidebar-border: #28344a;
+  --color-sidebar-text: #aeb8ca;
+  --color-sidebar-text-muted: #8491a8;
+  --color-sidebar-text-active: #ffffff;
+
+  /* Brand / accent */
+  --color-accent: #65d5a7;
+  --color-accent-strong: #4fc494;
+  --color-accent-contrast: #0d1a19;
+
+  /* Status */
+  --color-success: #43b989;
+  --color-success-bg: #e8f9f2;
+  --color-success-text: #207457;
+  --color-warning: #e9a650;
+  --color-warning-bg: #fff6e6;
+  --color-warning-text: #8a6414;
+  --color-danger: #efb7b7;
+  --color-danger-bg: #ffe9e9;
+  --color-danger-text: #8a3030;
+  --color-neutral-icon: #aab2c0;
+
+  /* Typography */
+  --font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+
+  /* Spacing scale (values already used throughout index.css) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 34px;
+
+  /* Radius scale */
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Shadows (existing card/elevated shadows, generalized) */
+  --shadow-card: 0 5px 20px #24324a0a;
+  --shadow-elevated: 0 24px 60px #0d1a1930;
+}
+
+/* Dark theme -- redefines shell/surface tokens only. The sidebar tokens
+   above are intentionally NOT redefined here (see comment above). Applies
+   whenever an explicit dark choice is stored, and Phase 1's own new
+   components read these tokens; existing page CSS is unaffected since it
+   doesn't consume tokens yet (see index.css's own comment). */
+[data-theme='dark'] {
+  --color-bg: #0f1522;
+  --color-surface: #182338;
+  --color-text: #e7ebf3;
+  --color-border: #2a3650;
+  --color-border-strong: #384766;
+  --color-muted-text: #98a4bd;
+  --color-label-text: #98a4bd;
+}

@@ -747,6 +747,24 @@ DASHBOARD_PAGES: tuple[PageEntry, ...] = (
         },
     ),
     PageEntry(
+        page_id="assistant_center",
+        nav_key="Assistant Center",
+        group=None,
+        implemented=True,
+        mode="governance",
+        title={"en": "Assistant Center", "ta": "Assistant Center"},
+        purpose={
+            "en": "A single entry point across three real, separate systems, each reusing the exact same backend calls those systems already use elsewhere: the Admin Assistant governance workflow (embedded unchanged), Mini Brain's real chat/grounded-chat runtime (multi-session, markdown, citations, copy, regenerate), and Public Chat Monitor -- a session/message metadata browser (never raw message text, since the public chat table stores none), with feedback signals and the candidate review queue. Nothing here is a new backend surface.",
+            "ta": "மூன்று உண்மையான, தனித்தனி systems-க்கான ஒரே entry point, ஒவ்வொன்றும் அந்த systems ஏற்கனவே பயன்படுத்தும் அதே backend calls-ஐ மீண்டும் பயன்படுத்துகிறது: Admin Assistant governance workflow (மாற்றமின்றி embed செய்யப்பட்டது), Mini Brain-இன் உண்மையான chat/grounded-chat runtime (multi-session, markdown, citations, copy, regenerate), மற்றும் Public Chat Monitor -- ஒரு session/message metadata browser (மூல message text ஒருபோதும் இல்லை, ஏனெனில் public chat table எதையும் சேமிக்காது), feedback signals மற்றும் candidate review queue உடன். இங்கு எதுவும் புதிய backend surface அல்ல.",
+        },
+        tabs=("Admin Tasks", "Mini Brain Chat", "Public Chat Monitor"),
+        related_page_ids=("admin_assistant", "mini_brain"),
+        safety_note={
+            "en": "Read-only aggregation of existing surfaces -- no message text is ever fabricated, and the Public Chat Monitor tab never shows raw message text (the underlying table stores none).",
+            "ta": "ஏற்கனவே உள்ள surfaces-இன் read-only aggregation -- எந்த message text-உம் ஒருபோதும் கற்பனை செய்யப்படாது, Public Chat Monitor tab ஒருபோதும் மூல message text-ஐ காட்டாது (அடிப்படை table எதையும் சேமிக்காது).",
+        },
+    ),
+    PageEntry(
         page_id="audit_logs",
         nav_key="Audit Logs",
         group=None,

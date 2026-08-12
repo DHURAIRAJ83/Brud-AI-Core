@@ -3,13 +3,43 @@ let csrfToken = null
 let csrfHeaderName = 'X-CSRF-Token'
 
 async function request(path, options = {}) {
-  const headers = { ...(options.headers ?? {}) }
-  if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
-  if (options.method && options.method !== 'GET') {
+  const { timeoutMs, ...fetchOptions } = options
+  const headers = { ...(fetchOptions.headers ?? {}) }
+  if (fetchOptions.body && !(fetchOptions.body instanceof FormData)) headers['Content-Type'] = 'application/json'
+  if (fetchOptions.method && fetchOptions.method !== 'GET') {
     if (!csrfToken) await getCsrf()
     headers[csrfHeaderName] = csrfToken
   }
-  const response = await fetch(`${API_BASE}${path}`, { credentials: 'include', ...options, headers })
+  // MB-48: opt-in only -- most admin CRUD calls are fast and must never
+  // be newly bounded by a timeout that could change their behavior;
+  // only the specific real-model-generation call sites below pass
+  // timeoutMs, matched to the backend's own configured timeout plus
+  // headroom for network/queueing, never shorter than it.
+  let controller
+  let timer
+  if (timeoutMs) {
+    controller = new AbortController()
+    timer = setTimeout(() => controller.abort(), timeoutMs)
+  }
+  let response
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      // MB-48: this is a live admin control plane -- every GET reads
+      // state that can change from another tab/page/action moments
+      // earlier (e.g. the grounded-chat default retrieval profile);
+      // never let the browser's implicit HTTP cache serve a stale
+      // response for it.
+      credentials: 'include', cache: 'no-store', ...fetchOptions, headers,
+      ...(controller ? { signal: controller.signal } : {}),
+    })
+  } catch (reason) {
+    if (reason.name === 'AbortError') {
+      throw new Error('The request took too long and was cancelled. The local model may still be generating -- try again in a moment.')
+    }
+    throw new Error('Network error -- could not reach the backend. Check that it is running and try again.')
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
   if (!response.ok) {
     let message = response.status === 401 ? 'Your admin session has expired.' : 'Request failed.'
     try { const data = await response.json(); message = data.error?.message ?? data.detail ?? message } catch { /* safe generic message */ }
@@ -49,6 +79,8 @@ export async function getSystemStatus() {
   ])
   return { database, configuration, schema, audit }
 }
+export const systemRecentAudit = (limit = 20, offset = 0) => request(`/api/admin/audit/recent?limit=${limit}&offset=${offset}`)
+export const systemPilotMetrics = () => request('/api/admin/system/pilot-metrics')
 export const datasetStatistics = () => request('/api/admin/datasets/statistics')
 export const datasetSources = (query = '') => request(`/api/admin/datasets/sources${query}`)
 export const createDatasetSource = (body) => request('/api/admin/datasets/sources', { method: 'POST', body: JSON.stringify(body) })
@@ -135,7 +167,6 @@ export const documentSftCandidateSummary = (id) => request(`${DOC(id)}/sft-candi
 export const reviewDocumentSftCandidate = (id, candidateId, body) => request(`${DOC(id)}/sft-candidates/${candidateId}/review`, { method: 'POST', body: JSON.stringify(body) })
 export const bulkApproveDocumentSftCandidates = (id, candidatePublicIds) => request(`${DOC(id)}/sft-candidates/bulk-approve`, { method: 'POST', body: JSON.stringify({ candidate_public_ids: candidatePublicIds, confirm: true }) })
 export const exportDocumentSftCandidates = (id) => request(`${DOC(id)}/sft-export`, { method: 'POST', body: JSON.stringify({ confirm: true }) })
-export const documentSftExport = (id, exportId) => request(`${DOC(id)}/sft-export/${exportId}`)
 export const documentSftExports = (id) => request(`${DOC(id)}/sft-exports`)
 
 // --- Production integration: overview / generator eligibility -------------------------------
@@ -226,7 +257,6 @@ export const verifyCoreModelCheckpoint = (id) => request(`/api/admin/core-models
 export const coreModelAssignments = () => request('/api/admin/core-models/assignments')
 export const patchCoreModelAssignment = (key, body) => request(`/api/admin/core-models/assignments/${key}`, { method: 'PATCH', body: JSON.stringify(body) })
 export const pretrainingCapabilities = () => request('/api/admin/pretraining/capabilities')
-export const pretrainingEstimate = (body) => request('/api/admin/pretraining/estimate', { method: 'POST', body: JSON.stringify(body) })
 export const pretrainingPreflight = (body) => request('/api/admin/pretraining/preflight', { method: 'POST', body: JSON.stringify(body) })
 export const pretrainingJobs = (query = '') => request(`/api/admin/pretraining/jobs${query}`)
 export const createPretrainingJob = (body) => request('/api/admin/pretraining/jobs', { method: 'POST', body: JSON.stringify(body) })
@@ -306,7 +336,6 @@ export const evalCandidates = () => request('/api/admin/model-evaluation/candida
 export const evalSuites = () => request('/api/admin/model-evaluation/suites')
 export const createEvalSuite = (body) => request('/api/admin/model-evaluation/suites', { method: 'POST', body: JSON.stringify(body) })
 export const evalSuite = (id) => request(`/api/admin/model-evaluation/suites/${id}`)
-export const patchEvalSuite = (id, body) => request(`/api/admin/model-evaluation/suites/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 export const validateEvalSuite = (id) => request(`/api/admin/model-evaluation/suites/${id}/validate`, { method: 'POST' })
 export const activateEvalSuite = (id) => request(`/api/admin/model-evaluation/suites/${id}/activate`, { method: 'POST' })
 export const evalFixtureSets = (suiteId) => request(`/api/admin/model-evaluation/suites/${suiteId}/fixture-sets`)
@@ -410,17 +439,13 @@ export const verifyRuntimeManifest = (id) => request(`${IR}/assignments/${id}/ma
 const RAG = '/api/admin/rag'
 export const ragSpaces = () => request(`${RAG}/spaces`)
 export const createRagSpace = (body) => request(`${RAG}/spaces`, { method: 'POST', body: JSON.stringify(body) })
-export const ragSpace = (id) => request(`${RAG}/spaces/${id}`)
 export const patchRagSpace = (id, body) => request(`${RAG}/spaces/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 export const ragSources = (spaceId) => request(`${RAG}/spaces/${spaceId}/sources`)
 export const createRagSource = (spaceId, body) => request(`${RAG}/spaces/${spaceId}/sources`, { method: 'POST', body: JSON.stringify(body) })
-export const ragSource = (id) => request(`${RAG}/sources/${id}`)
 export const patchRagSource = (id, body) => request(`${RAG}/sources/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 export const ragSourceVersions = (sourceId) => request(`${RAG}/sources/${sourceId}/versions`)
 export const createRagSourceVersion = (sourceId) => request(`${RAG}/sources/${sourceId}/versions`, { method: 'POST' })
-export const ragSourceVersion = (id) => request(`${RAG}/versions/${id}`)
 export const validateRagSourceVersion = (id) => request(`${RAG}/versions/${id}/validate`, { method: 'POST' })
-export const ragChunkSets = (versionId) => request(`${RAG}/versions/${versionId}/chunk-sets`)
 export const createRagChunkSet = (versionId, body) => request(`${RAG}/versions/${versionId}/chunk-sets`, { method: 'POST', body: JSON.stringify(body) })
 export const ragChunkSet = (id) => request(`${RAG}/chunk-sets/${id}`)
 export const ragChunks = (chunkSetId) => request(`${RAG}/chunk-sets/${chunkSetId}/chunks`)
@@ -443,32 +468,23 @@ export const validateRagKeywordIndex = (id) => request(`${RAG}/keyword-indexes/$
 export const activateRagKeywordIndex = (id) => request(`${RAG}/keyword-indexes/${id}/activate`, { method: 'POST' })
 export const ragRetrievalProfiles = () => request(`${RAG}/retrieval-profiles`)
 export const createRagRetrievalProfile = (spaceId, body) => request(`${RAG}/spaces/${spaceId}/retrieval-profiles`, { method: 'POST', body: JSON.stringify(body) })
-export const ragRetrievalProfile = (id) => request(`${RAG}/retrieval-profiles/${id}`)
 export const patchRagRetrievalProfile = (id, body) => request(`${RAG}/retrieval-profiles/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
 export const validateRagRetrievalProfile = (id) => request(`${RAG}/retrieval-profiles/${id}/validate`, { method: 'POST' })
 export const activateRagRetrievalProfile = (id) => request(`${RAG}/retrieval-profiles/${id}/activate`, { method: 'POST' })
+export const deactivateRagRetrievalProfile = (id) => request(`${RAG}/retrieval-profiles/${id}/deactivate`, { method: 'POST' })
+export const ragLatestVectorIndexForSpace = (spaceId) => request(`${RAG}/spaces/${spaceId}/latest-vector-index`)
 export const ragRetrieve = (body) => request(`${RAG}/retrieve`, { method: 'POST', body: JSON.stringify(body) })
-export const ragRetrievalRun = (id) => request(`${RAG}/retrieval-runs/${id}`)
-export const ragRetrievalResults = (id) => request(`${RAG}/retrieval-runs/${id}/results`)
 export const ragGroundedAnswer = (body) => request(`${RAG}/grounded-answer`, { method: 'POST', body: JSON.stringify(body) })
-export const ragGroundedRequest = (id) => request(`${RAG}/grounded-requests/${id}`)
-export const ragGroundedAnswerResult = (id) => request(`${RAG}/grounded-requests/${id}/answer`)
-export const ragGroundedCitations = (id) => request(`${RAG}/grounded-requests/${id}/citations`)
-export const ragGroundedIssues = (id) => request(`${RAG}/grounded-requests/${id}/issues`)
 export const createRagChatLabSession = (body) => request(`${RAG}/chat-lab/sessions`, { method: 'POST', body: JSON.stringify(body) })
-export const ragChatLabSession = (id) => request(`${RAG}/chat-lab/sessions/${id}`)
 export const postRagChatLabMessage = (id, message, retrievalProfilePublicId) => request(`${RAG}/chat-lab/sessions/${id}/messages`, { method: 'POST', body: JSON.stringify({ message, retrieval_profile_public_id: retrievalProfilePublicId }) })
 export const closeRagChatLabSession = (id) => request(`${RAG}/chat-lab/sessions/${id}/close`, { method: 'POST' })
 export const ragEvaluationSuites = () => request(`${RAG}/evaluation-suites`)
 export const createRagEvaluationSuite = (spaceId, body) => request(`${RAG}/spaces/${spaceId}/evaluation-suites`, { method: 'POST', body: JSON.stringify(body) })
-export const ragEvaluationSuite = (id) => request(`${RAG}/evaluation-suites/${id}`)
 export const addRagEvaluationFixture = (suiteId, body) => request(`${RAG}/evaluation-suites/${suiteId}/fixtures`, { method: 'POST', body: JSON.stringify(body) })
 export const createRagEvaluationRun = (suiteId, body) => request(`${RAG}/evaluation-suites/${suiteId}/runs`, { method: 'POST', body: JSON.stringify(body) })
-export const ragEvaluationRun = (id) => request(`${RAG}/evaluation-runs/${id}`)
 export const executeRagEvaluationRun = (id) => request(`${RAG}/evaluation-runs/${id}/execute`, { method: 'POST' })
 export const ragEvaluationMetrics = (id) => request(`${RAG}/evaluation-runs/${id}/metrics`)
 export const createRagIndexComparison = (body) => request(`${RAG}/index-comparisons`, { method: 'POST', body: JSON.stringify(body) })
-export const ragIndexComparison = (id) => request(`${RAG}/index-comparisons/${id}`)
 export const generateRagManifest = (spaceId) => request(`${RAG}/spaces/${spaceId}/manifest`, { method: 'POST' })
 export const verifyRagManifest = (spaceId) => request(`${RAG}/spaces/${spaceId}/manifest/verify`)
 
@@ -591,7 +607,6 @@ export const regressionMetrics = (id) => request(`${FB}/regression-runs/${id}/me
 export const compareRegressionRuns = (body) => request(`${FB}/regression-runs/compare`, { method: 'POST', body: JSON.stringify(body) })
 export const comparison = (id) => request(`${FB}/comparisons/${id}`)
 export const createImprovementReport = (body) => request(`${FB}/improvement-reports`, { method: 'POST', body: JSON.stringify(body || {}) })
-export const improvementReport = (id) => request(`${FB}/improvement-reports/${id}`)
 
 export const feedbackManifest = (policyId) => request(`${FB}/policies/${policyId}/manifest`)
 export const verifyFeedbackManifest = (policyId) => request(`${FB}/policies/${policyId}/manifest/verify`, { method: 'POST' })
@@ -758,6 +773,15 @@ export const assistantHealth = () => request(`${AA}/health`)
 export const sendAssistantChatMessage = (body) => request(`${AA}/chat`, { method: 'POST', body: JSON.stringify(body) })
 export const submitAssistantFeedback = (body) => request(`${AA}/feedback`, { method: 'POST', body: JSON.stringify(body) })
 
+// -- MB-31F/MB-34A: widget->Mini Brain backend switch (reversible; see AdminAssistantWidget.jsx) --
+// ChatRequest (backend/models/mini_brain_llm_runtime.py) accepts only
+// { session_id, message } -- page_id/mode are widget-local UI state, not
+// part of this backend's request schema.
+// MB-48: local CPU model generation can legitimately take 60-130+
+// seconds; 120s gives real headroom without leaving a hung request
+// spinning forever with no feedback.
+export const sendMiniBrainWidgetMessage = (sessionId, message) => request('/api/admin/mini-brain/llm-runtime/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message }), timeoutMs: 120_000 })
+
 // --- Phase 10A: Admin Assistant response-language preference --------------
 
 export const assistantLanguagePreference = () => request(`${AA}/preferences`)
@@ -791,7 +815,6 @@ export const dataSourceVerificationEvents = (id) => request(`${DS}/${id}/verific
 // Preflight checks exposed by the existing dataset/RAG systems (Phase 2
 // integration, Step 9) -- neither changes its own endpoint's behaviour.
 export const datasetVersionRightsSummary = (versionId, targetUse = 'training') => request(`/api/admin/datasets/versions/${versionId}/rights-summary?target_use=${targetUse}`)
-export const ragSourceRightsCheck = (sourceId) => request(`/api/admin/rag/sources/${sourceId}/rights-check`)
 
 const MD = '/api/admin/manual-data'
 export const manualDataRecords = (query = '') => request(`${MD}${query}`)
@@ -997,7 +1020,6 @@ export const discoveryEvents = (id) => request(`${DD}/sessions/${id}/events`)
 
 export const discoveryComparisons = (id) => request(`${DD}/sessions/${id}/comparisons`)
 export const createDiscoveryComparison = (id, body) => request(`${DD}/sessions/${id}/comparisons`, { method: 'POST', body: JSON.stringify(body) })
-export const discoveryComparison = (comparisonId) => request(`${DD}/comparisons/${comparisonId}`)
 
 // --- Phase 11: Licence Evidence, Terms Snapshot & Dataset Verification ----
 
@@ -1219,10 +1241,8 @@ export const buildRagReleaseCandidate = (promotionId) => request(`${PRR}/rag/pro
 export const ragReleaseCandidates = (promotionId) => request(`${PRR}/rag/promotion-requests/${promotionId}/candidates`)
 export const ragReleaseCandidate = (id) => request(`${PRR}/rag/candidates/${id}`)
 export const validateRagReleaseCandidate = (id) => request(`${PRR}/rag/candidates/${id}/validate`, { method: 'POST', body: JSON.stringify({}) })
-export const ragValidationResults = (id) => request(`${PRR}/rag/candidates/${id}/validation-results`)
 export const activateRagReleaseCandidate = (id) => request(`${PRR}/rag/candidates/${id}/activate`, { method: 'POST', body: JSON.stringify({}) })
 export const rollbackRagReleaseCandidate = (id) => request(`${PRR}/rag/candidates/${id}/rollback`, { method: 'POST', body: JSON.stringify({}) })
-export const ragActivationEvents = (id) => request(`${PRR}/rag/candidates/${id}/activation-events`)
 
 export const modelReleaseEligibility = (checkpointId) => request(`${PRR}/model/eligibility/${checkpointId}`)
 export const createModelReleaseRequest = (body) => request(`${PRR}/model/release-requests`, { method: 'POST', body: JSON.stringify(body) })
@@ -1279,7 +1299,6 @@ export const readinessReports = () => request(`${PRR}/readiness-reports`)
 export const latestReadinessReport = () => request(`${PRR}/readiness-reports/latest`)
 export const readinessReport = (id) => request(`${PRR}/readiness-reports/${id}`)
 export const submitAcceptanceReview = (reportId, body) => request(`${PRR}/readiness-reports/${reportId}/acceptance-review`, { method: 'POST', body: JSON.stringify(body) })
-export const acceptanceReviews = (reportId) => request(`${PRR}/readiness-reports/${reportId}/acceptance-reviews`)
 
 const KR = '/api/admin/knowledge-routing'
 export const knowledgeRoutingPolicy = () => request(`${KR}/policy`)
@@ -1310,7 +1329,6 @@ export const resolveKnowledgeGapCase = (id, body) => request(`${KG}/cases/${id}/
 export const archiveKnowledgeGapCase = (id) => request(`${KG}/cases/${id}/archive`, { method: 'POST', body: '{}' })
 export const assessKnowledgeGapHandoff = (id) => request(`${KG}/cases/${id}/assess-handoff`, { method: 'POST', body: '{}' })
 export const knowledgeGapClusters = (query = '') => request(`${KG}/clusters${query}`)
-export const knowledgeGapCluster = (id) => request(`${KG}/clusters/${id}`)
 export const proposeKnowledgeGapMerge = (body) => request(`${KG}/clusters/propose-merge`, { method: 'POST', body: JSON.stringify(body) })
 export const confirmKnowledgeGapMerge = (body) => request(`${KG}/clusters/confirm-merge`, { method: 'POST', body: JSON.stringify(body) })
 export const recalculateKnowledgeGapClusterPriority = (id) => request(`${KG}/clusters/${id}/recalculate-priority`, { method: 'POST', body: '{}' })
@@ -1337,3 +1355,602 @@ export const toolsOverview = () => request(`${DT}/overview`)
 export const toolsRegistry = () => request(`${DT}/registry`)
 export const toolsExecutionEvents = (query = '') => request(`${DT}/execution-events${query}`)
 export const toolsTest = (body) => request(`${DT}/test`, { method: 'POST', body: JSON.stringify(body) })
+
+const MB = '/api/admin/mini-brain'
+export const miniBrainStatus = () => request(`${MB}/status`)
+export const miniBrainSettings = () => request(`${MB}/settings`)
+export const updateMiniBrainSettings = (body) => request(`${MB}/settings`, { method: 'PATCH', body: JSON.stringify(body) })
+export const enableMiniBrain = () => request(`${MB}/enable`, { method: 'POST', body: '{}' })
+export const disableMiniBrain = () => request(`${MB}/disable`, { method: 'POST', body: '{}' })
+export const miniBrainHealth = () => request(`${MB}/health`)
+export const miniBrainRuntimeHealth = () => request(`${MB}/runtime-health`)
+export const miniBrainDiagnostics = () => request(`${MB}/diagnostics`)
+export const miniBrainVersion = () => request(`${MB}/version`)
+export const miniBrainLogs = (query = '') => request(`${MB}/logs${query}`)
+
+const MBKC = '/api/admin/mini-brain/knowledge-core'
+export const seedKnowledgeCore = () => request(`${MBKC}/seed`, { method: 'POST', body: '{}' })
+export const knowledgeCoreDomains = () => request(`${MBKC}/domains`)
+export const knowledgeCoreItem = (id) => request(`${MBKC}/items/${id}`)
+export const searchKnowledgeCore = (query = '') => request(`${MBKC}/search${query}`)
+export const runKnowledgeCoreValidation = () => request(`${MBKC}/validate`, { method: 'POST', body: '{}' })
+export const knowledgeCoreCoverage = () => request(`${MBKC}/coverage`)
+
+const MBIE = '/api/admin/mini-brain/intelligence'
+export const analyzeQuestion = (question) => request(`${MBIE}/analyze`, { method: 'POST', body: JSON.stringify({ question }) })
+
+const MBRT = '/api/admin/mini-brain/runtime'
+export const registerRuntimeModel = (body) => request(`${MBRT}/models`, { method: 'POST', body: JSON.stringify(body) })
+export const listRuntimeModels = () => request(`${MBRT}/models`)
+export const runtimeModelInfo = (id) => request(`${MBRT}/models/${id}`)
+export const loadRuntimeModel = (modelPublicId) => request(`${MBRT}/load`, { method: 'POST', body: JSON.stringify({ model_public_id: modelPublicId }) })
+export const unloadRuntimeModel = () => request(`${MBRT}/unload`, { method: 'POST', body: '{}' })
+export const reloadRuntimeModel = () => request(`${MBRT}/reload`, { method: 'POST', body: '{}' })
+export const runtimeStatus = () => request(`${MBRT}/status`)
+export const runtimeStatistics = () => request(`${MBRT}/statistics`)
+export const runtimeDiagnostics = () => request(`${MBRT}/diagnostics`)
+
+const MBQ = '/api/admin/mini-brain/quality'
+export const qualityCheck = (body) => request(`${MBQ}/check`, { method: 'POST', body: JSON.stringify(body) })
+export const qualityValidate = (body) => request(`${MBQ}/validate`, { method: 'POST', body: JSON.stringify(body) })
+export const qualityReport = (body) => request(`${MBQ}/report`, { method: 'POST', body: JSON.stringify(body) })
+export const qualityFormat = (text) => request(`${MBQ}/format`, { method: 'POST', body: JSON.stringify({ text }) })
+export const qualityGenerate = (body) => request(`${MBQ}/generate`, { method: 'POST', body: JSON.stringify(body) })
+export const qualityDiagnostics = () => request(`${MBQ}/diagnostics`)
+
+const MBC = '/api/admin/mini-brain/capability'
+export const capabilityGenerate = (question) => request(`${MBC}/generate`, { method: 'POST', body: JSON.stringify({ question }) })
+export const capabilityDiagnostics = () => request(`${MBC}/diagnostics`)
+
+const MBDI = '/api/admin/mini-brain/dataset-intelligence'
+export const datasetIntelligenceReport = (sourcePublicId) => request(`${MBDI}/report`, { method: 'POST', body: JSON.stringify({ source_public_id: sourcePublicId }) })
+export const datasetIntelligenceDiagnostics = () => request(`${MBDI}/diagnostics`)
+
+const MBDA = '/api/admin/mini-brain/dataset-advanced'
+export const datasetAdvancedReport = (sourcePublicId) => request(`${MBDA}/report`, { method: 'POST', body: JSON.stringify({ source_public_id: sourcePublicId }) })
+export const datasetAdvancedDiagnostics = () => request(`${MBDA}/diagnostics`)
+
+const MBLS = '/api/admin/mini-brain/learning-supervisor'
+export const learningSupervisorProfiles = () => request(`${MBLS}/hyperparameter-profiles`)
+export const learningSupervisorSessions = () => request(`${MBLS}/sessions`)
+export const learningSupervisorCreateSession = (body) => request(`${MBLS}/sessions`, { method: 'POST', body: JSON.stringify(body) })
+export const learningSupervisorSession = (id) => request(`${MBLS}/sessions/${id}`)
+export const learningSupervisorEvents = (id) => request(`${MBLS}/sessions/${id}/events`)
+export const learningSupervisorValidateDataset = (id) => request(`${MBLS}/sessions/${id}/validate-dataset`, { method: 'POST', body: '{}' })
+export const learningSupervisorDecideDataset = (id, decision) => request(`${MBLS}/sessions/${id}/decide-dataset`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const learningSupervisorRunRag = (id, body) => request(`${MBLS}/sessions/${id}/rag-evaluation`, { method: 'POST', body: JSON.stringify(body) })
+export const learningSupervisorFinalizeRag = (id) => request(`${MBLS}/sessions/${id}/rag-evaluation/finalize`, { method: 'POST', body: '{}' })
+export const learningSupervisorDecideRag = (id, decision) => request(`${MBLS}/sessions/${id}/decide-rag`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const learningSupervisorSubmitTraining = (id, body) => request(`${MBLS}/sessions/${id}/training-request`, { method: 'POST', body: JSON.stringify(body) })
+export const learningSupervisorMonitorTraining = (id) => request(`${MBLS}/sessions/${id}/training-monitor`)
+export const learningSupervisorAnalyzeTraining = (id) => request(`${MBLS}/sessions/${id}/analyze-training`, { method: 'POST', body: '{}' })
+export const learningSupervisorRunBenchmark = (id, body) => request(`${MBLS}/sessions/${id}/benchmark`, { method: 'POST', body: JSON.stringify(body) })
+export const learningSupervisorCompareModels = (id, body) => request(`${MBLS}/sessions/${id}/compare-models`, { method: 'POST', body: JSON.stringify(body) })
+export const learningSupervisorRecommendations = (id) => request(`${MBLS}/sessions/${id}/recommendations`, { method: 'POST', body: '{}' })
+export const learningSupervisorAdminReview = (id, decision) => request(`${MBLS}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const learningSupervisorReleaseCandidate = (id, body) => request(`${MBLS}/sessions/${id}/release-candidate`, { method: 'POST', body: JSON.stringify(body) })
+
+const MBRP = '/api/admin/mini-brain/release-pipeline'
+export const releasePipelineDiagnostics = () => request(`${MBRP}/diagnostics`)
+export const releasePipelineSessions = () => request(`${MBRP}/sessions`)
+export const releasePipelineCreateSession = (body) => request(`${MBRP}/sessions`, { method: 'POST', body: JSON.stringify(body) })
+export const releasePipelineSession = (id) => request(`${MBRP}/sessions/${id}`)
+export const releasePipelineEvents = (id) => request(`${MBRP}/sessions/${id}/events`)
+export const releasePipelineValidateCheckpoint = (id) => request(`${MBRP}/sessions/${id}/validate`, { method: 'POST', body: '{}' })
+export const releasePipelineConvert = (id) => request(`${MBRP}/sessions/${id}/convert`, { method: 'POST', body: '{}' })
+export const releasePipelineQuantize = (id) => request(`${MBRP}/sessions/${id}/quantize`, { method: 'POST', body: '{}' })
+export const releasePipelineVerify = (id) => request(`${MBRP}/sessions/${id}/verify`, { method: 'POST', body: '{}' })
+export const releasePipelinePerformance = (id) => request(`${MBRP}/sessions/${id}/performance`, { method: 'POST', body: '{}' })
+export const releasePipelineCreateVersion = (id, body) => request(`${MBRP}/sessions/${id}/version`, { method: 'POST', body: JSON.stringify(body) })
+export const releasePipelineRegistry = (id) => request(`${MBRP}/sessions/${id}/register`)
+export const releasePipelineAdminReview = (id, decision) => request(`${MBRP}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const releasePipelineActivate = (id, quantizationLevel) => request(`${MBRP}/sessions/${id}/activate`, { method: 'POST', body: JSON.stringify({ quantization_level: quantizationLevel }) })
+export const releasePipelineEvaluateRollback = (id, targetVersion) => request(`${MBRP}/sessions/${id}/rollback/evaluate`, { method: 'POST', body: JSON.stringify({ target_version: targetVersion }) })
+export const releasePipelineExecuteRollback = (id, body) => request(`${MBRP}/sessions/${id}/rollback`, { method: 'POST', body: JSON.stringify(body) })
+export const releasePipelineReport = (id) => request(`${MBRP}/sessions/${id}/report`)
+
+const MBCL = '/api/admin/mini-brain/continuous-learning'
+export const continuousLearningDiagnostics = () => request(`${MBCL}/diagnostics`)
+export const continuousLearningSessions = () => request(`${MBCL}/sessions`)
+export const continuousLearningCreateSession = (cycleWindowDays) => request(`${MBCL}/sessions`, { method: 'POST', body: JSON.stringify({ cycle_window_days: cycleWindowDays }) })
+export const continuousLearningSession = (id) => request(`${MBCL}/sessions/${id}`)
+export const continuousLearningEvents = (id) => request(`${MBCL}/sessions/${id}/events`)
+export const continuousLearningCollectFeedback = (id) => request(`${MBCL}/sessions/${id}/feedback`, { method: 'POST', body: '{}' })
+export const continuousLearningAnalyzeFailures = (id) => request(`${MBCL}/sessions/${id}/failures`, { method: 'POST', body: '{}' })
+export const continuousLearningAnalyzeHallucinations = (id) => request(`${MBCL}/sessions/${id}/hallucinations`, { method: 'POST', body: '{}' })
+export const continuousLearningAnalyzeKnowledgeGaps = (id) => request(`${MBCL}/sessions/${id}/knowledge-gaps`, { method: 'POST', body: '{}' })
+export const continuousLearningDetectWeakTopics = (id) => request(`${MBCL}/sessions/${id}/topics`, { method: 'POST', body: '{}' })
+export const continuousLearningAnalyzeDifficulty = (id) => request(`${MBCL}/sessions/${id}/difficulty`, { method: 'POST', body: '{}' })
+export const continuousLearningRecommendDatasets = (id) => request(`${MBCL}/sessions/${id}/datasets`, { method: 'POST', body: '{}' })
+export const continuousLearningRecommendTraining = (id) => request(`${MBCL}/sessions/${id}/training`, { method: 'POST', body: '{}' })
+export const continuousLearningRankPriorities = (id) => request(`${MBCL}/sessions/${id}/priority`, { method: 'POST', body: '{}' })
+export const continuousLearningGenerateReport = (id) => request(`${MBCL}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const continuousLearningAdminReview = (id, decision) => request(`${MBCL}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBCLC = '/api/admin/mini-brain/continuous-learning-center'
+export const clcDiagnostics = () => request(`${MBCLC}/diagnostics`)
+export const clcListMemory = () => request(`${MBCLC}/memory`)
+export const clcRecordMemory = (body) => request(`${MBCLC}/memory`, { method: 'POST', body: JSON.stringify(body) })
+export const clcSessions = () => request(`${MBCLC}/sessions`)
+export const clcCreateSession = () => request(`${MBCLC}/sessions`, { method: 'POST', body: '{}' })
+export const clcSession = (id) => request(`${MBCLC}/sessions/${id}`)
+export const clcEvents = (id) => request(`${MBCLC}/sessions/${id}/events`)
+export const clcEvolveKnowledgeGaps = (id) => request(`${MBCLC}/sessions/${id}/knowledge-gap-evolution`, { method: 'POST', body: '{}' })
+export const clcBuildLearningQueue = (id) => request(`${MBCLC}/sessions/${id}/learning-queue`, { method: 'POST', body: '{}' })
+export const clcBuildDraft = (id, topic) => request(`${MBCLC}/sessions/${id}/draft`, { method: 'POST', body: JSON.stringify({ topic: topic || null }) })
+export const clcPrepareProviderRequest = (id, requestedProviders) => request(`${MBCLC}/sessions/${id}/provider-request`, { method: 'POST', body: JSON.stringify({ requested_providers: requestedProviders }) })
+export const clcIngestProviderResults = (id, providerOutputs) => request(`${MBCLC}/sessions/${id}/provider-consensus`, { method: 'POST', body: JSON.stringify({ provider_outputs: providerOutputs }) })
+export const clcPlanDatasetEvolution = (id, existingDatasetSourcePublicId) => request(`${MBCLC}/sessions/${id}/dataset-evolution`, { method: 'POST', body: JSON.stringify({ existing_dataset_source_public_id: existingDatasetSourcePublicId || null }) })
+export const clcBuildRoadmap = (id) => request(`${MBCLC}/sessions/${id}/roadmap`, { method: 'POST', body: '{}' })
+export const clcGenerateRecommendation = (id) => request(`${MBCLC}/sessions/${id}/recommendation`, { method: 'POST', body: '{}' })
+export const clcGenerateReport = (id) => request(`${MBCLC}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const clcAdminReview = (id, decision) => request(`${MBCLC}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBRC = '/api/admin/mini-brain/research-center'
+export const rcDiagnostics = () => request(`${MBRC}/diagnostics`)
+export const rcListProviders = () => request(`${MBRC}/providers`)
+export const rcAddProvider = (body) => request(`${MBRC}/providers`, { method: 'POST', body: JSON.stringify(body) })
+export const rcSetProviderStatus = (providerKey, status) => request(`${MBRC}/providers/${providerKey}/status`, { method: 'POST', body: JSON.stringify({ status }) })
+export const rcListMemory = () => request(`${MBRC}/memory`)
+export const rcRecordMemory = (id, notes) => request(`${MBRC}/sessions/${id}/memory`, { method: 'POST', body: JSON.stringify({ notes: notes || '' }) })
+export const rcSessions = () => request(`${MBRC}/sessions`)
+export const rcCreateSession = (topic) => request(`${MBRC}/sessions`, { method: 'POST', body: JSON.stringify({ topic }) })
+export const rcSession = (id) => request(`${MBRC}/sessions/${id}`)
+export const rcEvents = (id) => request(`${MBRC}/sessions/${id}/events`)
+export const rcPrepareResearchRequest = (id, planningCenterSessionPublicId, priority) => request(`${MBRC}/sessions/${id}/research-request`, { method: 'POST', body: JSON.stringify({ planning_center_session_public_id: planningCenterSessionPublicId || null, priority: priority || null }) })
+export const rcSelectMode = (id, mode, requestedProviderKeys) => request(`${MBRC}/sessions/${id}/mode`, { method: 'POST', body: JSON.stringify({ mode, requested_provider_keys: requestedProviderKeys || [] }) })
+export const rcBuildLocalDraft = (id, existingDatasetSourcePublicId) => request(`${MBRC}/sessions/${id}/local-draft`, { method: 'POST', body: JSON.stringify({ existing_dataset_source_public_id: existingDatasetSourcePublicId || null }) })
+export const rcPrepareProviderRequestPackage = (id) => request(`${MBRC}/sessions/${id}/provider-request`, { method: 'POST', body: '{}' })
+export const rcIngestProviderResults = (id, providerOutputs) => request(`${MBRC}/sessions/${id}/provider-consensus`, { method: 'POST', body: JSON.stringify({ provider_outputs: providerOutputs }) })
+export const rcBuildDatasetDraft = (id) => request(`${MBRC}/sessions/${id}/dataset-draft`, { method: 'POST', body: '{}' })
+export const rcGenerateReport = (id) => request(`${MBRC}/sessions/${id}/report`)
+export const rcAdminReviewDraft = (id, decision) => request(`${MBRC}/sessions/${id}/draft-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const rcRunRagEvaluation = (id, body) => request(`${MBRC}/sessions/${id}/rag-evaluation`, { method: 'POST', body: JSON.stringify(body) })
+export const rcFinalizeRagEvaluation = (id) => request(`${MBRC}/sessions/${id}/rag-evaluation/finalize`, { method: 'POST', body: '{}' })
+export const rcAdminReviewRag = (id, decision) => request(`${MBRC}/sessions/${id}/rag-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const rcCheckTrainingGate = (id) => request(`${MBRC}/sessions/${id}/training-gate`, { method: 'POST', body: '{}' })
+export const rcAnalyzeTrainingReport = (id, learningSupervisorSessionPublicId) => request(`${MBRC}/sessions/${id}/training-report`, { method: 'POST', body: JSON.stringify({ learning_supervisor_session_public_id: learningSupervisorSessionPublicId }) })
+
+const MBDE = '/api/admin/mini-brain/dataset-evolution'
+export const deDiagnostics = () => request(`${MBDE}/diagnostics`)
+export const deSessions = () => request(`${MBDE}/sessions`)
+export const deCreateSession = (datasetSourcePublicId) => request(`${MBDE}/sessions`, { method: 'POST', body: JSON.stringify({ dataset_source_public_id: datasetSourcePublicId }) })
+export const deSession = (id) => request(`${MBDE}/sessions/${id}`)
+export const deEvents = (id) => request(`${MBDE}/sessions/${id}/events`)
+export const deRunKnowledgeEvolution = (id) => request(`${MBDE}/sessions/${id}/knowledge-evolution`, { method: 'POST', body: '{}' })
+export const deRunDatasetEvolution = (id) => request(`${MBDE}/sessions/${id}/dataset-evolution`, { method: 'POST', body: '{}' })
+export const deRunSimulation = (id) => request(`${MBDE}/sessions/${id}/simulation`, { method: 'POST', body: '{}' })
+export const deGenerateRecommendation = (id) => request(`${MBDE}/sessions/${id}/recommendation`, { method: 'POST', body: '{}' })
+export const deGenerateReport = (id) => request(`${MBDE}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const deAdminReview = (id, decision) => request(`${MBDE}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const deRunRagEvaluation = (id, body) => request(`${MBDE}/sessions/${id}/rag-evaluation`, { method: 'POST', body: JSON.stringify(body) })
+export const deFinalizeRagEvaluation = (id) => request(`${MBDE}/sessions/${id}/rag-evaluation/finalize`, { method: 'POST', body: '{}' })
+export const deAdminReviewRag = (id, decision) => request(`${MBDE}/sessions/${id}/rag-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBPC = '/api/admin/mini-brain/pipeline-coordinator'
+export const pcDiagnostics = () => request(`${MBPC}/diagnostics`)
+export const pcSessions = () => request(`${MBPC}/sessions`)
+export const pcCreateSession = (topic) => request(`${MBPC}/sessions`, { method: 'POST', body: JSON.stringify({ topic }) })
+export const pcSession = (id) => request(`${MBPC}/sessions/${id}`)
+export const pcEvents = (id) => request(`${MBPC}/sessions/${id}/events`)
+export const pcLinkResearch = (id, mb09SessionPublicId) => request(`${MBPC}/sessions/${id}/link-research`, { method: 'POST', body: JSON.stringify({ mb09_session_public_id: mb09SessionPublicId }) })
+export const pcLinkResearchCenter = (id, mb10SessionPublicId) => request(`${MBPC}/sessions/${id}/link-research-center`, { method: 'POST', body: JSON.stringify({ mb10_session_public_id: mb10SessionPublicId }) })
+export const pcRefreshResearchCenter = (id) => request(`${MBPC}/sessions/${id}/refresh-research-center`, { method: 'POST', body: '{}' })
+export const pcLinkDatasetEvolution = (id, mb11SessionPublicId) => request(`${MBPC}/sessions/${id}/link-dataset-evolution`, { method: 'POST', body: JSON.stringify({ mb11_session_public_id: mb11SessionPublicId }) })
+export const pcRunRagFirstEnforcement = (id) => request(`${MBPC}/sessions/${id}/rag-first-enforcement`, { method: 'POST', body: '{}' })
+export const pcLinkTraining = (id, mb06SessionPublicId) => request(`${MBPC}/sessions/${id}/link-training`, { method: 'POST', body: JSON.stringify({ mb06_session_public_id: mb06SessionPublicId }) })
+export const pcRefreshTraining = (id) => request(`${MBPC}/sessions/${id}/refresh-training`, { method: 'POST', body: '{}' })
+export const pcGenerateTrainingReadiness = (id) => request(`${MBPC}/sessions/${id}/training-readiness`, { method: 'POST', body: '{}' })
+export const pcGenerateTimeline = (id) => request(`${MBPC}/sessions/${id}/timeline`, { method: 'POST', body: '{}' })
+export const pcPredictImprovement = (id) => request(`${MBPC}/sessions/${id}/improvement-prediction`, { method: 'POST', body: '{}' })
+export const pcGenerateRecommendation = (id) => request(`${MBPC}/sessions/${id}/recommendation`, { method: 'POST', body: '{}' })
+export const pcGenerateReport = (id) => request(`${MBPC}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const pcAdminDecide = (id, decision) => request(`${MBPC}/sessions/${id}/admin-decision`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBLI = '/api/admin/mini-brain/language-intelligence'
+export const liDiagnostics = () => request(`${MBLI}/diagnostics`)
+export const liSessions = () => request(`${MBLI}/sessions`)
+export const liCreateSession = (datasetSourcePublicId) => request(`${MBLI}/sessions`, { method: 'POST', body: JSON.stringify({ dataset_source_public_id: datasetSourcePublicId }) })
+export const liSession = (id) => request(`${MBLI}/sessions/${id}`)
+export const liEvents = (id) => request(`${MBLI}/sessions/${id}/events`)
+export const liRunLanguageScan = (id) => request(`${MBLI}/sessions/${id}/language-scan`, { method: 'POST', body: '{}' })
+export const liRunUnicodeValidation = (id) => request(`${MBLI}/sessions/${id}/unicode-validation`, { method: 'POST', body: '{}' })
+export const liRunSpellAnalysis = (id) => request(`${MBLI}/sessions/${id}/spell-analysis`, { method: 'POST', body: '{}' })
+export const liRunGrammarAnalysis = (id) => request(`${MBLI}/sessions/${id}/grammar-analysis`, { method: 'POST', body: '{}' })
+export const liRunOcrAnalysis = (id) => request(`${MBLI}/sessions/${id}/ocr-analysis`, { method: 'POST', body: '{}' })
+export const liRunTanglishAnalysis = (id) => request(`${MBLI}/sessions/${id}/tanglish-analysis`, { method: 'POST', body: '{}' })
+export const liRunTranslationAnalysis = (id, pairs) => request(`${MBLI}/sessions/${id}/translation-analysis`, { method: 'POST', body: JSON.stringify({ pairs: pairs || [] }) })
+export const liRunDatasetDraft = (id) => request(`${MBLI}/sessions/${id}/dataset-draft`, { method: 'POST', body: '{}' })
+export const liRunQualityScore = (id) => request(`${MBLI}/sessions/${id}/quality-score`, { method: 'POST', body: '{}' })
+export const liGenerateReport = (id) => request(`${MBLI}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const liAdminReview = (id, decision) => request(`${MBLI}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBVI = '/api/admin/mini-brain/vision-intelligence'
+export const viDiagnostics = () => request(`${MBVI}/diagnostics`)
+export const viSessions = () => request(`${MBVI}/sessions`)
+export const viCreateSession = (documentSourcePublicId, datasetSourcePublicId) => request(`${MBVI}/sessions`, { method: 'POST', body: JSON.stringify({ document_source_public_id: documentSourcePublicId, dataset_source_public_id: datasetSourcePublicId || null }) })
+export const viSession = (id) => request(`${MBVI}/sessions/${id}`)
+export const viEvents = (id) => request(`${MBVI}/sessions/${id}/events`)
+export const viImages = (id) => request(`${MBVI}/sessions/${id}/images`)
+export const viObjects = (id, status) => request(`${MBVI}/sessions/${id}/objects${status ? `?status=${status}` : ''}`)
+export const viRunImageExtraction = (id) => request(`${MBVI}/sessions/${id}/image-extraction`, { method: 'POST', body: '{}' })
+export const viRunImageQuality = (id) => request(`${MBVI}/sessions/${id}/image-quality`, { method: 'POST', body: '{}' })
+export const viRunVisionUnderstanding = (id) => request(`${MBVI}/sessions/${id}/vision-understanding`, { method: 'POST', body: '{}' })
+export const viRunOcrCrossValidation = (id, datasetText, languageReportStatus) => request(`${MBVI}/sessions/${id}/ocr-cross-validation`, { method: 'POST', body: JSON.stringify({ dataset_text: datasetText || null, language_report_status: languageReportStatus || null }) })
+export const viRunCaption = (id, adminCaption) => request(`${MBVI}/sessions/${id}/caption`, { method: 'POST', body: JSON.stringify({ admin_caption: adminCaption || null }) })
+export const viRunBoundingBoxPlan = (id) => request(`${MBVI}/sessions/${id}/bounding-box-plan`, { method: 'POST', body: '{}' })
+export const viAnnotate = (id, action, objectPublicId, payload) => request(`${MBVI}/sessions/${id}/annotate`, { method: 'POST', body: JSON.stringify({ action, object_public_id: objectPublicId || null, payload: payload || {} }) })
+export const viFinishAnnotation = (id) => request(`${MBVI}/sessions/${id}/annotation/finish`, { method: 'POST', body: '{}' })
+export const viRunKnowledgeGraph = (id) => request(`${MBVI}/sessions/${id}/knowledge-graph`, { method: 'POST', body: '{}' })
+export const viRunQaGeneration = (id) => request(`${MBVI}/sessions/${id}/qa-generation`, { method: 'POST', body: '{}' })
+export const viRunDatasetDraft = (id) => request(`${MBVI}/sessions/${id}/dataset-draft`, { method: 'POST', body: '{}' })
+export const viRunQualityScore = (id) => request(`${MBVI}/sessions/${id}/quality-score`, { method: 'POST', body: '{}' })
+export const viGenerateReport = (id) => request(`${MBVI}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const viAdminReview = (id, decision) => request(`${MBVI}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBVM = '/api/admin/mini-brain/vision-model'
+export const vmDiagnostics = () => request(`${MBVM}/diagnostics`)
+export const vmProviders = (status) => request(`${MBVM}/providers${status ? `?status=${status}` : ''}`)
+export const vmSetProviderStatus = (providerKey, status) => request(`${MBVM}/providers/${providerKey}/status`, { method: 'POST', body: JSON.stringify({ status }) })
+export const vmSessions = () => request(`${MBVM}/sessions`)
+export const vmCreateSession = (visionSessionPublicId, providerKey, languageSessionPublicId) => request(`${MBVM}/sessions`, { method: 'POST', body: JSON.stringify({ vision_session_public_id: visionSessionPublicId, provider_key: providerKey, language_session_public_id: languageSessionPublicId || null }) })
+export const vmSession = (id) => request(`${MBVM}/sessions/${id}`)
+export const vmEvents = (id) => request(`${MBVM}/sessions/${id}/events`)
+export const vmPredictions = (id, reviewStatus) => request(`${MBVM}/sessions/${id}/predictions${reviewStatus ? `?review_status=${reviewStatus}` : ''}`)
+export const vmCorrections = (id) => request(`${MBVM}/sessions/${id}/corrections`)
+export const vmLearningMemory = () => request(`${MBVM}/learning-memory`)
+export const vmRunImageLoad = (id) => request(`${MBVM}/sessions/${id}/image-load`, { method: 'POST', body: '{}' })
+export const vmRunProviderSelection = (id, modelPath, mmprojPath) => request(`${MBVM}/sessions/${id}/provider-selection`, { method: 'POST', body: JSON.stringify({ model_path: modelPath || null, mmproj_path: mmprojPath || null }) })
+export const vmRunObjectDetection = (id) => request(`${MBVM}/sessions/${id}/object-detection`, { method: 'POST', body: '{}' })
+export const vmRunSceneDetection = (id) => request(`${MBVM}/sessions/${id}/scene-detection`, { method: 'POST', body: '{}' })
+export const vmRunCaption = (id) => request(`${MBVM}/sessions/${id}/caption`, { method: 'POST', body: '{}' })
+export const vmRunRelationshipDetection = (id) => request(`${MBVM}/sessions/${id}/relationship-detection`, { method: 'POST', body: '{}' })
+export const vmRunOcrCrossValidation = (id, datasetText) => request(`${MBVM}/sessions/${id}/ocr-cross-validation`, { method: 'POST', body: JSON.stringify({ dataset_text: datasetText || null }) })
+export const vmRunQualityScore = (id) => request(`${MBVM}/sessions/${id}/quality-score`, { method: 'POST', body: '{}' })
+export const vmReviewPrediction = (id, action, predictionPublicId, payload) => request(`${MBVM}/sessions/${id}/review`, { method: 'POST', body: JSON.stringify({ action, prediction_public_id: predictionPublicId || null, payload: payload || {} }) })
+export const vmFinishReview = (id) => request(`${MBVM}/sessions/${id}/review/finish`, { method: 'POST', body: '{}' })
+export const vmRunCorrectionMemory = (id) => request(`${MBVM}/sessions/${id}/correction-memory`, { method: 'POST', body: '{}' })
+export const vmRunKnowledgeGraph = (id) => request(`${MBVM}/sessions/${id}/knowledge-graph`, { method: 'POST', body: '{}' })
+export const vmRunDatasetDraft = (id) => request(`${MBVM}/sessions/${id}/dataset-draft`, { method: 'POST', body: '{}' })
+export const vmGenerateReport = (id) => request(`${MBVM}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const vmAdminReview = (id, decision) => request(`${MBVM}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBMD = '/api/admin/mini-brain/multimodal-dataset-generator'
+export const mdDiagnostics = () => request(`${MBMD}/diagnostics`)
+export const mdSessions = () => request(`${MBMD}/sessions`)
+export const mdCreateSession = (documentSourcePublicId, opts = {}) => request(`${MBMD}/sessions`, { method: 'POST', body: JSON.stringify({ document_source_public_id: documentSourcePublicId, dataset_source_public_id: opts.datasetSourcePublicId || null, language_session_public_id: opts.languageSessionPublicId || null, vision_session_public_id: opts.visionSessionPublicId || null, vision_model_session_public_id: opts.visionModelSessionPublicId || null }) })
+export const mdSession = (id) => request(`${MBMD}/sessions/${id}`)
+export const mdEvents = (id) => request(`${MBMD}/sessions/${id}/events`)
+export const mdRecords = (id, recordType, status) => {
+  const params = new URLSearchParams()
+  if (recordType) params.set('record_type', recordType)
+  if (status) params.set('status', status)
+  const qs = params.toString()
+  return request(`${MBMD}/sessions/${id}/records${qs ? `?${qs}` : ''}`)
+}
+export const mdDatasetMemory = () => request(`${MBMD}/dataset-memory`)
+export const mdRunCollectSources = (id) => request(`${MBMD}/sessions/${id}/collect-sources`, { method: 'POST', body: '{}' })
+export const mdRunCollectText = (id) => request(`${MBMD}/sessions/${id}/collect-text`, { method: 'POST', body: '{}' })
+export const mdRunCollectImages = (id) => request(`${MBMD}/sessions/${id}/collect-images`, { method: 'POST', body: '{}' })
+export const mdRunMergeMetadata = (id) => request(`${MBMD}/sessions/${id}/merge-metadata`, { method: 'POST', body: '{}' })
+export const mdRunConversationBuilder = (id) => request(`${MBMD}/sessions/${id}/conversation-builder`, { method: 'POST', body: '{}' })
+export const mdRunInstructionBuilder = (id) => request(`${MBMD}/sessions/${id}/instruction-builder`, { method: 'POST', body: '{}' })
+export const mdRunDatasetDraft = (id) => request(`${MBMD}/sessions/${id}/dataset-draft`, { method: 'POST', body: '{}' })
+export const mdRunQualityAnalysis = (id) => request(`${MBMD}/sessions/${id}/quality-analysis`, { method: 'POST', body: '{}' })
+export const mdRunDuplicateDetection = (id) => request(`${MBMD}/sessions/${id}/duplicate-detection`, { method: 'POST', body: '{}' })
+export const mdGenerateReport = (id) => request(`${MBMD}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const mdAdminReview = (id, decision) => request(`${MBMD}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const mdDeleteDraft = (id) => request(`${MBMD}/sessions/${id}/delete-draft`, { method: 'POST', body: '{}' })
+export const mdExportDraft = (id, format) => request(`${MBMD}/sessions/${id}/export-draft`, { method: 'POST', body: JSON.stringify({ export_format: format || 'json' }) })
+export const mdSplitDataset = (id, recordPublicIds) => request(`${MBMD}/sessions/${id}/split`, { method: 'POST', body: JSON.stringify({ record_public_ids: recordPublicIds }) })
+export const mdMergeDatasets = (sessionPublicIds) => request(`${MBMD}/merge`, { method: 'POST', body: JSON.stringify({ session_public_ids: sessionPublicIds }) })
+
+const MBVR = '/api/admin/mini-brain/vision-rag'
+export const vrDiagnostics = () => request(`${MBVR}/diagnostics`)
+export const vrSessions = () => request(`${MBVR}/sessions`)
+export const vrCreateSession = (multimodalDatasetSessionPublicId, query) => request(`${MBVR}/sessions`, { method: 'POST', body: JSON.stringify({ multimodal_dataset_session_public_id: multimodalDatasetSessionPublicId, query }) })
+export const vrSession = (id) => request(`${MBVR}/sessions/${id}`)
+export const vrEvents = (id) => request(`${MBVR}/sessions/${id}/events`)
+export const vrEvidence = (id, evidenceType, status) => {
+  const params = new URLSearchParams()
+  if (evidenceType) params.set('evidence_type', evidenceType)
+  if (status) params.set('status', status)
+  const qs = params.toString()
+  return request(`${MBVR}/sessions/${id}/evidence${qs ? `?${qs}` : ''}`)
+}
+export const vrRagMemory = () => request(`${MBVR}/rag-memory`)
+export const vrRunTextRetrieval = (id) => request(`${MBVR}/sessions/${id}/text-retrieval`, { method: 'POST', body: '{}' })
+export const vrRunOcrRetrieval = (id) => request(`${MBVR}/sessions/${id}/ocr-retrieval`, { method: 'POST', body: '{}' })
+export const vrRunImageRetrieval = (id) => request(`${MBVR}/sessions/${id}/image-retrieval`, { method: 'POST', body: '{}' })
+export const vrRunObjectRetrieval = (id) => request(`${MBVR}/sessions/${id}/object-retrieval`, { method: 'POST', body: '{}' })
+export const vrRunKnowledgeGraphRetrieval = (id) => request(`${MBVR}/sessions/${id}/knowledge-graph-retrieval`, { method: 'POST', body: '{}' })
+export const vrRunEvidenceFusion = (id) => request(`${MBVR}/sessions/${id}/evidence-fusion`, { method: 'POST', body: '{}' })
+export const vrRunAnswer = (id) => request(`${MBVR}/sessions/${id}/answer`, { method: 'POST', body: '{}' })
+export const vrRunQuality = (id) => request(`${MBVR}/sessions/${id}/quality`, { method: 'POST', body: '{}' })
+export const vrRunHallucinationCheck = (id) => request(`${MBVR}/sessions/${id}/hallucination-check`, { method: 'POST', body: '{}' })
+export const vrGenerateReport = (id) => request(`${MBVR}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const vrCorrect = (id, action, payload) => request(`${MBVR}/sessions/${id}/correct`, { method: 'POST', body: JSON.stringify({ action, payload: payload || {} }) })
+export const vrAdminReview = (id, decision) => request(`${MBVR}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBVO = '/api/admin/mini-brain/voice'
+export const voDiagnostics = () => request(`${MBVO}/diagnostics`)
+export const voSessions = (status, sessionMode) => request(`${MBVO}/sessions?${status ? `status=${status}&` : ''}${sessionMode ? `session_mode=${sessionMode}` : ''}`)
+export const voSession = (id) => request(`${MBVO}/sessions/${id}`)
+export const voEvents = (sessionId) => request(`${MBVO}/events${sessionId ? `?session_id=${sessionId}` : ''}`)
+export const voMemory = () => request(`${MBVO}/memory`)
+export const voStatistics = () => request(`${MBVO}/statistics`)
+export const voTestStt = (audioBase64) => request(`${MBVO}/test-stt`, { method: 'POST', body: JSON.stringify({ audio_base64: audioBase64 }) })
+export const voTestTts = (text) => request(`${MBVO}/test-tts`, { method: 'POST', body: JSON.stringify({ text }) })
+
+const PUBLIC_VO = '/api/public/voice'
+export const voPublicCreateSession = (explicitConsent, languageOverride) => request(`${PUBLIC_VO}/sessions`, { method: 'POST', body: JSON.stringify({ session_mode: 'public_chat', explicit_consent: !!explicitConsent, language_override: languageOverride || 'auto' }) })
+export const voPublicSendChunk = (id, sequence, audioBase64) => request(`${PUBLIC_VO}/sessions/${id}/chunks`, { method: 'POST', body: JSON.stringify({ sequence, audio_base64: audioBase64 }) })
+export const voPublicFinishSession = (id) => request(`${PUBLIC_VO}/sessions/${id}/finish`, { method: 'POST', body: '{}' })
+
+const MBPS = '/api/admin/mini-brain/provider-settings'
+export const psDiagnostics = () => request(`${MBPS}/diagnostics`)
+export const psProviders = (providerType, enabled) => request(`${MBPS}/providers?${providerType ? `provider_type=${providerType}&` : ''}${enabled !== undefined && enabled !== null ? `enabled=${enabled}` : ''}`)
+export const psCreateProvider = (providerKey, enabled, config) => request(`${MBPS}/providers`, { method: 'POST', body: JSON.stringify({ provider_key: providerKey, enabled: !!enabled, config: config || {} }) })
+export const psUpdateProvider = (id, config) => request(`${MBPS}/providers/${id}`, { method: 'PATCH', body: JSON.stringify({ config }) })
+export const psEnableProvider = (id) => request(`${MBPS}/providers/${id}/enable`, { method: 'POST', body: '{}' })
+export const psDisableProvider = (id) => request(`${MBPS}/providers/${id}/disable`, { method: 'POST', body: '{}' })
+export const psSetSecret = (id, secretName, value) => request(`${MBPS}/providers/${id}/secrets`, { method: 'POST', body: JSON.stringify({ secret_name: secretName, value }) })
+export const psDeleteSecret = (id, secretName) => request(`${MBPS}/providers/${id}/secrets/${secretName}`, { method: 'DELETE' })
+export const psTestConnection = (id, secretName, timeoutSeconds) => request(`${MBPS}/providers/${id}/test`, { method: 'POST', body: JSON.stringify({ secret_name: secretName || 'api_key', timeout_seconds: timeoutSeconds || 10 }) })
+export const psProviderAudit = (id) => request(`${MBPS}/providers/${id}/audit`)
+export const psArchiveProvider = (id) => request(`${MBPS}/providers/${id}/archive`, { method: 'POST', body: '{}' })
+export const psMemory = () => request(`${MBPS}/memory`)
+
+const MBLR = '/api/admin/mini-brain/llm-runtime'
+export const lrDiagnostics = () => request(`${MBLR}/diagnostics`)
+// MB-45: single source of truth for the Admin Assistant widget's health
+// banner -- reads the same runtime-resolution state used by /chat and
+// /grounded-chat, replacing the old Phase-8 assistantHealth() call that
+// checked an unrelated Phase-15 inference assignment.
+export const miniBrainWidgetHealth = () => request(`${MBLR}/widget-health`)
+export const lrSessions = (status) => request(`${MBLR}/sessions${status ? `?status=${status}` : ''}`)
+export const lrSession = (id) => request(`${MBLR}/sessions/${id}`)
+export const lrMessages = (id) => request(`${MBLR}/sessions/${id}/messages`)
+export const lrDeleteSession = (id) => request(`${MBLR}/sessions/${id}`, { method: 'DELETE' })
+export const lrChat = (sessionId, message) => request(`${MBLR}/chat`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message }) })
+// MB-37: grounded chat -- retrieves RAG evidence via an existing retrieval profile and
+// injects it into the same local Mini Brain runtime `/chat` already uses.
+export const sendMiniBrainGroundedMessage = (sessionId, message, retrievalProfilePublicId, topK = 4) => request(`${MBLR}/grounded-chat`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message, retrieval_profile_public_id: retrievalProfilePublicId || null, top_k: topK }), timeoutMs: 120_000 })
+// MB-42: read-only lookup used by the floating widget's "Use knowledge base" toggle.
+// MB-48: cache-busting query param -- this is called from multiple
+// independently-mounted components (the widget, the RAG page) that can
+// legitimately overlap in time; without it, the browser's own GET
+// request-coalescing (a connection-layer optimization, unaffected by
+// `cache: 'no-store'`) can silently serve one caller the *other*
+// caller's still-in-flight, pre-switch response for this exact URL --
+// confirmed directly via network-timing captured during
+// e2e/tests/10-grounded-chat.spec.js.
+export const miniBrainDefaultRetrievalProfile = () => request(`${MBLR}/grounded-chat/default-retrieval-profile?_=${Date.now()}`)
+// MB-43: admin-chosen default grounded-chat retrieval profile.
+export const miniBrainSetDefaultRetrievalProfile = (retrievalProfilePublicId) => request(`${MBLR}/grounded-chat/default-retrieval-profile`, { method: 'POST', body: JSON.stringify({ retrieval_profile_public_id: retrievalProfilePublicId }) })
+export const lrExplainPage = (sessionId, pageId, navKey) => request(`${MBLR}/explain-page`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, page_id: pageId || null, nav_key: navKey || null }) })
+export const lrSummarizeReport = (sessionId, report) => request(`${MBLR}/summarize-report`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, report: report || {} }) })
+export const lrSummarizeRegression = (sessionId, regressionResult) => request(`${MBLR}/summarize-regression`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, regression_result: regressionResult || {} }) })
+export const lrExplainError = (sessionId, errorMessage) => request(`${MBLR}/explain-error`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, error_message: errorMessage }) })
+export const lrNextActions = (sessionId, statusSnapshot) => request(`${MBLR}/next-actions`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, status_snapshot: statusSnapshot || {} }) })
+
+// MB-04A: Prompt & Context Optimization. MB-47: real, tested backend
+// with zero UI surface until now.
+const MBPO = '/api/admin/mini-brain/prompt-optimization'
+export const promptLanguageDetect = (question) => request(`${MBPO}/language-detect`, { method: 'POST', body: JSON.stringify({ question }) })
+export const promptTemplates = () => request(`${MBPO}/templates`)
+// MB-48: client-side timeout always exceeds the backend's own configured
+// timeout_seconds (+30s headroom for network/queueing), so the client
+// never gives up before the backend legitimately would.
+export const promptGenerate = (question, { maxTokens, timeoutSeconds, knowledgeBudgetChars } = {}) => request(`${MBPO}/generate`, { method: 'POST', body: JSON.stringify({ question, max_tokens: maxTokens || 256, timeout_seconds: timeoutSeconds || 90.0, knowledge_budget_chars: knowledgeBudgetChars || 900 }), timeoutMs: ((timeoutSeconds || 90.0) * 1000) + 30_000 })
+export const promptCompare = (question, { maxTokens, timeoutSeconds, knowledgeBudgetChars } = {}) => request(`${MBPO}/compare`, { method: 'POST', body: JSON.stringify({ question, max_tokens: maxTokens || 256, timeout_seconds: timeoutSeconds || 90.0, knowledge_budget_chars: knowledgeBudgetChars || 900 }), timeoutMs: ((timeoutSeconds || 90.0) * 2 * 1000) + 30_000 })
+
+const MBLC = '/api/admin/mini-brain/local-setup'
+export const lcHardware = () => request(`${MBLC}/hardware`)
+export const lcScanModels = () => request(`${MBLC}/scan-models`)
+export const lcRecommendations = () => request(`${MBLC}/recommendations`)
+export const lcSaveLocalModel = (modelPath, contextLength, maxTokens, temperature, threads, additionalModelDirs) => request(`${MBLC}/save-local-model`, { method: 'POST', body: JSON.stringify({ model_path: modelPath || null, context_length: Number(contextLength) || 2048, max_tokens: Number(maxTokens) || 512, temperature: Number(temperature), threads: Number(threads) || 4, additional_model_dirs: additionalModelDirs || null }) })
+export const lcSaveProvider = (providerKey, apiKey, model, enabled) => request(`${MBLC}/save-provider`, { method: 'POST', body: JSON.stringify({ provider_key: providerKey, api_key: apiKey || null, model: model || null, enabled: !!enabled }) })
+export const lcProvidersCatalog = () => request(`${MBLC}/providers/catalog`)
+export const lcSetupGuide = () => request(`${MBLC}/setup-guide`)
+export const lcDiagnostics = () => request(`${MBLC}/diagnostics`)
+
+const MBRM = '/api/admin/mini-brain/runtime-manager'
+export const rmHardware = () => request(`${MBRM}/hardware`)
+export const rmCatalog = () => request(`${MBRM}/catalog`)
+export const rmInstalled = () => request(`${MBRM}/installed`)
+export const rmStatus = () => request(`${MBRM}/status`)
+export const rmRecommendation = () => request(`${MBRM}/recommendation`)
+export const rmDownload = (modelId) => request(`${MBRM}/download`, { method: 'POST', body: JSON.stringify({ model_id: modelId }) })
+export const rmVerify = (modelId) => request(`${MBRM}/verify`, { method: 'POST', body: JSON.stringify({ model_id: modelId }) })
+export const rmInstall = (modelId) => request(`${MBRM}/install`, { method: 'POST', body: JSON.stringify({ model_id: modelId }) })
+export const rmLoad = (modelId, contextLength, maxTokens, temperature, threads) => request(`${MBRM}/load`, { method: 'POST', body: JSON.stringify({ model_id: modelId, context_length: Number(contextLength) || 2048, max_tokens: Number(maxTokens) || 512, temperature: Number(temperature), threads: Number(threads) || 4 }) })
+export const rmUnload = () => request(`${MBRM}/unload`, { method: 'POST', body: '{}' })
+export const rmBenchmark = (modelId, prompt) => request(`${MBRM}/benchmark`, { method: 'POST', body: JSON.stringify({ model_id: modelId, prompt: prompt || 'Say hello in one short sentence.' }) })
+export const rmRemove = (modelId) => request(`${MBRM}/remove`, { method: 'POST', body: JSON.stringify({ model_id: modelId }) })
+export const rmEvents = () => request(`${MBRM}/events`)
+export const rmMemory = () => request(`${MBRM}/memory`)
+
+const MBTP = '/api/admin/mini-brain/training-pipeline'
+export const tpDiagnostics = () => request(`${MBTP}/diagnostics`)
+export const tpSessions = () => request(`${MBTP}/sessions`)
+export const tpCreateSession = (topic) => request(`${MBTP}/sessions`, { method: 'POST', body: JSON.stringify({ topic }) })
+export const tpSession = (id) => request(`${MBTP}/sessions/${id}`)
+export const tpEvents = (id) => request(`${MBTP}/sessions/${id}/events`)
+export const tpPackages = (id) => request(`${MBTP}/sessions/${id}/packages`)
+export const tpPackageMetadata = (packageId) => request(`${MBTP}/packages/${packageId}`)
+export const tpMemory = () => request(`${MBTP}/memory`)
+export const tpRagMemory = () => request(`${MBTP}/rag-memory`)
+export const tpRunCollectDatasets = (id, datasetSessionPublicIds) => request(`${MBTP}/sessions/${id}/collect-datasets`, { method: 'POST', body: JSON.stringify({ dataset_session_public_ids: datasetSessionPublicIds }) })
+export const tpRunCollectRagMemory = (id, ragSessionPublicIds) => request(`${MBTP}/sessions/${id}/collect-rag-memory`, { method: 'POST', body: JSON.stringify({ rag_session_public_ids: ragSessionPublicIds || [] }) })
+export const tpRunAnalyzeLanguage = (id) => request(`${MBTP}/sessions/${id}/analyze-language`, { method: 'POST', body: '{}' })
+export const tpRunAnalyzeVision = (id) => request(`${MBTP}/sessions/${id}/analyze-vision`, { method: 'POST', body: '{}' })
+export const tpRunAnalyzeTokenizer = (id) => request(`${MBTP}/sessions/${id}/analyze-tokenizer`, { method: 'POST', body: '{}' })
+export const tpRunPlanSplits = (id, seed) => request(`${MBTP}/sessions/${id}/plan-splits`, { method: 'POST', body: JSON.stringify({ seed: seed ?? null }) })
+export const tpRunPlanCurriculum = (id) => request(`${MBTP}/sessions/${id}/plan-curriculum`, { method: 'POST', body: '{}' })
+export const tpRunEstimateHardware = (id) => request(`${MBTP}/sessions/${id}/estimate-hardware`, { method: 'POST', body: '{}' })
+export const tpRunBuildPackage = (id) => request(`${MBTP}/sessions/${id}/build-package`, { method: 'POST', body: '{}' })
+export const tpGenerateReport = (id) => request(`${MBTP}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const tpAdminReview = (id, decision) => request(`${MBTP}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBEC = '/api/admin/mini-brain/evaluation-center'
+export const ecDiagnostics = () => request(`${MBEC}/diagnostics`)
+export const ecSessions = () => request(`${MBEC}/sessions`)
+export const ecCreateSession = (topic) => request(`${MBEC}/sessions`, { method: 'POST', body: JSON.stringify({ topic }) })
+export const ecSession = (id) => request(`${MBEC}/sessions/${id}`)
+export const ecEvents = (id) => request(`${MBEC}/sessions/${id}/events`)
+export const ecResults = (id, category) => request(`${MBEC}/sessions/${id}/results${category ? `?category=${category}` : ''}`)
+export const ecExports = (id) => request(`${MBEC}/sessions/${id}/exports`)
+export const ecMemory = () => request(`${MBEC}/memory`)
+export const ecRunCollectDatasets = (id, datasetSessionPublicIds) => request(`${MBEC}/sessions/${id}/collect-datasets`, { method: 'POST', body: JSON.stringify({ dataset_session_public_ids: datasetSessionPublicIds }) })
+export const ecRunCollectRagSessions = (id, ragSessionPublicIds) => request(`${MBEC}/sessions/${id}/collect-rag-sessions`, { method: 'POST', body: JSON.stringify({ rag_session_public_ids: ragSessionPublicIds || [] }) })
+export const ecRunCollectTrainingPackages = (id, trainingPackageSessionPublicIds) => request(`${MBEC}/sessions/${id}/collect-training-packages`, { method: 'POST', body: JSON.stringify({ training_package_session_public_ids: trainingPackageSessionPublicIds || [] }) })
+export const ecRunLanguageBenchmarks = (id) => request(`${MBEC}/sessions/${id}/language-benchmarks`, { method: 'POST', body: '{}' })
+export const ecRunOcrBenchmarks = (id) => request(`${MBEC}/sessions/${id}/ocr-benchmarks`, { method: 'POST', body: '{}' })
+export const ecRunGroundingRetrievalBenchmarks = (id) => request(`${MBEC}/sessions/${id}/grounding-retrieval-benchmarks`, { method: 'POST', body: '{}' })
+export const ecRunMultimodalBenchmarks = (id) => request(`${MBEC}/sessions/${id}/multimodal-benchmarks`, { method: 'POST', body: '{}' })
+export const ecRunPackageBenchmarks = (id) => request(`${MBEC}/sessions/${id}/package-benchmarks`, { method: 'POST', body: '{}' })
+export const ecRunRegression = (id, baselineSessionPublicId) => request(`${MBEC}/sessions/${id}/regression`, { method: 'POST', body: JSON.stringify({ baseline_session_public_id: baselineSessionPublicId || null }) })
+export const ecGenerateReport = (id) => request(`${MBEC}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const ecAdminReview = (id, decision) => request(`${MBEC}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBRG = '/api/admin/mini-brain/release-governance'
+export const rgDiagnostics = () => request(`${MBRG}/diagnostics`)
+export const rgSessions = () => request(`${MBRG}/sessions`)
+export const rgCreateSession = (topic) => request(`${MBRG}/sessions`, { method: 'POST', body: JSON.stringify({ topic }) })
+export const rgSession = (id) => request(`${MBRG}/sessions/${id}`)
+export const rgEvents = (id) => request(`${MBRG}/sessions/${id}/events`)
+export const rgArtifacts = (id) => request(`${MBRG}/sessions/${id}/artifacts`)
+export const rgMemory = () => request(`${MBRG}/memory`)
+export const rgRunCollectDatasets = (id, datasetSessionPublicIds) => request(`${MBRG}/sessions/${id}/collect-datasets`, { method: 'POST', body: JSON.stringify({ dataset_session_public_ids: datasetSessionPublicIds }) })
+export const rgRunCollectRag = (id, ragSessionPublicIds) => request(`${MBRG}/sessions/${id}/collect-rag`, { method: 'POST', body: JSON.stringify({ rag_session_public_ids: ragSessionPublicIds || [] }) })
+export const rgRunCollectPackage = (id, trainingPackageSessionPublicId) => request(`${MBRG}/sessions/${id}/collect-package`, { method: 'POST', body: JSON.stringify({ training_package_session_public_id: trainingPackageSessionPublicId }) })
+export const rgRunCollectEvaluation = (id, evaluationSessionPublicId) => request(`${MBRG}/sessions/${id}/collect-evaluation`, { method: 'POST', body: JSON.stringify({ evaluation_session_public_id: evaluationSessionPublicId }) })
+export const rgRunSafety = (id) => request(`${MBRG}/sessions/${id}/run-safety`, { method: 'POST', body: '{}' })
+export const rgRunCompliance = (id) => request(`${MBRG}/sessions/${id}/run-compliance`, { method: 'POST', body: '{}' })
+export const rgRunBenchmarks = (id) => request(`${MBRG}/sessions/${id}/run-benchmarks`, { method: 'POST', body: '{}' })
+export const rgBuildRiskRollback = (id) => request(`${MBRG}/sessions/${id}/build-risk-rollback`, { method: 'POST', body: '{}' })
+export const rgBuildPackage = (id) => request(`${MBRG}/sessions/${id}/build-package`, { method: 'POST', body: '{}' })
+export const rgGenerateReport = (id) => request(`${MBRG}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const rgAdminReview = (id, decision) => request(`${MBRG}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+
+const MBGA = '/api/admin/mini-brain/external-ai-gateway'
+export const gaDiagnostics = () => request(`${MBGA}/diagnostics`)
+export const gaSessions = () => request(`${MBGA}/sessions`)
+export const gaCreateSession = (topic, purpose, datasetSessionPublicIds, ragSessionPublicId) => request(`${MBGA}/sessions`, { method: 'POST', body: JSON.stringify({ topic, purpose, dataset_session_public_ids: datasetSessionPublicIds || [], rag_session_public_id: ragSessionPublicId || null }) })
+export const gaSession = (id) => request(`${MBGA}/sessions/${id}`)
+export const gaEvents = (id) => request(`${MBGA}/sessions/${id}/events`)
+export const gaProviderRuns = (id) => request(`${MBGA}/sessions/${id}/provider-runs`)
+export const gaMemory = () => request(`${MBGA}/memory`)
+export const gaAuthorize = (id, authorizationNote) => request(`${MBGA}/sessions/${id}/authorize`, { method: 'POST', body: JSON.stringify({ authorization_note: authorizationNote }) })
+export const gaSanitize = (id, adminStatedNeed) => request(`${MBGA}/sessions/${id}/sanitize`, { method: 'POST', body: JSON.stringify({ admin_stated_need: adminStatedNeed || '' }) })
+export const gaSelectProviders = (id, requestedProviderKeys) => request(`${MBGA}/sessions/${id}/select-providers`, { method: 'POST', body: JSON.stringify({ requested_provider_keys: requestedProviderKeys }) })
+export const gaDispatch = (id, timeoutSeconds, retainRawResponses) => request(`${MBGA}/sessions/${id}/dispatch`, { method: 'POST', body: JSON.stringify({ timeout_seconds: timeoutSeconds || 30.0, retain_raw_responses: !!retainRawResponses }) })
+export const gaCollect = (id) => request(`${MBGA}/sessions/${id}/collect`, { method: 'POST', body: '{}' })
+export const gaNormalize = (id) => request(`${MBGA}/sessions/${id}/normalize`, { method: 'POST', body: '{}' })
+export const gaAnalyze = (id) => request(`${MBGA}/sessions/${id}/analyze`, { method: 'POST', body: '{}' })
+export const gaBuildEvidence = (id) => request(`${MBGA}/sessions/${id}/build-evidence`, { method: 'POST', body: '{}' })
+export const gaGenerateReport = (id) => request(`${MBGA}/sessions/${id}/report`, { method: 'POST', body: '{}' })
+export const gaAdminReview = (id, decision) => request(`${MBGA}/sessions/${id}/admin-review`, { method: 'POST', body: JSON.stringify({ decision }) })
+export const gaArchive = (id) => request(`${MBGA}/sessions/${id}/archive`, { method: 'POST', body: '{}' })
+
+// MB-40/41: exports an admin_accepted External AI Gateway session into
+// Dataset Studio, and (opt-in) on into a RAG knowledge space + index in
+// the same call. MB-47: this was the one real, tested route (18+10
+// passing tests) with zero api.js binding until now.
+const MBEGDB = '/api/admin/mini-brain/external-ai-gateway-dataset-bridge'
+export const egdbExportToDataset = (sessionId, payload) => request(`${MBEGDB}/sessions/${sessionId}/export-to-dataset`, { method: 'POST', body: JSON.stringify(payload), timeoutMs: 60_000 })
+
+const MBTE = '/api/admin/mini-brain/training-engine'
+export const teDiagnostics = () => request(`${MBTE}/diagnostics`)
+export const teJobs = () => request(`${MBTE}/jobs`)
+export const teCreateJob = (topic, trainingPackageSessionPublicId, releaseGovernanceSessionPublicId, executionMode) => request(`${MBTE}/jobs`, { method: 'POST', body: JSON.stringify({ topic, training_package_session_public_id: trainingPackageSessionPublicId, release_governance_session_public_id: releaseGovernanceSessionPublicId, execution_mode: executionMode || 'simulation' }) })
+export const teJob = (id) => request(`${MBTE}/jobs/${id}`)
+export const teEvents = (id) => request(`${MBTE}/jobs/${id}/events`)
+export const teCheckpoints = (id) => request(`${MBTE}/jobs/${id}/checkpoints`)
+export const teMetrics = (id) => request(`${MBTE}/jobs/${id}/metrics`)
+export const teAudit = (id) => request(`${MBTE}/jobs/${id}/audit`)
+export const teMemory = () => request(`${MBTE}/memory`)
+export const teValidateRelease = (id) => request(`${MBTE}/jobs/${id}/validate-release`, { method: 'POST', body: '{}' })
+export const teValidatePackage = (id) => request(`${MBTE}/jobs/${id}/validate-package`, { method: 'POST', body: '{}' })
+export const teAuthorize = (id, authorizationReason) => request(`${MBTE}/jobs/${id}/authorize`, { method: 'POST', body: JSON.stringify({ authorization_reason: authorizationReason }) })
+export const tePlanResources = (id) => request(`${MBTE}/jobs/${id}/plan-resources`, { method: 'POST', body: '{}' })
+export const teBuildManifest = (id) => request(`${MBTE}/jobs/${id}/build-manifest`, { method: 'POST', body: '{}' })
+export const teReserveRuntime = (id) => request(`${MBTE}/jobs/${id}/reserve-runtime`, { method: 'POST', body: '{}' })
+export const teStart = (id) => request(`${MBTE}/jobs/${id}/start`, { method: 'POST', body: '{}' })
+export const teStreamMetric = (id, step, epoch) => request(`${MBTE}/jobs/${id}/metrics`, { method: 'POST', body: JSON.stringify({ step, epoch }) })
+export const teSaveCheckpoint = (id, step, epoch) => request(`${MBTE}/jobs/${id}/checkpoints`, { method: 'POST', body: JSON.stringify({ step, epoch }) })
+export const tePause = (id) => request(`${MBTE}/jobs/${id}/pause`, { method: 'POST', body: '{}' })
+export const teResume = (id) => request(`${MBTE}/jobs/${id}/resume`, { method: 'POST', body: '{}' })
+export const teCancel = (id) => request(`${MBTE}/jobs/${id}/cancel`, { method: 'POST', body: '{}' })
+export const teFinalize = (id) => request(`${MBTE}/jobs/${id}/finalize`, { method: 'POST', body: '{}' })
+export const teGenerateReport = (id) => request(`${MBTE}/jobs/${id}/report`, { method: 'POST', body: '{}' })
+export const teArchive = (id) => request(`${MBTE}/jobs/${id}/archive`, { method: 'POST', body: '{}' })
+
+const MBPCR = '/api/admin/mini-brain/public-chat'
+export const pcrDiagnostics = () => request(`${MBPCR}/diagnostics`)
+export const pcrSessions = (status) => request(`${MBPCR}/sessions${status ? `?status=${status}` : ''}`)
+export const pcrSession = (id) => request(`${MBPCR}/sessions/${id}`)
+export const pcrMessages = (id) => request(`${MBPCR}/sessions/${id}/messages`)
+export const pcrSignals = (id) => request(`${MBPCR}/sessions/${id}/signals`)
+export const pcrSessionEvents = (id) => request(`${MBPCR}/sessions/${id}/events`)
+export const pcrClusters = () => request(`${MBPCR}/clusters`)
+export const pcrGenerateCandidates = (minimumFrequency) => request(`${MBPCR}/candidates/generate`, { method: 'POST', body: JSON.stringify({ minimum_frequency: minimumFrequency || 2 }) })
+export const pcrCandidates = (status) => request(`${MBPCR}/candidates${status ? `?status=${status}` : ''}`)
+export const pcrCandidate = (id) => request(`${MBPCR}/candidates/${id}`)
+export const pcrCandidateEvents = (id) => request(`${MBPCR}/candidates/${id}/events`)
+export const pcrReviewCandidate = (id, decision, notes) => request(`${MBPCR}/candidates/${id}/review`, { method: 'POST', body: JSON.stringify({ decision, notes: notes || null }) })
+export const pcrAnalytics = () => request(`${MBPCR}/analytics`)
+export const pcrExportAnalytics = () => request(`${MBPCR}/exports/analytics`)
+export const pcrExportCandidates = (status) => request(`${MBPCR}/exports/candidates${status ? `?status=${status}` : ''}`)
+
+const PUBLIC_PC = '/api/public/chat'
+export const pcrStartSession = (language) => request(`${PUBLIC_PC}/sessions`, { method: 'POST', body: JSON.stringify({ language: language || 'auto' }) })
+export const pcrSendMessage = (id, message) => request(`${PUBLIC_PC}/sessions/${id}/messages`, { method: 'POST', body: JSON.stringify({ message }) })
+export const pcrSubmitFeedback = (id, satisfactionRating, comment) => request(`${PUBLIC_PC}/sessions/${id}/feedback`, { method: 'POST', body: JSON.stringify({ satisfaction_rating: satisfactionRating ?? null, comment: comment || null }) })
+export const pcrEndSession = (id) => request(`${PUBLIC_PC}/sessions/${id}/end`, { method: 'POST', body: '{}' })
+
+const MBPG = '/api/admin/mini-brain/plugin-governance'
+export const pgDiagnostics = () => request(`${MBPG}/diagnostics`)
+export const pgPlugins = (status) => request(`${MBPG}/plugins${status ? `?status=${status}` : ''}`)
+export const pgPlugin = (id) => request(`${MBPG}/plugins/${id}`)
+export const pgRegisterPlugin = (manifest, source) => request(`${MBPG}/plugins`, { method: 'POST', body: JSON.stringify({ manifest, source: source || 'manual_upload' }) })
+export const pgValidateManifest = (id) => request(`${MBPG}/plugins/${id}/validate`, { method: 'POST', body: '{}' })
+export const pgClassifyCapabilities = (id) => request(`${MBPG}/plugins/${id}/classify`, { method: 'POST', body: '{}' })
+export const pgComputeRiskScore = (id) => request(`${MBPG}/plugins/${id}/risk-score`, { method: 'POST', body: '{}' })
+export const pgBuildSandboxProfile = (id) => request(`${MBPG}/plugins/${id}/sandbox-profile`, { method: 'POST', body: '{}' })
+export const pgBuildFilesystemPolicy = (id) => request(`${MBPG}/plugins/${id}/filesystem-policy`, { method: 'POST', body: '{}' })
+export const pgBuildNetworkPolicy = (id) => request(`${MBPG}/plugins/${id}/network-policy`, { method: 'POST', body: '{}' })
+export const pgEnablePlugin = (id) => request(`${MBPG}/plugins/${id}/enable`, { method: 'POST', body: '{}' })
+export const pgEvaluatePermission = (id, scopeKey, isPublicChat, userIdHash) => request(`${MBPG}/plugins/${id}/evaluate-permission`, { method: 'POST', body: JSON.stringify({ scope_key: scopeKey, is_public_chat: !!isPublicChat, user_id_hash: userIdHash || null }) })
+export const pgRequestConsent = (id, scopeKey, rawUserIdentity, consentGiven, ttlSeconds) => request(`${MBPG}/plugins/${id}/request-consent`, { method: 'POST', body: JSON.stringify({ scope_key: scopeKey, raw_user_identity: rawUserIdentity, consent_given: !!consentGiven, ttl_seconds: ttlSeconds ?? null }) })
+export const pgGrantPermission = (id, scopeKey, userIdHash) => request(`${MBPG}/plugins/${id}/grant-permission`, { method: 'POST', body: JSON.stringify({ scope_key: scopeKey, user_id_hash: userIdHash || null }) })
+export const pgRevokePermission = (id, scopeKey) => request(`${MBPG}/plugins/${id}/revoke-permission`, { method: 'POST', body: JSON.stringify({ scope_key: scopeKey }) })
+export const pgIssueToken = (id, scopeKeys, rawUserIdentity, rawSessionIdentity, ttlSeconds) => request(`${MBPG}/plugins/${id}/issue-token`, { method: 'POST', body: JSON.stringify({ scope_keys: scopeKeys, raw_user_identity: rawUserIdentity, raw_session_identity: rawSessionIdentity, ttl_seconds: ttlSeconds || 300 }) })
+export const pgRuntimeEvent = (id, eventType, message, metadata) => request(`${MBPG}/plugins/${id}/runtime-event`, { method: 'POST', body: JSON.stringify({ event_type: eventType, message: message || '', metadata: metadata || {} }) })
+export const pgGenerateReport = (id) => request(`${MBPG}/plugins/${id}/report`, { method: 'POST', body: '{}' })
+export const pgDisablePlugin = (id) => request(`${MBPG}/plugins/${id}/disable`, { method: 'POST', body: '{}' })
+export const pgArchivePlugin = (id) => request(`${MBPG}/plugins/${id}/archive`, { method: 'POST', body: '{}' })
+export const pgEvents = (id) => request(`${MBPG}/plugins/${id}/events`)
+export const pgConsents = (id) => request(`${MBPG}/plugins/${id}/consents`)
+export const pgPermissions = (id) => request(`${MBPG}/plugins/${id}/permissions`)
+export const pgMemory = () => request(`${MBPG}/memory`)
+
+const PUBLIC_PG = '/api/public/plugin-policy'
+export const pgCheckPolicy = (pluginId, scopeKey) => request(`${PUBLIC_PG}/check?plugin_id=${encodeURIComponent(pluginId)}&scope_key=${encodeURIComponent(scopeKey)}`)
+
+const MBPR = '/api/admin/mini-brain/plugin-runtime'
+export const prDiagnostics = () => request(`${MBPR}/diagnostics`)
+export const prExecute = (pluginPublicId, scopeKey, argumentsObj, executionToken, timeoutSeconds) => request(`${MBPR}/execute`, { method: 'POST', body: JSON.stringify({ plugin_public_id: pluginPublicId, scope_key: scopeKey, arguments: argumentsObj || {}, execution_token: executionToken, timeout_seconds: timeoutSeconds || 5.0 }) })
+export const prExecutions = (status, pluginPublicId) => request(`${MBPR}/executions?${status ? `status=${status}&` : ''}${pluginPublicId ? `plugin_public_id=${pluginPublicId}` : ''}`)
+export const prExecution = (id) => request(`${MBPR}/executions/${id}`)
+export const prExecutionLogs = (id) => request(`${MBPR}/executions/${id}/logs`)
+export const prGenerateReport = (id) => request(`${MBPR}/executions/${id}/report`, { method: 'POST', body: '{}' })
+export const prCancelExecution = (id) => request(`${MBPR}/executions/${id}/cancel`, { method: 'POST', body: '{}' })
+export const prArchiveExecution = (id) => request(`${MBPR}/executions/${id}/archive`, { method: 'POST', body: '{}' })
+export const prRuntimeEvent = (id, eventType, message, metadata) => request(`${MBPR}/executions/${id}/runtime-event`, { method: 'POST', body: JSON.stringify({ event_type: eventType, message: message || '', metadata: metadata || {} }) })
+export const prMemory = () => request(`${MBPR}/memory`)
+export const prStatistics = () => request(`${MBPR}/statistics`)
+
+const PUBLIC_PR = '/api/public/plugin-runtime'
+export const prPublicExecute = (pluginPublicId, scopeKey, argumentsObj, rawUserIdentity, executionToken) => request(`${PUBLIC_PR}/execute`, { method: 'POST', body: JSON.stringify({ plugin_public_id: pluginPublicId, scope_key: scopeKey, arguments: argumentsObj || {}, raw_user_identity: rawUserIdentity, execution_token: executionToken }) })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import StatusCard from '../components/StatusCard.jsx'
 import {
   acceptConversationSummary,
@@ -37,6 +37,7 @@ import {
   orchestrationContext,
   orchestrationIssues,
   orchestrationResponse,
+  orchestrationRun,
   pauseConversationSession,
   postConversationMessage,
   rejectMemoryItem,
@@ -71,14 +72,17 @@ export default function ConversationMemoryPage() {
   const [policyForm, setPolicyForm] = useState({ name: '', default_session_mode: 'private_no_persist', allow_long_term_memory: false })
   const [selectedPolicyId, setSelectedPolicyId] = useState('')
 
-  const [sessionForm, setSessionForm] = useState({ session_mode: 'private_no_persist', memory_policy_public_id: '', participant_scope_key: '', model_assignment_public_id: '' })
+  const [sessionForm, setSessionForm] = useState({ session_mode: 'private_no_persist', memory_policy_public_id: '', participant_scope_key: '', model_assignment_public_id: '', rag_retrieval_profile_public_id: '' })
   const [selectedSessionId, setSelectedSessionId] = useState('')
   const [sessionDetail, setSessionDetail] = useState(null)
   const [turns, setTurns] = useState({ items: [] })
 
   const [chatMessage, setChatMessage] = useState('')
   const [chatHistory, setChatHistory] = useState([])
+  const [chatSending, setChatSending] = useState(false)
+  const chatEndRef = useRef(null)
   const [lastOrchestrationRunId, setLastOrchestrationRunId] = useState('')
+  const [orchestrationRunData, setOrchestrationRunData] = useState(null)
   const [orchestrationContextData, setOrchestrationContextData] = useState(null)
   const [orchestrationResponseData, setOrchestrationResponseData] = useState(null)
   const [orchestrationIssuesData, setOrchestrationIssuesData] = useState(null)
@@ -124,6 +128,7 @@ export default function ConversationMemoryPage() {
   }
 
   useEffect(() => { load() }, [])
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ block: 'nearest' }) }, [chatHistory])
 
   async function submitPolicy(event) {
     event.preventDefault()
@@ -144,9 +149,11 @@ export default function ConversationMemoryPage() {
     try {
       const body = { ...sessionForm }
       if (!body.model_assignment_public_id) delete body.model_assignment_public_id
-      await createConversationSession(body)
+      if (!body.rag_retrieval_profile_public_id) delete body.rag_retrieval_profile_public_id
+      const created = await createConversationSession(body)
       setPanelError('')
       await load()
+      await openSession(created.public_id)
     } catch (error) {
       setPanelError(error.message)
     }
@@ -154,8 +161,28 @@ export default function ConversationMemoryPage() {
   async function loadSessionDetail(id) {
     setSelectedSessionId(id)
     setSessionDetail(await conversationSession(id).catch(() => null))
-    setTurns(await conversationSessionTurns(id).catch(() => ({ items: [] })))
+    const loadedTurns = await conversationSessionTurns(id).catch(() => ({ items: [] }))
+    setTurns(loadedTurns)
     setSummaries(await conversationSummaries(id).catch(() => ({ items: [] })))
+    return loadedTurns
+  }
+  // Opening a (possibly different) session must restore its persisted
+  // transcript into the chat view -- loadSessionDetail alone only
+  // refreshes metadata/turns/summaries state, it never touches
+  // chatHistory, so switching sessions previously left stale or empty
+  // chat bubbles on screen. Historical turns carry no citation data
+  // (chat_response_citations link to a grounded_response, not a turn),
+  // so restored turns render without citations -- only the transcript
+  // text/role, matching what's actually persisted.
+  async function openSession(id) {
+    const loadedTurns = await loadSessionDetail(id)
+    setChatHistory(
+      (loadedTurns.items ?? []).map((item) => ({
+        role: item.role,
+        text: item.stored_content ?? '(not persisted)',
+      })),
+    )
+    setLastOrchestrationRunId('')
   }
   async function runPause() {
     try { await pauseConversationSession(selectedSessionId); setPanelError(''); await loadSessionDetail(selectedSessionId) }
@@ -176,18 +203,30 @@ export default function ConversationMemoryPage() {
 
   async function sendMessage(event) {
     event.preventDefault()
+    const sentMessage = chatMessage
+    setChatSending(true)
     try {
-      const result = await postConversationMessage(selectedSessionId, { message: chatMessage })
-      setChatHistory((old) => [...old, { role: 'user', text: chatMessage }, { role: 'assistant', text: result.answer_text, status: result.response?.answer_status }])
+      const result = await postConversationMessage(selectedSessionId, { message: sentMessage })
+      setChatHistory((old) => [
+        ...old,
+        { role: 'user', text: sentMessage },
+        {
+          role: 'assistant', text: result.answer_text, status: result.response?.answer_status,
+          citations: result.citations ?? [],
+        },
+      ])
       setLastOrchestrationRunId(result.orchestration_run.public_id)
       setChatMessage('')
       setPanelError('')
       await loadSessionDetail(selectedSessionId)
     } catch (error) {
       setPanelError(error.message)
+    } finally {
+      setChatSending(false)
     }
   }
   async function loadOrchestrationTrace() {
+    setOrchestrationRunData(await orchestrationRun(lastOrchestrationRunId).catch(() => null))
     setOrchestrationContextData(await orchestrationContext(lastOrchestrationRunId).catch(() => null))
     setOrchestrationResponseData(await orchestrationResponse(lastOrchestrationRunId).catch(() => null))
     setOrchestrationIssuesData(await orchestrationIssues(lastOrchestrationRunId).catch(() => null))
@@ -346,7 +385,7 @@ export default function ConversationMemoryPage() {
         <section className="data-list">
           <h3>Sessions</h3>
           {(state.sessions ?? []).map((item) => (
-            <button className="training-job-row" key={item.public_id} onClick={() => loadSessionDetail(item.public_id)}>
+            <button className="training-job-row" key={item.public_id} onClick={() => openSession(item.public_id)}>
               <strong>{item.session_mode}</strong>
               <span>{item.status}</span>
             </button>
@@ -418,16 +457,17 @@ export default function ConversationMemoryPage() {
               <form className="inline-form training-form" onSubmit={submitSession}>
                 <h3>Create session</h3>
                 <label>Mode
-                  <select value={sessionForm.session_mode} onChange={(e) => setSessionForm({ ...sessionForm, session_mode: e.target.value })}>
+                  <select value={sessionForm.session_mode} onChange={(e) => setSessionForm((prev) => ({ ...prev, session_mode: e.target.value }))}>
                     <option value="private_no_persist">private_no_persist</option>
                     <option value="stateless">stateless</option>
                     <option value="session_memory">session_memory</option>
                     <option value="consented_memory">consented_memory</option>
                   </select>
                 </label>
-                <label>Memory policy public ID<input value={sessionForm.memory_policy_public_id} onChange={(e) => setSessionForm({ ...sessionForm, memory_policy_public_id: e.target.value })} /></label>
-                <label>Participant scope key<input value={sessionForm.participant_scope_key} onChange={(e) => setSessionForm({ ...sessionForm, participant_scope_key: e.target.value })} /></label>
-                <label>Inference assignment public ID (optional)<input value={sessionForm.model_assignment_public_id} onChange={(e) => setSessionForm({ ...sessionForm, model_assignment_public_id: e.target.value })} /></label>
+                <label>Memory policy public ID<input value={sessionForm.memory_policy_public_id} onChange={(e) => setSessionForm((prev) => ({ ...prev, memory_policy_public_id: e.target.value }))} /></label>
+                <label>Participant scope key<input value={sessionForm.participant_scope_key} onChange={(e) => setSessionForm((prev) => ({ ...prev, participant_scope_key: e.target.value }))} /></label>
+                <label>Inference assignment public ID (optional)<input value={sessionForm.model_assignment_public_id} onChange={(e) => setSessionForm((prev) => ({ ...prev, model_assignment_public_id: e.target.value }))} /></label>
+                <label>RAG retrieval profile public ID (optional)<input value={sessionForm.rag_retrieval_profile_public_id} onChange={(e) => setSessionForm((prev) => ({ ...prev, rag_retrieval_profile_public_id: e.target.value }))} /></label>
                 <button type="submit">Create session</button>
               </form>
               {sessionDetail && (
@@ -599,6 +639,8 @@ export default function ConversationMemoryPage() {
             <>
               <p className="notice">Send a message in the Grounded Conversation Lab tab, then inspect its trace here.</p>
               <button onClick={loadOrchestrationTrace}>Load latest orchestration trace</button>
+              <h4>Run (status, runtime)</h4>
+              <Pre value={orchestrationRunData} />
               <h4>Context assembly</h4>
               <Pre value={orchestrationContextData} />
               <h4>Response</h4>
@@ -616,12 +658,25 @@ export default function ConversationMemoryPage() {
                 <>
                   <div className="data-list">
                     {chatHistory.map((turn, index) => (
-                      <article key={index}><strong>{turn.role}:</strong> {turn.text} {turn.status && <em>({turn.status})</em>}</article>
+                      <article key={index}>
+                        <strong>{turn.role}:</strong> {turn.text} {turn.status && <em>({turn.status})</em>}
+                        {turn.citations && turn.citations.length > 0 && (
+                          <ul>
+                            {turn.citations.map((citation) => (
+                              <li key={citation.public_id}>
+                                [{citation.rank}] {citation.citation_label} · {citation.evidence_type} · {citation.validation_status}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </article>
                     ))}
+                    {chatSending && <div className="notice">Waiting for a response…</div>}
+                    <div ref={chatEndRef} />
                   </div>
                   <form className="inline-form training-form" onSubmit={sendMessage}>
-                    <label>Message<input value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} /></label>
-                    <button type="submit">Send</button>
+                    <label>Message<input value={chatMessage} onChange={(e) => setChatMessage(e.target.value)} disabled={chatSending} /></label>
+                    <button type="submit" disabled={chatSending || !chatMessage}>{chatSending ? 'Sending…' : 'Send'}</button>
                   </form>
                 </>
               )}

@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures.js'
+import { expect, openSidebarPage, test } from '../fixtures.js'
 
 const MOBILE_VIEWPORT = { width: 390, height: 844 } // iPhone 12-class
 
@@ -26,7 +26,7 @@ test.describe('Mobile layout', () => {
     // Choosing a page both navigates and auto-closes the mobile menu --
     // real behavior already implemented in Sidebar.jsx's choose(), not
     // something this test invents.
-    await page.getByRole('button', { name: 'Production Readiness', exact: true }).click()
+    await openSidebarPage(page, 'Production Readiness')
     await expect(page.getByRole('heading', { name: 'Production Readiness' })).toBeVisible()
     await expect(sidebar).not.toHaveClass(/open/)
   })
@@ -57,7 +57,7 @@ test.describe('Mobile layout', () => {
   }) => {
     await page.setViewportSize(MOBILE_VIEWPORT)
     await page.getByRole('button', { name: 'Open menu' }).click()
-    await page.getByRole('button', { name: 'Production Readiness', exact: true }).click()
+    await openSidebarPage(page, 'Production Readiness')
     await expect(page.getByRole('heading', { name: 'Production Readiness' })).toBeVisible()
 
     for (const tab of ['Model Release', 'Canary & Activation', 'Regression']) {
@@ -80,7 +80,7 @@ test.describe('Accessibility basics', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(page.getByRole('heading', { name: 'Overview', level: 1 })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Production Readiness', exact: true }).click()
+    await openSidebarPage(page, 'Production Readiness')
     await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(page.getByRole('heading', { name: 'Production Readiness', level: 1 })).toBeVisible()
   })

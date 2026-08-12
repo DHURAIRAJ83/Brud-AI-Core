@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures.js'
+import { expect, openSidebarPage, test } from '../fixtures.js'
 
 function tabButton(page, name) {
   return page
@@ -7,7 +7,7 @@ function tabButton(page, name) {
 }
 
 async function openProductionReadiness(page) {
-  await page.getByRole('button', { name: 'Production Readiness', exact: true }).click()
+  await openSidebarPage(page, 'Production Readiness')
   await expect(page.getByRole('heading', { name: 'Production Readiness', level: 2 })).toBeVisible()
 }
 

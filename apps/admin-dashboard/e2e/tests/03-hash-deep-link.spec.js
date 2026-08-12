@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures.js'
+import { expect, openSidebarPage, test } from '../fixtures.js'
 
 // Real, reproduced evidence behind this file (Phase 15A Step 13, per
 // docs/production/phase15a_production_verification_plan.md §9):
@@ -29,7 +29,7 @@ test.describe('Hash deep-linking', () => {
   test('a hard reload preserves both the top-level page and the active sub-tab', async ({
     authenticatedPage: page,
   }) => {
-    await page.getByRole('button', { name: 'Production Readiness', exact: true }).click()
+    await openSidebarPage(page, 'Production Readiness')
     await expect(page.getByRole('heading', { name: 'Production Readiness' })).toBeVisible()
 
     await tabButton(page, 'Model Release').click()

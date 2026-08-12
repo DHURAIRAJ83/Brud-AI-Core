@@ -1,4 +1,4 @@
-import { expect, test } from '../fixtures.js'
+import { expect, openSidebarPage, test } from '../fixtures.js'
 
 const TABS = [
   'Overview', 'RAG Promotion', 'RAG Candidates', 'Model Release', 'Canary & Activation',
@@ -27,7 +27,7 @@ async function openProductionReadiness(page) {
   // Step 13 hash-deep-link investigation (see docs/production/
   // phase15a_production_verification_plan.md §9 and
   // e2e/tests/03-hash-deep-link.spec.js).
-  await page.getByRole('button', { name: 'Production Readiness', exact: true }).click()
+  await openSidebarPage(page, 'Production Readiness')
   await expect(page.getByRole('heading', { name: 'Production Readiness' })).toBeVisible()
 }
 

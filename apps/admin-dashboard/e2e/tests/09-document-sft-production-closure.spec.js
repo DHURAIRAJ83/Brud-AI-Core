@@ -34,14 +34,14 @@ async function expectTabActive(locator) {
 }
 
 async function openDocumentsPage(page) {
-  const dataToggle = page.getByRole('button', { name: 'Data', exact: true })
+  const dataToggle = page.getByRole('button', { name: 'Data Workspace', exact: true })
   if (await dataToggle.getAttribute('aria-expanded') !== 'true') await dataToggle.click()
   await page.getByRole('button', { name: 'Documents', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Documents', level: 2 })).toBeVisible()
 }
 
 async function openDocumentWizardPage(page) {
-  const dataToggle = page.getByRole('button', { name: 'Data', exact: true })
+  const dataToggle = page.getByRole('button', { name: 'Data Workspace', exact: true })
   if (await dataToggle.getAttribute('aria-expanded') !== 'true') await dataToggle.click()
   await page.getByRole('button', { name: 'Document Wizard', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Document Processing Wizard' })).toBeVisible()

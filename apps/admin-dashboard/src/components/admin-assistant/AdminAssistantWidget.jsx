@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import ChatPanel from '../chat/ChatPanel.jsx'
+import { useToast } from '../Toast.jsx'
 import {
-  assistantHealth,
   assistantLanguagePreference,
   assistantPages,
-  sendAssistantChatMessage,
+  miniBrainWidgetHealth,
   setAssistantLanguagePreference,
   submitAssistantFeedback,
 } from '../../services/api.js'
@@ -32,56 +33,174 @@ const LANGUAGE_OPTIONS = [
   { key: 'auto', label: 'Auto' },
 ]
 
-function uid() {
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+const SUGGESTIONS = ['How do I use this page?', 'What is pending right now?']
+const NO_ADMIN_GREETING = 'Hello. Ask me anything about this dashboard, in Tamil, English, or Tanglish.'
+
+// Hand-rolled drag/resize/dock/maximize -- no new dependency (matches the
+// zero-new-runtime-dependency discipline from Phases 1-2). Persisted
+// separately from ThemeProvider's own key, same versioned-schema +
+// defensive-parse convention.
+const LAYOUT_STORAGE_KEY = 'brud-admin-assistant-widget-layout-v1'
+const LAYOUT_MODES = ['default', 'floating', 'docked-left', 'docked-right', 'fullscreen']
+const MIN_WIDTH = 320
+const MAX_WIDTH = 900
+const MIN_HEIGHT = 320
+const DOCK_WIDTH = 380
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
 }
 
-function MessageBubble({ message, onNavigate, onFeedback }) {
-  const isUser = message.role === 'user'
-  return (
-    <div className={`assistant-message ${isUser ? 'assistant-message-user' : 'assistant-message-bot'}`}>
-      <p>{message.text}</p>
-      {message.navigationTarget && (
-        <button
-          type="button"
-          className="assistant-nav-button"
-          onClick={() => onNavigate(message.navigationTarget.nav_key)}
-        >
-          Go to {message.navigationTarget.nav_key}
-        </button>
-      )}
-      {!isUser && !message.pending && (
-        message.feedbackGiven ? (
-          <small className="assistant-feedback-thanks">Thanks for the feedback.</small>
-        ) : (
-          <div className="assistant-feedback-row">
-            <button type="button" onClick={() => onFeedback(message, 'helpful')} aria-label="Mark helpful">Helpful</button>
-            <button type="button" onClick={() => onFeedback(message, 'not_helpful')} aria-label="Mark not helpful">Not helpful</button>
-          </div>
-        )
-      )}
-    </div>
-  )
+function readStoredLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!LAYOUT_MODES.includes(parsed?.mode)) return null
+    return parsed
+  } catch {
+    return null
+  }
 }
 
-export default function AdminAssistantWidget({ active, onNavigate, admin }) {
+function writeStoredLayout(layout) {
+  try {
+    localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify({ version: 1, ...layout }))
+  } catch {
+    // Layout persistence is best-effort only -- never blocks the widget.
+  }
+}
+
+export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBrainAssistant, admin }) {
+  const toast = useToast()
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
   const [mode, setMode] = useState('guide')
   const [pagesByNavKey, setPagesByNavKey] = useState({})
   const [pagesLoaded, setPagesLoaded] = useState(false)
   const [llmAvailable, setLlmAvailable] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState('')
   const [language, setLanguage] = useState('auto')
   const [languageLoaded, setLanguageLoaded] = useState(false)
   const [languageSaving, setLanguageSaving] = useState(false)
   const [languageError, setLanguageError] = useState('')
-  const inputRef = useRef(null)
   const launcherRef = useRef(null)
   const cardRef = useRef(null)
+
+  const storedLayout = useRef(readStoredLayout()).current
+  const [layoutMode, setLayoutMode] = useState(storedLayout?.mode ?? 'default')
+  const [rect, setRect] = useState({
+    x: storedLayout?.x ?? null,
+    y: storedLayout?.y ?? null,
+    width: storedLayout?.width ?? DOCK_WIDTH,
+    height: storedLayout?.height ?? 560,
+  })
+  const rectRef = useRef(rect)
+  const dragStateRef = useRef(null)
+  const resizeStateRef = useRef(null)
+
+  function updateRect(next) {
+    rectRef.current = next
+    setRect(next)
+  }
+
+  function beginDrag(event) {
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    const cardRect = cardRef.current.getBoundingClientRect()
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startLeft: cardRect.left,
+      startTop: cardRect.top,
+      width: rectRef.current.width || cardRect.width,
+      height: rectRef.current.height || cardRect.height,
+    }
+  }
+
+  function onDragMove(event) {
+    const drag = dragStateRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const nextX = clamp(drag.startLeft + (event.clientX - drag.startClientX), 0, Math.max(0, window.innerWidth - drag.width))
+    const nextY = clamp(drag.startTop + (event.clientY - drag.startClientY), 0, Math.max(0, window.innerHeight - drag.height))
+    setLayoutMode('floating')
+    updateRect({ x: nextX, y: nextY, width: drag.width, height: drag.height })
+  }
+
+  function endDrag(event) {
+    const drag = dragStateRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    dragStateRef.current = null
+    writeStoredLayout({ mode: 'floating', ...rectRef.current })
+  }
+
+  function beginResize(event) {
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    const cardRect = cardRef.current.getBoundingClientRect()
+    resizeStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startWidth: rectRef.current.width || cardRect.width,
+      startHeight: rectRef.current.height || cardRect.height,
+      left: rectRef.current.x ?? cardRect.left,
+      top: rectRef.current.y ?? cardRect.top,
+    }
+  }
+
+  function onResizeMove(event) {
+    const resize = resizeStateRef.current
+    if (!resize || resize.pointerId !== event.pointerId) return
+    const nextWidth = clamp(resize.startWidth + (event.clientX - resize.startClientX), MIN_WIDTH, Math.min(MAX_WIDTH, window.innerWidth - resize.left - 8))
+    const nextHeight = clamp(resize.startHeight + (event.clientY - resize.startClientY), MIN_HEIGHT, window.innerHeight - resize.top - 8)
+    setLayoutMode('floating')
+    updateRect({ x: resize.left, y: resize.top, width: nextWidth, height: nextHeight })
+  }
+
+  function endResize(event) {
+    const resize = resizeStateRef.current
+    if (!resize || resize.pointerId !== event.pointerId) return
+    resizeStateRef.current = null
+    writeStoredLayout({ mode: 'floating', ...rectRef.current })
+  }
+
+  function dockLeft() {
+    setLayoutMode('docked-left')
+    writeStoredLayout({ mode: 'docked-left', ...rectRef.current })
+  }
+
+  function dockRight() {
+    setLayoutMode('docked-right')
+    writeStoredLayout({ mode: 'docked-right', ...rectRef.current })
+  }
+
+  function toggleFullScreen() {
+    setLayoutMode((current) => {
+      const next = current === 'fullscreen' ? 'default' : 'fullscreen'
+      writeStoredLayout({ mode: next, ...rectRef.current })
+      return next
+    })
+  }
+
+  function widgetStyle() {
+    let base
+    if (layoutMode === 'fullscreen') {
+      base = { top: '5vh', left: '5vw', right: 'auto', bottom: 'auto', width: '90vw', height: '90vh', maxHeight: '90vh' }
+    } else if (layoutMode === 'docked-left') {
+      base = { top: 0, left: 0, right: 'auto', bottom: 'auto', width: rect.width || DOCK_WIDTH, height: '100vh', maxHeight: '100vh', borderRadius: 0 }
+    } else if (layoutMode === 'docked-right') {
+      base = { top: 0, right: 0, left: 'auto', bottom: 'auto', width: rect.width || DOCK_WIDTH, height: '100vh', maxHeight: '100vh', borderRadius: 0 }
+    } else if (layoutMode === 'floating' && rect.x != null) {
+      base = { top: rect.y, left: rect.x, right: 'auto', bottom: 'auto', width: rect.width, height: rect.height, maxHeight: rect.height }
+    } else {
+      return undefined
+    }
+    if (minimized) {
+      const { height, maxHeight, ...rest } = base
+      return rest
+    }
+    return base
+  }
 
   useEffect(() => {
     if (!open || pagesLoaded) return
@@ -93,7 +212,11 @@ export default function AdminAssistantWidget({ active, onNavigate, admin }) {
       })
       .catch(() => {})
       .finally(() => setPagesLoaded(true))
-    assistantHealth().then((data) => setLlmAvailable(data.llm_available)).catch(() => setLlmAvailable(false))
+    // MB-45: reads the same runtime-resolution state that actually
+    // answers /chat and /grounded-chat, instead of the old Phase-8
+    // health check (a different, unrelated backend) -- see docs/audit
+    // /MB45_WIDGET_BACKEND_CONSOLIDATION_2026_08_11.md.
+    miniBrainWidgetHealth().then((data) => setLlmAvailable(data.available)).catch(() => setLlmAvailable(false))
   }, [open, pagesLoaded])
 
   useEffect(() => {
@@ -118,10 +241,6 @@ export default function AdminAssistantWidget({ active, onNavigate, admin }) {
       setLanguageSaving(false)
     }
   }
-
-  useEffect(() => {
-    if (open && !minimized) inputRef.current?.focus()
-  }, [open, minimized])
 
   // The launcher button only exists in the DOM while the card is closed,
   // so `launcherRef` cannot be focused synchronously inside the handler
@@ -165,48 +284,8 @@ export default function AdminAssistantWidget({ active, onNavigate, admin }) {
   const currentPage = pagesByNavKey[active]
   const currentPageId = currentPage?.page_id ?? 'overview'
 
-  async function send(text) {
-    const trimmed = (text ?? input).trim()
-    if (!trimmed || sending) return
-    setError('')
-    setInput('')
-    const userMessage = { id: uid(), role: 'user', text: trimmed }
-    setMessages((previous) => [...previous, userMessage])
-    setSending(true)
-    try {
-      const response = await sendAssistantChatMessage({
-        message: trimmed,
-        page_id: currentPageId,
-        mode,
-      })
-      setMessages((previous) => [
-        ...previous,
-        {
-          id: uid(),
-          role: 'assistant',
-          text: response.answer,
-          navigationTarget: response.navigation_target,
-          status: response.status,
-        },
-      ])
-    } catch (reason) {
-      setError(reason.message)
-    } finally {
-      setSending(false)
-    }
-  }
-
-  async function giveFeedback(message, rating) {
-    setMessages((previous) => previous.map((item) => (item.id === message.id ? { ...item, feedbackGiven: true } : item)))
-    try {
-      await submitAssistantFeedback({ rating, page_id: currentPageId, message_reference: message.id })
-    } catch {
-      // Feedback is best-effort; the UI already shows a thank-you and never blocks the chat.
-    }
-  }
-
-  function handleNavigate(navKey) {
-    onNavigate(navKey)
+  async function handleFeedback(message, rating) {
+    await submitAssistantFeedback({ rating, page_id: currentPageId, message_reference: message.id })
   }
 
   if (!open) {
@@ -224,10 +303,41 @@ export default function AdminAssistantWidget({ active, onNavigate, admin }) {
   }
 
   return (
-    <div className={`assistant-card ${minimized ? 'assistant-card-minimized' : ''}`} ref={cardRef} role="dialog" aria-label="Brud AI Admin Assistant">
+    <div
+      className={`assistant-card ${minimized ? 'assistant-card-minimized' : ''} ${layoutMode !== 'default' ? `assistant-card-${layoutMode}` : ''}`}
+      style={widgetStyle()}
+      ref={cardRef}
+      role="dialog"
+      aria-label="Brud AI Admin Assistant"
+    >
       <header className="assistant-card-header">
-        <strong>Brud AI Assistant</strong>
+        <div
+          className="assistant-drag-handle"
+          onPointerDown={beginDrag}
+          onPointerMove={onDragMove}
+          onPointerUp={endDrag}
+        >
+          <strong>Brud AI Assistant</strong>
+        </div>
         <div className="assistant-card-header-actions">
+          <button
+            type="button"
+            aria-label="Dock left"
+            aria-pressed={layoutMode === 'docked-left'}
+            onClick={dockLeft}
+          >⇤</button>
+          <button
+            type="button"
+            aria-label="Dock right"
+            aria-pressed={layoutMode === 'docked-right'}
+            onClick={dockRight}
+          >⇥</button>
+          <button
+            type="button"
+            aria-label={layoutMode === 'fullscreen' ? 'Exit large chat mode' : 'Enter large chat mode'}
+            aria-pressed={layoutMode === 'fullscreen'}
+            onClick={toggleFullScreen}
+          >⛶</button>
           <button
             type="button"
             aria-label={minimized ? 'Restore Admin Assistant' : 'Minimize Admin Assistant'}
@@ -272,47 +382,47 @@ export default function AdminAssistantWidget({ active, onNavigate, admin }) {
           <div className="notice error-notice assistant-language-error">{languageError}</div>
         )}
 
+        {onOpenMiniBrainAssistant && (
+          <div className="assistant-mini-brain-link-row">
+            <button type="button" className="assistant-mini-brain-link" onClick={onOpenMiniBrainAssistant}>
+              Open Mini Brain Assistant / Mini Brain Assistant திற
+            </button>
+          </div>
+        )}
+
         {llmAvailable === false && (
           <div className="assistant-llm-notice">
             AI response generation is unavailable right now. Page help and pending-work
             guidance still work.
           </div>
         )}
-
-        <div className="assistant-messages">
-          {!pagesLoaded && messages.length === 0 && (
-            <p className="assistant-loading-notice">Loading dashboard context…</p>
-          )}
-          {pagesLoaded && messages.length === 0 && (
-            <div className="assistant-suggestions">
-              <p>{admin?.display_name ? `Hello, ${admin.display_name}.` : 'Hello.'} Ask me anything about this dashboard, in Tamil, English, or Tanglish.</p>
-              <button type="button" onClick={() => send('How do I use this page?')}>How do I use this page?</button>
-              <button type="button" onClick={() => send('What is pending right now?')}>What needs my attention?</button>
-            </div>
-          )}
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} onNavigate={handleNavigate} onFeedback={giveFeedback} />
-          ))}
-          {sending && <div className="assistant-message assistant-message-bot assistant-message-pending">Thinking…</div>}
-        </div>
-
-        {error && <div className="notice error-notice assistant-error">{error}</div>}
-
-        <form
-          className="assistant-input-row"
-          onSubmit={(event) => { event.preventDefault(); send() }}
-        >
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={pagesLoaded ? 'Type a question…' : 'Loading…'}
-            aria-label="Message to the Admin Assistant"
-            disabled={!pagesLoaded}
-          />
-          <button type="submit" disabled={!pagesLoaded || sending || !input.trim()}>Send</button>
-        </form>
       </>}
+
+      {/* Kept mounted (never conditionally removed) across minimize/restore,
+          hidden with CSS instead -- ChatPanel owns its own session/message
+          state now, so unmounting it on minimize would silently discard an
+          in-progress conversation the moment an admin collapses the card. */}
+      <div style={minimized ? { display: 'none' } : undefined}>
+        <ChatPanel
+          variant="compact"
+          admin={admin}
+          onFeedback={handleFeedback}
+          toast={toast}
+          suggestions={SUGGESTIONS}
+          emptyGreeting={NO_ADMIN_GREETING}
+        />
+      </div>
+
+      {layoutMode === 'floating' && !minimized && (
+        <div
+          className="assistant-resize-handle"
+          data-testid="assistant-resize-handle"
+          aria-hidden="true"
+          onPointerDown={beginResize}
+          onPointerMove={onResizeMove}
+          onPointerUp={endResize}
+        />
+      )}
     </div>
   )
 }

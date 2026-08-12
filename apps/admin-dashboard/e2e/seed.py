@@ -229,6 +229,134 @@ async def _seed_vision_required_document_fixtures(settings: Settings) -> dict[st
     return {"vision_required_document_public_id": document["public_id"]}
 
 
+def _seed_data_workspace_wizard_fixtures(settings: Settings) -> dict[str, str]:
+    """Phase 2: one real, empty knowledge space for the Data Workspace
+    Wizard's Build RAG step to select from -- the wizard itself creates
+    the real source/version/chunk-set through the actual UI action, this
+    just provides a real destination space (same real service call
+    `_seed_grounded_chat_fixtures` already uses for its own spaces)."""
+
+    from backend.database.repositories.rag import RagRepository
+    from backend.models.rag import KnowledgeSpaceCreate
+    from backend.services.rag_ingestion_service import RagIngestionService
+
+    ingestion = RagIngestionService(RagRepository(settings.resolved_database_path), settings)
+    space = ingestion.create_space(
+        KnowledgeSpaceCreate(name="MB-Wizard Knowledge Space", slug="mb-wizard-space"), ADMIN_ID,
+    )
+    return {
+        "wizard_knowledge_space_public_id": space["public_id"],
+        "wizard_knowledge_space_name": "MB-Wizard Knowledge Space",
+    }
+
+
+def _seed_grounded_chat_fixtures(settings: Settings) -> dict[str, str]:
+    """MB-48: two real, fully-indexed, active RAG knowledge spaces +
+    retrieval profiles, built through the exact same real service chain
+    (space -> source -> version -> chunk-set -> embedding run -> vector
+    index -> keyword index -> validated + activated profile) already
+    proven by tests/backend/test_rag_api.py and this session's own MB-43
+    live-browser verification -- never a raw-SQL shortcut. The two
+    sources share the same body text (so a single query scores well
+    against both) but a distinct title -- grounded_chat()'s citations
+    read `source_name` from that title, so switching the active default
+    profile is the one, sole, reliable signal the Playwright spec needs
+    to prove a citation source changed without a page reload. The
+    default is left pointed at profile A; the spec itself performs the
+    real UI switch to profile B."""
+
+    from backend.database.repositories.rag import RagRepository
+    from backend.models.rag import (
+        ChunkSetCreate,
+        EmbeddingModelCreate,
+        EmbeddingRunCreate,
+        KeywordIndexCreate,
+        KnowledgeSourceCreate,
+        KnowledgeSourcePatch,
+        KnowledgeSpaceCreate,
+        RetrievalProfileCreate,
+        VectorIndexCreate,
+    )
+    from backend.services.mini_brain_llm_runtime_service import MiniBrainLlmRuntimeService
+    from backend.services.rag_ingestion_service import RagIngestionService
+    from backend.services.rag_retrieval_service import RagRetrievalService
+
+    ingestion = RagIngestionService(RagRepository(settings.resolved_database_path), settings)
+    retrieval = RagRetrievalService(RagRepository(settings.resolved_database_path), settings)
+    body = (
+        "Brud AI is a Tamil-first local assistant platform used for internal pilot "
+        "testing of grounded chat citations."
+    )
+
+    def _build(slug: str, source_title: str) -> dict[str, str]:
+        space = ingestion.create_space(
+            KnowledgeSpaceCreate(name=f"MB48 Grounded Chat {slug}", slug=f"mb48-grounded-{slug}"),
+            ADMIN_ID,
+        )
+        source = ingestion.create_source(
+            space["public_id"],
+            KnowledgeSourceCreate(
+                source_type="plain_text", title=source_title, language="en", content=body,
+            ),
+            ADMIN_ID,
+        )
+        ingestion.patch_source(
+            source["public_id"], KnowledgeSourcePatch(approval_status="approved"), ADMIN_ID
+        )
+        version = ingestion.create_source_version(source["public_id"], ADMIN_ID)
+        chunk_set = ingestion.create_chunk_set(version["public_id"], ChunkSetCreate(), ADMIN_ID)
+        ingestion.validate_chunk_set(chunk_set["public_id"], ADMIN_ID)
+
+        model = ingestion.create_embedding_model(
+            EmbeddingModelCreate(
+                name=f"mb48-embed-{slug}", version="v1", provider_type="local_custom_embedding",
+                dimensions=32, maximum_input_tokens=256,
+            ),
+            ADMIN_ID,
+        )
+        run = ingestion.create_embedding_run(
+            chunk_set["public_id"],
+            EmbeddingRunCreate(embedding_model_public_id=model["public_id"]),
+            ADMIN_ID,
+        )
+        ingestion.execute_embedding_run(run["public_id"], ADMIN_ID)
+
+        vector_index = ingestion.create_vector_index(run["public_id"], VectorIndexCreate(), ADMIN_ID)
+        ingestion.build_vector_index(vector_index["public_id"], ADMIN_ID)
+        ingestion.validate_vector_index(vector_index["public_id"], ADMIN_ID)
+        ingestion.activate_vector_index(vector_index["public_id"], ADMIN_ID)
+
+        keyword_index = ingestion.create_keyword_index(
+            chunk_set["public_id"], KeywordIndexCreate(), ADMIN_ID
+        )
+        ingestion.build_keyword_index(keyword_index["public_id"], ADMIN_ID)
+        ingestion.validate_keyword_index(keyword_index["public_id"], ADMIN_ID)
+        ingestion.activate_keyword_index(keyword_index["public_id"], ADMIN_ID)
+
+        profile = retrieval.create_profile(
+            space["public_id"], RetrievalProfileCreate(name=f"MB48 Profile {slug}"), ADMIN_ID
+        )
+        retrieval.validate_profile(profile["public_id"], ADMIN_ID)
+        retrieval.activate_profile(profile["public_id"], ADMIN_ID)
+
+        return {"space_public_id": space["public_id"], "profile_public_id": profile["public_id"]}
+
+    profile_a = _build("a", "MB48 Grounded Chat Source A")
+    profile_b = _build("b", "MB48 Grounded Chat Source B")
+
+    MiniBrainLlmRuntimeService(settings).set_default_retrieval_profile(
+        profile_a["profile_public_id"], ADMIN_ID
+    )
+
+    return {
+        "grounded_chat_profile_a_public_id": profile_a["profile_public_id"],
+        "grounded_chat_profile_b_public_id": profile_b["profile_public_id"],
+        "grounded_chat_source_a_name": "MB48 Grounded Chat Source A",
+        "grounded_chat_source_b_name": "MB48 Grounded Chat Source B",
+        "grounded_chat_query": "What is Brud AI used for?",
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database-path", required=True)
@@ -409,6 +537,17 @@ def main() -> None:
         regression_run["public_id"], "secret_scan_01", admin_id=ADMIN_ID,
     )
     result["regression_run_public_id"] = regression_run["public_id"]
+
+    # -- MB-48: two real active retrieval profiles for the grounded-chat
+    # E2E spec (10-grounded-chat.spec.js) --
+    grounded_chat_fixtures = _seed_grounded_chat_fixtures(settings)
+    result.update(grounded_chat_fixtures)
+
+    # -- Phase 2: one real knowledge space for the Data Workspace Wizard's
+    # Build RAG step (10-grounded-chat.spec.js-adjacent, but its own
+    # dedicated space so the two specs never contend for the same data) --
+    wizard_fixtures = _seed_data_workspace_wizard_fixtures(settings)
+    result.update(wizard_fixtures)
 
     print(json.dumps(result))
 

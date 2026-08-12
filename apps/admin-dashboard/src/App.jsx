@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import DashboardLayout from './components/DashboardLayout.jsx'
 import AdminAssistantPage from './pages/AdminAssistantPage.jsx'
+import AssistantCenterPage from './pages/AssistantCenterPage.jsx'
 import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
 import BuildsPipelinesPage from './pages/BuildsPipelinesPage.jsx'
 import DatasetDiscoveryPage from './pages/DatasetDiscoveryPage.jsx'
@@ -9,6 +10,7 @@ import DatasetVerificationPage from './pages/DatasetVerificationPage.jsx'
 import DatasetsPage from './pages/DatasetsPage.jsx'
 import DocumentsPage from './pages/DocumentsPage.jsx'
 import DocumentWizardPage from './pages/DocumentWizardPage.jsx'
+import DataWorkspaceWizardPage from './pages/DataWorkspaceWizardPage.jsx'
 import ConversationMemoryPage from './pages/ConversationMemoryPage.jsx'
 import CorpusPage from './pages/CorpusPage.jsx'
 import CoreModelPage from './pages/CoreModelPage.jsx'
@@ -23,6 +25,7 @@ import InferenceRuntimePage from './pages/InferenceRuntimePage.jsx'
 import InstructionTuningPage from './pages/InstructionTuningPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ManualDataPage from './pages/ManualDataPage.jsx'
+import MiniBrainPage from './pages/MiniBrainPage.jsx'
 import ModelEvaluationPage from './pages/ModelEvaluationPage.jsx'
 import ModelRegistryPage from './pages/ModelRegistryPage.jsx'
 import OverviewPage from './pages/OverviewPage.jsx'
@@ -34,6 +37,10 @@ import KnowledgeRoutingPage from './pages/KnowledgeRoutingPage.jsx'
 import PublicChatRoutingPage from './pages/PublicChatRoutingPage.jsx'
 import TrustedWebPage from './pages/TrustedWebPage.jsx'
 import DeterministicToolsPage from './pages/DeterministicToolsPage.jsx'
+import GatewayDatasetRagBridgePage from './pages/GatewayDatasetRagBridgePage.jsx'
+import PilotMetricsPage from './pages/PilotMetricsPage.jsx'
+import PilotOperationsPage from './pages/PilotOperationsPage.jsx'
+import PromptOptimizationPage from './pages/PromptOptimizationPage.jsx'
 import RagPage from './pages/RagPage.jsx'
 import RagSandboxPage from './pages/RagSandboxPage.jsx'
 import SourcesRightsPage from './pages/SourcesRightsPage.jsx'
@@ -54,6 +61,7 @@ export default function App() {
   const [verificationCandidateId, setVerificationCandidateId] = useState(null)
   const [sampleImportCaseId, setSampleImportCaseId] = useState(null)
   const [ragSandboxSampleImportId, setRagSandboxSampleImportId] = useState(null)
+  const [miniBrainInitialTab, setMiniBrainInitialTab] = useState(null)
   useEffect(() => { getMe().then((data) => setAuth({ checking: false, admin: data.admin })).catch(() => setAuth({ checking: false, admin: null })) }, [])
   useEffect(() => {
     function handlePopState() {
@@ -81,9 +89,12 @@ export default function App() {
   const openVerificationForCandidate = (candidatePublicId) => { setVerificationCandidateId(candidatePublicId); selectPage('Dataset Verification') }
   const openSampleImportForCase = (casePublicId) => { setSampleImportCaseId(casePublicId); selectPage('Sample Import & Quarantine') }
   const openRagSandboxForSampleImport = (sampleImportPublicId) => { setRagSandboxSampleImportId(sampleImportPublicId); selectPage('RAG Sandbox') }
+  const openMiniBrainAssistant = () => { setMiniBrainInitialTab('Assistant Intelligence'); selectPage('Brud Mini Brain') }
   let page = <PlaceholderPage name={active} />
-  if (active === 'Overview') page = <OverviewPage />
+  if (active === 'Overview') page = <OverviewPage onNavigate={selectPage} />
   if (active === 'System') page = <SystemPage />
+  if (active === 'Pilot Operations') page = <PilotOperationsPage />
+  if (active === 'Pilot Metrics') page = <PilotMetricsPage />
   if (active === 'Data Overview') page = <DataOverviewPage onNavigate={selectPage} />
   if (active === 'Data Help') page = <DataHelpPage onNavigate={selectPage} />
   if (active === 'Manual Data') page = <ManualDataPage />
@@ -107,6 +118,7 @@ export default function App() {
       initialStep={documentNav.step} onNavigationChange={openWizardStep}
       onOpenDatasetVersion={openDatasetVersion}
     />
+  if (active === 'Data Workspace Wizard') page = <DataWorkspaceWizardPage onNavigate={selectPage} />
   if (active === 'Tokenizer') page = <TokenizerPage />
   if (active === 'Core Model') page = <CoreModelPage />
   if (active === 'Training') page = <TrainingPage />
@@ -116,6 +128,8 @@ export default function App() {
   if (active === 'Model Registry') page = <ModelRegistryPage />
   if (active === 'Inference Runtime') page = <InferenceRuntimePage />
   if (active === 'Knowledge & RAG') page = <RagPage />
+  if (active === 'Gateway → Dataset/RAG') page = <GatewayDatasetRagBridgePage />
+  if (active === 'Prompt Optimization') page = <PromptOptimizationPage />
   if (active === 'Conversation & Memory') page = <ConversationMemoryPage />
   if (active === 'Feedback & Improvement') page = <FeedbackPage />
   if (active === 'Corpus Builder') page = <CorpusPage />
@@ -127,5 +141,7 @@ export default function App() {
   if (active === 'Trusted Web') page = <TrustedWebPage />
   if (active === 'Deterministic Tools') page = <DeterministicToolsPage />
   if (active === 'Admin Assistant') page = <AdminAssistantPage />
-  return <DashboardLayout active={active} onSelect={selectPage} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
+  if (active === 'Assistant Center') page = <AssistantCenterPage admin={auth.admin} />
+  if (active === 'Brud Mini Brain') page = <MiniBrainPage initialTab={miniBrainInitialTab} />
+  return <DashboardLayout active={active} onSelect={selectPage} onOpenMiniBrainAssistant={openMiniBrainAssistant} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
 }

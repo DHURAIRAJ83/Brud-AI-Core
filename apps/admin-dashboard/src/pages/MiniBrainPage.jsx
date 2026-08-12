@@ -6,10 +6,12 @@ import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { useToast } from '../components/Toast.jsx'
 import DiagnosticsTab from './mini-brain/DiagnosticsTab.jsx'
+import CapabilityTab from './mini-brain/CapabilityTab.jsx'
 import IntelligenceEngineTab from './mini-brain/IntelligenceEngineTab.jsx'
 import KnowledgeCoreTab from './mini-brain/KnowledgeCoreTab.jsx'
 import LogsTab from './mini-brain/LogsTab.jsx'
 import OverviewTab from './mini-brain/OverviewTab.jsx'
+import ResponseQualityTab from './mini-brain/ResponseQualityTab.jsx'
 import RuntimeTab from './mini-brain/RuntimeTab.jsx'
 import SettingsTab from './mini-brain/SettingsTab.jsx'
 import {
@@ -3193,151 +3195,17 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
       )}
 
       {tab === 'Response Quality' && (
-        <>
-          <p className="notice">
-            MB-04B -- a Response Quality layer that runs entirely after generation, on already-produced
-            text. No AI model, no embeddings, no vector search: every check below is deterministic
-            string/script analysis. It sits on top of MB-04A's own prompt pipeline without changing it.
-          </p>
-          {qDiagnostics && (
-            <section className="metric-grid">
-              <StatusCard label="AI model used" value={String(qDiagnostics.ai_model_used)} tone={qDiagnostics.ai_model_used ? 'waiting' : 'good'} />
-              <StatusCard label="Database tables" value={qDiagnostics.database_tables} tone="good" />
-              <StatusCard label="Pipeline stages" value={qDiagnostics.pipeline_stages.length} tone="neutral" />
-            </section>
-          )}
-
-          <form className="inline-form training-form" onSubmit={runQualityGenerate}>
-            <label>Question<input value={qQuestion} onChange={(e) => setQQuestion(e.target.value)} placeholder="e.g. How does dataset duplicate detection work?" /></label>
-            <Button type="submit" disabled={qBusy || !qQuestion}>{qBusy ? 'Generating + checking…' : 'Generate and check quality'}</Button>
-          </form>
-
-          {qResult && (
-            <>
-              <section className="metric-grid">
-                <StatusCard label="Overall quality" value={qResult.quality.quality_score.overall_quality} tone={qResult.quality.quality_score.overall_quality >= 70 ? 'good' : qResult.quality.quality_score.overall_quality >= 40 ? 'neutral' : 'waiting'} />
-                <StatusCard label="Echo score" value={qResult.quality.quality_score.echo_score} tone={qResult.quality.echo.severity === 'dominant' ? 'waiting' : qResult.quality.echo.severity === 'partial' ? 'neutral' : 'good'} />
-                <StatusCard label="Language score" value={qResult.quality.quality_score.language_score} tone={qResult.quality.language.matches_expectation ? 'good' : 'waiting'} />
-                <StatusCard label="Tamil score" value={qResult.quality.quality_score.tamil_score ?? 'n/a'} tone="neutral" />
-                <StatusCard label="Formatting score" value={qResult.quality.quality_score.formatting_score} tone="neutral" />
-                <StatusCard label="Consistency score" value={qResult.quality.quality_score.consistency_score} tone={qResult.quality.consistency.passed ? 'good' : 'waiting'} />
-                <StatusCard label="Processing time" value={`${qResult.quality.processing_time_ms} ms`} tone="good" />
-              </section>
-
-              <h4>Echo detection</h4>
-              <div className="notice">
-                <p><strong>Detected:</strong> {String(qResult.quality.echo.echo_detected)} ({qResult.quality.echo.echo_type}, severity: {qResult.quality.echo.severity})</p>
-                <p><strong>Overlap ratio:</strong> {qResult.quality.echo.overlap_ratio} ({qResult.quality.echo.overlap_length_chars} chars)</p>
-                <p><strong>Matched labels:</strong> {qResult.quality.echo.matched_labels.join(', ') || 'none'}</p>
-                <p><strong>Actions performed:</strong> {qResult.quality.actions_performed.join(', ') || 'none'}</p>
-              </div>
-
-              <h4>Language quality</h4>
-              <div className="notice">
-                <p><strong>Detected:</strong> {qResult.quality.language.language} → resolved <strong>{qResult.quality.language.resolved_output_language}</strong>, expected <strong>{qResult.quality.language.expected_output_language}</strong></p>
-                <p><strong>Matches expectation:</strong> {String(qResult.quality.language.matches_expectation)}</p>
-              </div>
-
-              {qResult.quality.tamil_fluency && (
-                <>
-                  <h4>Tamil quality (script-level only, not semantic grammar)</h4>
-                  <div className="notice">
-                    <p><strong>Passed:</strong> {String(qResult.quality.tamil_fluency.passed)}</p>
-                    <ul>{qResult.quality.tamil_fluency.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-                    {!qResult.quality.tamil_fluency.issues.length && <p>No script-level issues found.</p>}
-                  </div>
-                </>
-              )}
-
-              <h4>Formatting</h4>
-              <div className="notice">
-                <p><strong>Passed:</strong> {String(qResult.quality.formatting.passed)}</p>
-                <ul>{qResult.quality.formatting.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-              </div>
-
-              <h4>Consistency</h4>
-              <div className="notice">
-                <p><strong>Passed:</strong> {String(qResult.quality.consistency.passed)}</p>
-                <ul>{qResult.quality.consistency.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-              </div>
-
-              <h4>Final response (after quality cleanup)</h4>
-              <div className="notice"><p>{qResult.final_response_text || <em>No substantive answer survived echo cleanup -- honestly reported, not fabricated.</em>}</p></div>
-            </>
-          )}
-
-          <h4>Diagnostic history (this session only, not persisted)</h4>
-          <div className="data-list">
-            {qHistory.map((entry, i) => (
-              <article key={i}>
-                <strong>{entry.overall}</strong> — {entry.question}
-                <div><small>{entry.at}</small></div>
-              </article>
-            ))}
-            {!qHistory.length && <div className="notice">No quality checks run yet this session.</div>}
-          </div>
-        </>
+        <ResponseQualityTab
+          qDiagnostics={qDiagnostics} runQualityGenerate={runQualityGenerate} qQuestion={qQuestion}
+          setQQuestion={setQQuestion} qBusy={qBusy} qResult={qResult} qHistory={qHistory}
+        />
       )}
 
       {tab === 'Capability' && (
-        <>
-          <p className="notice">
-            MB-04C -- optimizes HOW the existing CPU model is used: strategy selection, output-length
-            checking, and a single bounded retry. No new model, no new runtime, no new prompt builder --
-            this reuses MB-04A's prompt and MB-04's Runtime exactly as they already are.
-          </p>
-          {capDiagnostics && (
-            <section className="metric-grid">
-              <StatusCard label="AI model used" value={String(capDiagnostics.ai_model_used)} tone={capDiagnostics.ai_model_used ? 'waiting' : 'good'} />
-              <StatusCard label="Max retries" value={capDiagnostics.max_retries} tone="good" />
-              <StatusCard label="Known profiles" value={capDiagnostics.known_profiles.length} tone="neutral" />
-            </section>
-          )}
-
-          <form className="inline-form training-form" onSubmit={runCapabilityGenerate}>
-            <label>Question<input value={capQuestion} onChange={(e) => setCapQuestion(e.target.value)} placeholder="e.g. How does dataset duplicate detection work?" /></label>
-            <Button type="submit" disabled={capBusy || !capQuestion}>{capBusy ? 'Generating…' : 'Generate with capability optimization'}</Button>
-          </form>
-
-          {capResult && (
-            <>
-              <section className="metric-grid">
-                <StatusCard label="Current model" value={capResult.profile.display_name} tone={capResult.profile.verified ? 'good' : 'waiting'} />
-                <StatusCard label="Category" value={capResult.category} tone="neutral" />
-                <StatusCard label="Strategy" value={capResult.strategy.name} tone="neutral" />
-                <StatusCard label="Retry" value={capResult.retry.attempted ? capResult.retry.decision.reason : 'not needed'} tone={capResult.retry.attempted ? 'waiting' : 'good'} />
-                <StatusCard label="Output length" value={`${capResult.output_length.word_count} words`} tone={capResult.output_length.issues.length ? 'waiting' : 'good'} />
-                <StatusCard label="Generation time" value={`${Math.round(capResult.generation_time_ms)} ms`} tone="neutral" />
-              </section>
-
-              <h4>Capability Profile</h4>
-              <div className="notice">
-                <p><strong>Verified:</strong> {String(capResult.profile.verified)} — <em>{capResult.profile.source}</em></p>
-                <p><strong>Reasoning quality:</strong> {capResult.profile.reasoning_quality} · <strong>Coding quality:</strong> {capResult.profile.coding_quality}</p>
-                <p><strong>Max tokens used:</strong> {capResult.max_tokens_used} (ceiling: {capResult.profile.response_limits.max_tokens_ceiling})</p>
-              </div>
-
-              {capResult.stability && (
-                <>
-                  <h4>Stability (first vs retry)</h4>
-                  <div className="notice">
-                    <p><strong>Passed:</strong> {String(capResult.stability.passed)}</p>
-                    <ul>{capResult.stability.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-                  </div>
-                </>
-              )}
-
-              <h4>Warnings</h4>
-              <div className="notice">
-                <ul>{capResult.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
-                {!capResult.warnings.length && <p>No warnings.</p>}
-              </div>
-
-              <h4>Final response</h4>
-              <div className="notice"><p>{capResult.response.text}</p></div>
-            </>
-          )}
-        </>
+        <CapabilityTab
+          capDiagnostics={capDiagnostics} runCapabilityGenerate={runCapabilityGenerate} capQuestion={capQuestion}
+          setCapQuestion={setCapQuestion} capBusy={capBusy} capResult={capResult}
+        />
       )}
 
       {tab === 'Dataset Intelligence' && (

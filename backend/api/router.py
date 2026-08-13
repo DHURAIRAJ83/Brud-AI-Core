@@ -21,6 +21,7 @@ from backend.api.routes import (
     deterministic_tools_admin,
     documents,
     external_data_providers,
+    external_gateway_dataset_bridge,
     feedback,
     governance,
     governed_builds,
@@ -61,6 +62,12 @@ from backend.api.routes import (
     mini_brain_vision_intelligence,
     mini_brain_vision_model,
     mini_brain_vision_rag,
+    mini_brain_voice_runtime,
+    mini_brain_provider_settings,
+    mini_brain_llm_runtime,
+    mini_brain_local_setup,
+    mini_brain_runtime_manager,
+    mini_brain_health,
     model_evaluation,
     model_release,
     pretraining,
@@ -70,6 +77,7 @@ from backend.api.routes import (
     public_chat_runtime,
     public_plugin_policy,
     public_plugin_runtime,
+    public_voice_runtime,
     rag,
     rag_sandbox,
     semantic_chunks,
@@ -86,6 +94,7 @@ api_router.include_router(chat.router)
 api_router.include_router(public_chat_runtime.router)
 api_router.include_router(public_plugin_policy.router)
 api_router.include_router(public_plugin_runtime.router)
+api_router.include_router(public_voice_runtime.router)
 api_router.include_router(auth.router)
 api_router.include_router(admin.router)
 api_router.include_router(admin_assistant.router)
@@ -114,10 +123,17 @@ api_router.include_router(mini_brain_training_pipeline.router)
 api_router.include_router(mini_brain_evaluation_center.router)
 api_router.include_router(mini_brain_release_governance.router)
 api_router.include_router(mini_brain_external_ai_gateway.router)
+api_router.include_router(external_gateway_dataset_bridge.router)
 api_router.include_router(mini_brain_training_engine.router)
 api_router.include_router(mini_brain_public_chat_runtime.router)
 api_router.include_router(mini_brain_plugin_governance.router)
 api_router.include_router(mini_brain_plugin_runtime.router)
+api_router.include_router(mini_brain_voice_runtime.router)
+api_router.include_router(mini_brain_provider_settings.router)
+api_router.include_router(mini_brain_llm_runtime.router)
+api_router.include_router(mini_brain_local_setup.router)
+api_router.include_router(mini_brain_runtime_manager.router)
+api_router.include_router(mini_brain_health.router)
 api_router.include_router(system.router)
 api_router.include_router(imports.router)
 api_router.include_router(documents.router)

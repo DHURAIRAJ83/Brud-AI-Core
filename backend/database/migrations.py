@@ -59,6 +59,32 @@ from backend.database.schema import (
     MIGRATION_042_NAME,
     MIGRATION_043_NAME,
     MIGRATION_044_NAME,
+    MIGRATION_045_NAME,
+    MIGRATION_046_NAME,
+    MIGRATION_047_NAME,
+    MIGRATION_048_NAME,
+    MIGRATION_049_NAME,
+    MIGRATION_050_NAME,
+    MIGRATION_051_NAME,
+    MIGRATION_052_NAME,
+    MIGRATION_053_NAME,
+    MIGRATION_054_NAME,
+    MIGRATION_055_NAME,
+    MIGRATION_056_NAME,
+    MIGRATION_057_NAME,
+    MIGRATION_058_NAME,
+    MIGRATION_059_NAME,
+    MIGRATION_060_NAME,
+    MIGRATION_061_NAME,
+    MIGRATION_062_NAME,
+    MIGRATION_063_NAME,
+    MIGRATION_064_NAME,
+    MIGRATION_065_NAME,
+    MIGRATION_066_NAME,
+    MIGRATION_067_NAME,
+    MIGRATION_068_NAME,
+    MIGRATION_069_NAME,
+    MIGRATION_070_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -107,6 +133,32 @@ from backend.database.schema import (
     PHASE42_SCHEMA,
     PHASE43_SCHEMA,
     PHASE44_SCHEMA,
+    PHASE45_SCHEMA,
+    PHASE46_SCHEMA,
+    PHASE47_SCHEMA,
+    PHASE48_SCHEMA,
+    PHASE49_SCHEMA,
+    PHASE50_SCHEMA,
+    PHASE51_SCHEMA,
+    PHASE52_SCHEMA,
+    PHASE53_SCHEMA,
+    PHASE54_SCHEMA,
+    PHASE55_SCHEMA,
+    PHASE56_SCHEMA,
+    PHASE57_SCHEMA,
+    PHASE58_SCHEMA,
+    PHASE59_SCHEMA,
+    PHASE60_SCHEMA,
+    PHASE61_SCHEMA,
+    PHASE62_SCHEMA,
+    PHASE63_SCHEMA,
+    PHASE64_SCHEMA,
+    PHASE65_SCHEMA,
+    PHASE66_SCHEMA,
+    PHASE67_SCHEMA,
+    PHASE68_SCHEMA,
+    PHASE69_SCHEMA,
+    PHASE70_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -759,6 +811,266 @@ def _apply_v44(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 44")
 
 
+def _apply_v45(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (45,)).fetchone():
+        return
+    connection.executescript(PHASE45_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (45, MIGRATION_045_NAME)
+    )
+    connection.execute("PRAGMA user_version = 45")
+
+
+def _apply_v46(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (46,)).fetchone():
+        return
+    connection.executescript(PHASE46_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (46, MIGRATION_046_NAME)
+    )
+    connection.execute("PRAGMA user_version = 46")
+
+
+def _apply_v47(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (47,)).fetchone():
+        return
+    connection.executescript(PHASE47_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (47, MIGRATION_047_NAME)
+    )
+    connection.execute("PRAGMA user_version = 47")
+
+
+def _apply_v48(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (48,)).fetchone():
+        return
+    connection.executescript(PHASE48_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (48, MIGRATION_048_NAME)
+    )
+    connection.execute("PRAGMA user_version = 48")
+
+
+def _apply_v49(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (49,)).fetchone():
+        return
+    connection.executescript(PHASE49_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (49, MIGRATION_049_NAME)
+    )
+    connection.execute("PRAGMA user_version = 49")
+
+
+def _apply_v50(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (50,)).fetchone():
+        return
+    connection.executescript(PHASE50_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (50, MIGRATION_050_NAME)
+    )
+    connection.execute("PRAGMA user_version = 50")
+
+
+def _apply_v51(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (51,)).fetchone():
+        return
+    connection.executescript(PHASE51_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (51, MIGRATION_051_NAME)
+    )
+    connection.execute("PRAGMA user_version = 51")
+
+
+def _apply_v52(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (52,)).fetchone():
+        return
+    connection.executescript(PHASE52_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (52, MIGRATION_052_NAME)
+    )
+    connection.execute("PRAGMA user_version = 52")
+
+
+def _apply_v53(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (53,)).fetchone():
+        return
+    connection.executescript(PHASE53_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (53, MIGRATION_053_NAME)
+    )
+    connection.execute("PRAGMA user_version = 53")
+
+
+def _apply_v54(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (54,)).fetchone():
+        return
+    connection.executescript(PHASE54_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (54, MIGRATION_054_NAME)
+    )
+    connection.execute("PRAGMA user_version = 54")
+
+
+def _apply_v55(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (55,)).fetchone():
+        return
+    connection.executescript(PHASE55_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (55, MIGRATION_055_NAME)
+    )
+    connection.execute("PRAGMA user_version = 55")
+
+
+def _apply_v56(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (56,)).fetchone():
+        return
+    connection.executescript(PHASE56_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (56, MIGRATION_056_NAME)
+    )
+    connection.execute("PRAGMA user_version = 56")
+
+
+def _apply_v57(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (57,)).fetchone():
+        return
+    connection.executescript(PHASE57_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (57, MIGRATION_057_NAME)
+    )
+    connection.execute("PRAGMA user_version = 57")
+
+
+def _apply_v58(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (58,)).fetchone():
+        return
+    connection.executescript(PHASE58_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (58, MIGRATION_058_NAME)
+    )
+    connection.execute("PRAGMA user_version = 58")
+
+
+def _apply_v59(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (59,)).fetchone():
+        return
+    connection.executescript(PHASE59_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (59, MIGRATION_059_NAME)
+    )
+    connection.execute("PRAGMA user_version = 59")
+
+
+def _apply_v60(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (60,)).fetchone():
+        return
+    connection.executescript(PHASE60_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (60, MIGRATION_060_NAME)
+    )
+    connection.execute("PRAGMA user_version = 60")
+
+
+def _apply_v61(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (61,)).fetchone():
+        return
+    connection.executescript(PHASE61_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (61, MIGRATION_061_NAME)
+    )
+    connection.execute("PRAGMA user_version = 61")
+
+
+def _apply_v62(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (62,)).fetchone():
+        return
+    connection.executescript(PHASE62_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (62, MIGRATION_062_NAME)
+    )
+    connection.execute("PRAGMA user_version = 62")
+
+
+def _apply_v63(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (63,)).fetchone():
+        return
+    connection.executescript(PHASE63_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (63, MIGRATION_063_NAME)
+    )
+    connection.execute("PRAGMA user_version = 63")
+
+
+def _apply_v64(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (64,)).fetchone():
+        return
+    connection.executescript(PHASE64_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (64, MIGRATION_064_NAME)
+    )
+    connection.execute("PRAGMA user_version = 64")
+
+
+def _apply_v65(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (65,)).fetchone():
+        return
+    connection.executescript(PHASE65_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (65, MIGRATION_065_NAME)
+    )
+    connection.execute("PRAGMA user_version = 65")
+
+
+def _apply_v66(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (66,)).fetchone():
+        return
+    connection.executescript(PHASE66_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (66, MIGRATION_066_NAME)
+    )
+    connection.execute("PRAGMA user_version = 66")
+
+
+def _apply_v67(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (67,)).fetchone():
+        return
+    connection.executescript(PHASE67_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (67, MIGRATION_067_NAME)
+    )
+    connection.execute("PRAGMA user_version = 67")
+
+
+def _apply_v68(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (68,)).fetchone():
+        return
+    connection.executescript(PHASE68_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (68, MIGRATION_068_NAME)
+    )
+    connection.execute("PRAGMA user_version = 68")
+
+
+def _apply_v69(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (69,)).fetchone():
+        return
+    connection.executescript(PHASE69_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (69, MIGRATION_069_NAME)
+    )
+    connection.execute("PRAGMA user_version = 69")
+
+
+def _apply_v70(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (70,)).fetchone():
+        return
+    connection.executescript(PHASE70_SCHEMA)
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (70, MIGRATION_070_NAME)
+    )
+    connection.execute("PRAGMA user_version = 70")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -864,6 +1176,32 @@ def initialize_database(
             _apply_v42(connection)
             _apply_v43(connection)
             _apply_v44(connection)
+            _apply_v45(connection)
+            _apply_v46(connection)
+            _apply_v47(connection)
+            _apply_v48(connection)
+            _apply_v49(connection)
+            _apply_v50(connection)
+            _apply_v51(connection)
+            _apply_v52(connection)
+            _apply_v53(connection)
+            _apply_v54(connection)
+            _apply_v55(connection)
+            _apply_v56(connection)
+            _apply_v57(connection)
+            _apply_v58(connection)
+            _apply_v59(connection)
+            _apply_v60(connection)
+            _apply_v61(connection)
+            _apply_v62(connection)
+            _apply_v63(connection)
+            _apply_v64(connection)
+            _apply_v65(connection)
+            _apply_v66(connection)
+            _apply_v67(connection)
+            _apply_v68(connection)
+            _apply_v69(connection)
+            _apply_v70(connection)
             connection.commit()
         except Exception:
             connection.rollback()

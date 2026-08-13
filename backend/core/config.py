@@ -132,6 +132,23 @@ class Settings(BaseSettings):
     quarantine_total_quota_bytes: int = Field(
         default=2_000_000_000, ge=1, validation_alias="BRUD_QUARANTINE_TOTAL_QUOTA_BYTES"
     )
+    plugin_package_dir: Path = Field(default=Path("data/plugins"), validation_alias="BRUD_PLUGIN_PACKAGE_DIR")
+    voice_audio_dir: Path = Field(default=Path("data/voice_audio"), validation_alias="BRUD_VOICE_AUDIO_DIR")
+    voice_max_record_seconds: float = Field(
+        default=30.0, gt=0, validation_alias="BRUD_VOICE_MAX_RECORD_SECONDS"
+    )
+    voice_max_audio_mb: float = Field(
+        default=8.0, gt=0, validation_alias="BRUD_VOICE_MAX_AUDIO_MB"
+    )
+    voice_stt_model_size: str = Field(
+        default="tiny", validation_alias="BRUD_VOICE_STT_MODEL_SIZE"
+    )
+    # Always False by default and never set by any code path other than this
+    # field -- no MB-26 code may start a background listener regardless of
+    # this value; wakeword_policy.py always reports inactive (non-goal).
+    voice_wakeword_enabled: bool = Field(
+        default=False, validation_alias="BRUD_VOICE_WAKEWORD_ENABLED"
+    )
     document_dir: Path = Field(default=Path("data/documents"), validation_alias="BRUD_DOCUMENT_DIR")
     document_report_dir: Path = Field(
         default=Path("data/documents/reports"), validation_alias="BRUD_DOCUMENT_REPORT_DIR"
@@ -688,6 +705,10 @@ class Settings(BaseSettings):
     public_chat_rate_limit_window_seconds: int = Field(
         default=60, ge=1, validation_alias="BRUD_PUBLIC_CHAT_RATE_LIMIT_WINDOW_SECONDS"
     )
+    mini_brain_public_chat_runtime_hash_salt: str = Field(
+        default="brud-mini-brain-public-chat-runtime-default-salt",
+        validation_alias="BRUD_MINI_BRAIN_PUBLIC_CHAT_RUNTIME_HASH_SALT",
+    )
     knowledge_gap_capture_enabled: bool = Field(
         default=True, validation_alias="BRUD_KNOWLEDGE_GAP_CAPTURE_ENABLED"
     )
@@ -1100,6 +1121,8 @@ class Settings(BaseSettings):
             "corpus_upload_dir",
             "corpus_snapshot_dir",
             "corpus_export_dir",
+            "plugin_package_dir",
+            "voice_audio_dir",
         ):
             resolved = self._resolve_path(getattr(self, field_name))
             if not self.allow_external_storage and not resolved.is_relative_to(PROJECT_ROOT):
@@ -1125,6 +1148,8 @@ class Settings(BaseSettings):
                 "corpus_upload_dir",
                 "corpus_snapshot_dir",
                 "corpus_export_dir",
+                "plugin_package_dir",
+                "voice_audio_dir",
             ):
                 if not self._resolve_path(getattr(self, field_name)).is_relative_to(data_root):
                     raise ValueError(f"{field_name} must remain inside BRUD_ALLOWED_DATA_DIR")
@@ -1233,6 +1258,14 @@ class Settings(BaseSettings):
     @property
     def resolved_quarantine_dir(self) -> Path:
         return self._resolve_path(self.quarantine_dir)
+
+    @property
+    def resolved_plugin_package_dir(self) -> Path:
+        return self._resolve_path(self.plugin_package_dir)
+
+    @property
+    def resolved_voice_audio_dir(self) -> Path:
+        return self._resolve_path(self.voice_audio_dir)
 
     @property
     def resolved_document_dir(self) -> Path:

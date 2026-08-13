@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 44
+SCHEMA_VERSION = 70
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -10796,4 +10796,3124 @@ CREATE INDEX IF NOT EXISTS ix_document_security_findings_document
     ON document_security_findings(document_source_id, finding_type);
 CREATE INDEX IF NOT EXISTS ix_document_security_findings_hash
     ON document_security_findings(content_hash);
+"""
+
+MIGRATION_045_NAME = "045_mini_brain_foundation"
+PHASE45_SCHEMA = """
+-- MB-01: Brud Mini Brain foundation. A completely independent admin
+-- module -- deliberately not a foreign-keyed extension of
+-- admin_assistant_* or inference_runtime_* tables, since MB-01's own
+-- requirement is that this subsystem stay independent of the existing
+-- Admin Assistant. Two tables only: a singleton settings/state row,
+-- and an append-only event log. No AI/model tables -- MB-01 ships no
+-- model.
+CREATE TABLE IF NOT EXISTS mini_brain_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+    runtime_status TEXT NOT NULL DEFAULT 'stopped' CHECK (runtime_status IN (
+        'stopped','starting','running','stopping','error'
+    )),
+    config_json TEXT NOT NULL DEFAULT '{}',
+    last_started_at TEXT,
+    last_stopped_at TEXT,
+    last_health_check_at TEXT,
+    last_health_status TEXT,
+    updated_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS mini_brain_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'module_enabled','module_disabled','runtime_started','runtime_stopped',
+        'runtime_error','health_check','config_updated','placeholder_call'
+    )),
+    level TEXT NOT NULL DEFAULT 'info' CHECK (level IN ('debug','info','warning','error')),
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    actor_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_events_created_at
+    ON mini_brain_events(created_at);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_events_type
+    ON mini_brain_events(event_type);
+CREATE TRIGGER IF NOT EXISTS mini_brain_events_immutable_update
+    BEFORE UPDATE ON mini_brain_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_events_immutable_delete
+    BEFORE DELETE ON mini_brain_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain events are append-only'); END;
+"""
+
+MIGRATION_046_NAME = "046_mini_brain_knowledge_core"
+PHASE46_SCHEMA = """
+-- MB-02: Brud Knowledge Core. A structured, keyword-searchable
+-- knowledge catalog for Brud Mini Brain -- no embeddings, no vector
+-- index, no semantic search table of any kind. Independent of
+-- admin_assistant_* and inference_runtime_* (same independence
+-- discipline as MB-01's own tables); foreign keys only ever point
+-- to other mini_brain_knowledge_* rows.
+CREATE TABLE IF NOT EXISTS mini_brain_knowledge_domains (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS mini_brain_knowledge_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    domain_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    keywords_json TEXT NOT NULL DEFAULT '[]',
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    related_features_json TEXT NOT NULL DEFAULT '[]',
+    related_apis_json TEXT NOT NULL DEFAULT '[]',
+    related_services_json TEXT NOT NULL DEFAULT '[]',
+    related_documentation_json TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT '',
+    version TEXT NOT NULL DEFAULT '1.0',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft','active','deprecated')),
+    created_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (domain_id) REFERENCES mini_brain_knowledge_domains(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_items_domain
+    ON mini_brain_knowledge_items(domain_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_items_category
+    ON mini_brain_knowledge_items(category);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_items_title
+    ON mini_brain_knowledge_items(title);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_items_status
+    ON mini_brain_knowledge_items(status);
+
+CREATE TABLE IF NOT EXISTS mini_brain_knowledge_relationships (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    from_item_id INTEGER NOT NULL,
+    to_item_id INTEGER NOT NULL,
+    relationship_type TEXT NOT NULL CHECK (relationship_type IN (
+        'flows_to','depends_on','related_to','part_of','produces','consumes'
+    )),
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (from_item_id) REFERENCES mini_brain_knowledge_items(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_item_id) REFERENCES mini_brain_knowledge_items(id) ON DELETE CASCADE,
+    UNIQUE (from_item_id, to_item_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_relationships_from
+    ON mini_brain_knowledge_relationships(from_item_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_relationships_to
+    ON mini_brain_knowledge_relationships(to_item_id);
+
+-- Append-only, like every other diagnostic/report table in this codebase
+-- (mirrors mini_brain_events' own immutability triggers).
+CREATE TABLE IF NOT EXISTS mini_brain_knowledge_validation_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    triggered_by_admin_public_id TEXT,
+    issues_json TEXT NOT NULL DEFAULT '[]',
+    summary_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_knowledge_validation_reports_created_at
+    ON mini_brain_knowledge_validation_reports(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_knowledge_validation_reports_immutable_update
+    BEFORE UPDATE ON mini_brain_knowledge_validation_reports
+    BEGIN SELECT RAISE(ABORT, 'mini brain knowledge validation reports are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_knowledge_validation_reports_immutable_delete
+    BEFORE DELETE ON mini_brain_knowledge_validation_reports
+    BEGIN SELECT RAISE(ABORT, 'mini brain knowledge validation reports are append-only'); END;
+"""
+
+MIGRATION_047_NAME = "047_mini_brain_learning_supervisor"
+PHASE47_SCHEMA = """
+-- MB-06: Brud Mini Brain Learning Supervisor. The first Mini Brain
+-- migration since MB-02 -- justified because MB-06's own 14-stage
+-- workflow (Stage 4/6/13 are separate admin approval actions that
+-- must reference back to earlier-stage results, potentially minutes
+-- or hours apart while training runs) cannot function statelessly the
+-- way every read-only MB-03/04*/05* phase before it could. These two
+-- tables hold ONLY MB-06's own supervisory state -- every reference to
+-- another system's row (dataset source/version, tokenizer version,
+-- core model version, training job, benchmark run, RAG experiment) is
+-- stored as a plain opaque TEXT public_id, never a foreign key into
+-- another system's tables, matching every prior Mini Brain phase's
+-- own independence discipline. MB-06 never writes to any table
+-- outside this pair.
+CREATE TABLE IF NOT EXISTS mini_brain_learning_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_source_public_id TEXT NOT NULL,
+    dataset_version_public_id TEXT,
+    tokenizer_version_public_id TEXT,
+    core_model_version_public_id TEXT,
+    hyperparameter_profile TEXT NOT NULL DEFAULT 'default',
+    stage TEXT NOT NULL DEFAULT 'dataset_validation' CHECK (stage IN (
+        'dataset_validation','awaiting_dataset_decision','rag_evaluation',
+        'awaiting_rag_decision','training_request','training_monitoring',
+        'training_analysis','benchmark_evaluation','model_comparison',
+        'recommendation','awaiting_admin_review','release_candidate','closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress','rejected_at_dataset','rejected_at_rag','training_requested',
+        'admin_rejected','retrain_requested','fine_tune_requested','accepted','closed'
+    )),
+    dataset_readiness_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_decision TEXT CHECK (dataset_decision IS NULL OR dataset_decision IN ('approve','reject')),
+    dataset_decided_by TEXT,
+    dataset_decided_at TEXT,
+    rag_sandbox_experiment_public_id TEXT,
+    rag_evaluation_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_decision TEXT CHECK (rag_decision IS NULL OR rag_decision IN ('approve','reject')),
+    rag_decided_by TEXT,
+    rag_decided_at TEXT,
+    training_request_payload_json TEXT NOT NULL DEFAULT '{}',
+    training_job_public_id TEXT,
+    training_report_json TEXT NOT NULL DEFAULT '{}',
+    benchmark_run_public_id TEXT,
+    benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    comparison_report_json TEXT NOT NULL DEFAULT '{}',
+    recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_final_decision TEXT CHECK (
+        admin_final_decision IS NULL OR admin_final_decision IN ('reject','retrain','fine_tune','accept')
+    ),
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    release_candidate_core_model_version_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_sessions_stage
+    ON mini_brain_learning_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_sessions_status
+    ON mini_brain_learning_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_sessions_created_at
+    ON mini_brain_learning_sessions(created_at);
+
+-- Append-only, same immutability pattern as mini_brain_events (MB-01).
+CREATE TABLE IF NOT EXISTS mini_brain_learning_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    learning_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (learning_session_id) REFERENCES mini_brain_learning_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_events_session
+    ON mini_brain_learning_events(learning_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_events_created_at
+    ON mini_brain_learning_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_learning_events_immutable_update
+    BEFORE UPDATE ON mini_brain_learning_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain learning events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_learning_events_immutable_delete
+    BEFORE DELETE ON mini_brain_learning_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain learning events are append-only'); END;
+"""
+
+MIGRATION_048_NAME = "048_mini_brain_release_pipeline"
+PHASE48_SCHEMA = """
+-- MB-07: Brud Mini Brain Release Pipeline & Model Deployment Manager.
+-- Second Mini Brain migration to add schema (after MB-06/v47) -- for the
+-- same reason: Stage 11 (admin review: approve/reject/rollback/archive)
+-- is a separate, asynchronous admin action gating Stage 12 (production
+-- activation), potentially long after conversion/quantization ran. Every
+-- reference to another system's row (core model version, checkpoint,
+-- model-release family/candidate/release, rollback plan, runtime model)
+-- is a plain opaque TEXT public_id, never a foreign key into another
+-- system's tables -- matching every prior Mini Brain phase's own
+-- independence discipline. MB-07 never writes to any table outside
+-- this pair.
+CREATE TABLE IF NOT EXISTS mini_brain_release_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    core_model_version_public_id TEXT NOT NULL,
+    pretraining_checkpoint_public_id TEXT NOT NULL,
+    model_release_family_public_id TEXT NOT NULL,
+    target_quantizations_json TEXT NOT NULL DEFAULT '[]',
+    stage TEXT NOT NULL DEFAULT 'checkpoint_validation' CHECK (stage IN (
+        'checkpoint_validation','conversion','quantization','integrity_validation',
+        'compatibility_validation','performance_validation','version_registration',
+        'awaiting_admin_review','production_activation','closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress','checkpoint_invalid','conversion_failed','compatibility_failed',
+        'admin_rejected','archived','activated','closed'
+    )),
+    checkpoint_validation_report_json TEXT NOT NULL DEFAULT '{}',
+    conversion_report_json TEXT NOT NULL DEFAULT '{}',
+    quantization_report_json TEXT NOT NULL DEFAULT '{}',
+    integrity_report_json TEXT NOT NULL DEFAULT '{}',
+    compatibility_report_json TEXT NOT NULL DEFAULT '{}',
+    performance_report_json TEXT NOT NULL DEFAULT '{}',
+    model_release_candidate_public_id TEXT,
+    model_release_public_id TEXT,
+    version_string TEXT,
+    release_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_activation_decision TEXT CHECK (
+        admin_activation_decision IS NULL
+        OR admin_activation_decision IN ('approve','reject','rollback','archive')
+    ),
+    admin_activation_decided_by TEXT,
+    admin_activation_decided_at TEXT,
+    rollback_plan_public_id TEXT,
+    runtime_model_public_id TEXT,
+    activated_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_sessions_stage
+    ON mini_brain_release_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_sessions_status
+    ON mini_brain_release_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_sessions_created_at
+    ON mini_brain_release_sessions(created_at);
+
+-- Append-only, same immutability pattern as mini_brain_events (MB-01) /
+-- mini_brain_learning_events (MB-06).
+CREATE TABLE IF NOT EXISTS mini_brain_release_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_session_id) REFERENCES mini_brain_release_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_events_session
+    ON mini_brain_release_events(release_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_events_created_at
+    ON mini_brain_release_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_release_events_immutable_update
+    BEFORE UPDATE ON mini_brain_release_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain release events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_release_events_immutable_delete
+    BEFORE DELETE ON mini_brain_release_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain release events are append-only'); END;
+"""
+
+MIGRATION_049_NAME = "049_mini_brain_continuous_learning"
+PHASE49_SCHEMA = """
+-- MB-08: Brud Mini Brain Continuous Learning & Feedback Engine. Third
+-- Mini Brain migration to add schema (after MB-06/v47, MB-07/v48) --
+-- for the same reason: Stage 11 (admin review of the Continuous
+-- Learning Report) is a separate, asynchronous admin action that can
+-- happen long after the analysis stages ran. MB-08 is 100% advisory
+-- and READ-ONLY with respect to every other system's own tables --
+-- it never writes to knowledge_gap_*, public_chat_*, dataset_*, or
+-- pretraining_* tables, only to this pair. Every reference to another
+-- system's row is a plain opaque TEXT public_id, never a foreign key
+-- into another system's tables.
+CREATE TABLE IF NOT EXISTS mini_brain_continuous_learning_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    cycle_window_days INTEGER NOT NULL DEFAULT 30,
+    stage TEXT NOT NULL DEFAULT 'feedback_collection' CHECK (stage IN (
+        'feedback_collection','failure_analysis','hallucination_analysis',
+        'knowledge_gap_analysis','weak_topic_detection','difficulty_analysis',
+        'dataset_recommendation','training_recommendation','priority_ranking',
+        'awaiting_admin_review','closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress','admin_rejected','admin_approved','closed'
+    )),
+    feedback_report_json TEXT NOT NULL DEFAULT '{}',
+    failure_report_json TEXT NOT NULL DEFAULT '{}',
+    hallucination_report_json TEXT NOT NULL DEFAULT '{}',
+    knowledge_gap_report_json TEXT NOT NULL DEFAULT '{}',
+    weak_topic_report_json TEXT NOT NULL DEFAULT '{}',
+    difficulty_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    training_recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    priority_report_json TEXT NOT NULL DEFAULT '{}',
+    continuous_learning_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT CHECK (admin_decision IS NULL OR admin_decision IN ('approve','reject')),
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_continuous_learning_sessions_stage
+    ON mini_brain_continuous_learning_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_continuous_learning_sessions_status
+    ON mini_brain_continuous_learning_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_continuous_learning_sessions_created_at
+    ON mini_brain_continuous_learning_sessions(created_at);
+
+-- Append-only, same immutability pattern as every prior Mini Brain
+-- phase's own event table.
+CREATE TABLE IF NOT EXISTS mini_brain_continuous_learning_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    learning_cycle_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (learning_cycle_session_id)
+        REFERENCES mini_brain_continuous_learning_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_continuous_learning_events_session
+    ON mini_brain_continuous_learning_events(learning_cycle_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_continuous_learning_events_created_at
+    ON mini_brain_continuous_learning_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_continuous_learning_events_immutable_update
+    BEFORE UPDATE ON mini_brain_continuous_learning_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain continuous learning events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_continuous_learning_events_immutable_delete
+    BEFORE DELETE ON mini_brain_continuous_learning_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain continuous learning events are append-only'); END;
+"""
+
+MIGRATION_050_NAME = "050_mini_brain_continuous_learning_center"
+PHASE50_SCHEMA = """
+-- MB-09: Brud Mini Brain Continuous Learning Center. Fourth Mini
+-- Brain migration to add schema (after MB-06/v47, MB-07/v48,
+-- MB-08/v49). MB-09 is a planning and recommendation layer only: it
+-- never edits Dataset Studio, never modifies the Training Engine,
+-- MB-06, MB-07, or Runtime tables, never creates RAG datasets, never
+-- launches training, and never calls an external AI provider itself.
+-- Every reference to another system's row (an MB-08 session, a core
+-- model version, a dataset version) is a plain opaque TEXT public_id,
+-- never a foreign key into another system's tables.
+--
+-- `mini_brain_learning_memory` is deliberately insert-only and
+-- immutable (see the trigger below) -- "Mini Brain must never forget
+-- previous learning cycles" is enforced structurally, not just by
+-- convention.
+CREATE TABLE IF NOT EXISTS mini_brain_learning_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    continuous_learning_session_public_id TEXT NOT NULL,
+    model_version_public_id TEXT,
+    dataset_version_public_id TEXT,
+    weak_domains_json TEXT NOT NULL DEFAULT '[]',
+    strong_domains_json TEXT NOT NULL DEFAULT '[]',
+    training_decision TEXT,
+    benchmark_summary_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    improvement_notes TEXT NOT NULL DEFAULT '',
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_memory_session
+    ON mini_brain_learning_memory(continuous_learning_session_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_learning_memory_created_at
+    ON mini_brain_learning_memory(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_learning_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_learning_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain learning memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_learning_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_learning_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain learning memory is permanent and append-only'); END;
+
+-- One planning cycle: knowledge-gap evolution -> learning queue ->
+-- local draft -> provider consensus (request, then later ingest) ->
+-- dataset evolution -> roadmap -> recommendation -> report -> admin
+-- decision. Stage 4/5 (provider request/consensus) are split because
+-- an admin runs providers externally between them, potentially long
+-- after the request was prepared -- the same asynchronous-gate
+-- statefulness reason every prior Mini Brain phase with its own
+-- schema has cited.
+CREATE TABLE IF NOT EXISTS mini_brain_continuous_learning_center_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    stage TEXT NOT NULL DEFAULT 'knowledge_gap_evolution' CHECK (stage IN (
+        'knowledge_gap_evolution','learning_queue','draft_planning','provider_request',
+        'provider_consensus','dataset_evolution','knowledge_roadmap','recommendation',
+        'awaiting_admin_review','closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress','admin_rejected','admin_edited','admin_approved_draft',
+        'admin_requested_provider_consensus','admin_sent_to_rag','admin_archived','closed'
+    )),
+    knowledge_gap_evolution_report_json TEXT NOT NULL DEFAULT '{}',
+    learning_queue_report_json TEXT NOT NULL DEFAULT '{}',
+    draft_report_json TEXT NOT NULL DEFAULT '{}',
+    provider_request_json TEXT NOT NULL DEFAULT '{}',
+    provider_consensus_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_evolution_report_json TEXT NOT NULL DEFAULT '{}',
+    roadmap_report_json TEXT NOT NULL DEFAULT '{}',
+    recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    planning_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT CHECK (
+        admin_decision IS NULL OR admin_decision IN (
+            'reject','edit','approve_draft','request_provider_consensus','send_to_rag','archive'
+        )
+    ),
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_clc_sessions_stage
+    ON mini_brain_continuous_learning_center_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_clc_sessions_status
+    ON mini_brain_continuous_learning_center_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_clc_sessions_created_at
+    ON mini_brain_continuous_learning_center_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_continuous_learning_center_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    center_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (center_session_id)
+        REFERENCES mini_brain_continuous_learning_center_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_clc_events_session
+    ON mini_brain_continuous_learning_center_events(center_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_clc_events_created_at
+    ON mini_brain_continuous_learning_center_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_clc_events_immutable_update
+    BEFORE UPDATE ON mini_brain_continuous_learning_center_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain continuous learning center events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_clc_events_immutable_delete
+    BEFORE DELETE ON mini_brain_continuous_learning_center_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain continuous learning center events are append-only'); END;
+"""
+
+MIGRATION_051_NAME = "051_mini_brain_research_center"
+PHASE51_SCHEMA = """
+-- MB-10: Brud Mini Brain AI Research & Knowledge Acquisition Center.
+-- Fifth Mini Brain migration to add schema (after MB-06/v47, MB-07/v48,
+-- MB-08/v49, MB-09/v50). MB-10 never modifies any prior phase's
+-- tables -- it only reads MB-09 (and, later, MB-06) through their own
+-- public read methods, composes RAG Sandbox exactly the way MB-06
+-- already does (generation/evaluation/report only -- corpus, index,
+-- query set, and retrieval remain admin-driven), and never calls an
+-- external AI provider itself. Every reference to another system's
+-- row is a plain opaque TEXT public_id, never a foreign key into
+-- another system's tables.
+--
+-- The Provider Registry is a REAL, admin-extensible table (never a
+-- hardcoded Python enum) -- "future providers easily added" is
+-- enforced structurally by this being a genuine registry, not a
+-- disclosed simplification.
+CREATE TABLE IF NOT EXISTS mini_brain_research_provider_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    requires_external_call INTEGER NOT NULL DEFAULT 1,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_provider_registry_status
+    ON mini_brain_research_provider_registry(status);
+INSERT OR IGNORE INTO mini_brain_research_provider_registry
+    (public_id, provider_key, display_name, requires_external_call, description, created_by_admin_public_id)
+VALUES
+    ('00000000-0000-0000-0000-0000000a0001', 'claude', 'Claude', 1, 'Anthropic Claude -- run externally by an admin, never called automatically', NULL),
+    ('00000000-0000-0000-0000-0000000a0002', 'openai', 'OpenAI', 1, 'OpenAI -- run externally by an admin, never called automatically', NULL),
+    ('00000000-0000-0000-0000-0000000a0003', 'gemini', 'Gemini', 1, 'Google Gemini -- run externally by an admin, never called automatically', NULL),
+    ('00000000-0000-0000-0000-0000000a0004', 'openrouter', 'OpenRouter', 1, 'OpenRouter -- run externally by an admin, never called automatically', NULL),
+    ('00000000-0000-0000-0000-0000000a0005', 'local_model', 'Local Model', 0, 'Brud AI''s own local runtime -- no external call involved', NULL);
+
+-- Permanent, insert-only research/provider/consensus/training history
+-- -- "never overwrite history" is enforced by the immutability
+-- triggers below, the same pattern MB-09's own learning memory uses.
+CREATE TABLE IF NOT EXISTS mini_brain_research_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    research_session_public_id TEXT NOT NULL,
+    provider_history_json TEXT NOT NULL DEFAULT '[]',
+    consensus_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_evolution_json TEXT NOT NULL DEFAULT '{}',
+    training_results_json TEXT NOT NULL DEFAULT '{}',
+    benchmark_results_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_memory_session
+    ON mini_brain_research_memory(research_session_public_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_research_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_research_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain research memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_research_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_research_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain research memory is permanent and append-only'); END;
+
+-- One research cycle: request -> provider selection -> (local draft OR
+-- multi-provider request/consensus) -> dataset draft -> admin review ->
+-- (optional) RAG evaluation -> admin review -> training-gate readiness
+-- check. Split into this many stages because Stage 4 (multi-provider:
+-- admin runs providers externally) and Stage 7/9 (admin review gates)
+-- are separate, asynchronous admin actions, matching every prior Mini
+-- Brain phase's own statefulness rationale.
+CREATE TABLE IF NOT EXISTS mini_brain_research_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    mode TEXT CHECK (mode IS NULL OR mode IN ('local_draft', 'multi_provider')),
+    stage TEXT NOT NULL DEFAULT 'research_request' CHECK (stage IN (
+        'research_request', 'mode_selection', 'local_draft', 'provider_request',
+        'provider_consensus', 'dataset_draft', 'awaiting_draft_review',
+        'rag_evaluation', 'awaiting_rag_review', 'training_gate', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_rejected', 'admin_edited', 'admin_accepted_draft',
+        'admin_requested_more_research', 'admin_requested_different_providers',
+        'admin_requested_local_draft', 'admin_sent_to_rag', 'admin_archived',
+        'rag_admin_approved', 'rag_admin_rejected', 'training_eligible', 'closed'
+    )),
+    research_request_json TEXT NOT NULL DEFAULT '{}',
+    selected_providers_json TEXT NOT NULL DEFAULT '[]',
+    local_draft_report_json TEXT NOT NULL DEFAULT '{}',
+    provider_request_json TEXT NOT NULL DEFAULT '{}',
+    provider_outputs_json TEXT NOT NULL DEFAULT '[]',
+    consensus_report_json TEXT NOT NULL DEFAULT '{}',
+    evidence_report_json TEXT NOT NULL DEFAULT '{}',
+    quality_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_draft_json TEXT NOT NULL DEFAULT '{}',
+    draft_admin_decision TEXT,
+    draft_admin_decided_by TEXT,
+    draft_admin_decided_at TEXT,
+    rag_sandbox_experiment_public_id TEXT,
+    rag_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_admin_decision TEXT,
+    rag_admin_decided_by TEXT,
+    rag_admin_decided_at TEXT,
+    training_gate_report_json TEXT NOT NULL DEFAULT '{}',
+    recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_sessions_stage
+    ON mini_brain_research_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_sessions_status
+    ON mini_brain_research_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_sessions_created_at
+    ON mini_brain_research_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_research_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    research_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (research_session_id) REFERENCES mini_brain_research_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_events_session
+    ON mini_brain_research_events(research_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_research_events_created_at
+    ON mini_brain_research_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_research_events_immutable_update
+    BEFORE UPDATE ON mini_brain_research_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain research events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_research_events_immutable_delete
+    BEFORE DELETE ON mini_brain_research_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain research events are append-only'); END;
+"""
+
+MIGRATION_052_NAME = "052_mini_brain_dataset_evolution"
+PHASE52_SCHEMA = """
+-- MB-11: Brud Mini Brain Autonomous Dataset Evolution & Knowledge
+-- Factory. Sixth Mini Brain migration to add schema (after MB-06/v47,
+-- MB-07/v48, MB-08/v49, MB-09/v50, MB-10/v51). MB-11 never modifies
+-- any prior phase's tables -- it only reads MB-05, MB-05.1, MB-08,
+-- MB-09, and MB-10 through their own public read methods, and
+-- composes RAG Sandbox exactly the way MB-06/MB-10 already do
+-- (generation/evaluation/report only -- corpus, index, query set, and
+-- retrieval remain admin-driven). MB-11 never writes a dataset
+-- record, never starts training, never deploys, and never modifies
+-- RAG -- every reference to another system's row is a plain opaque
+-- TEXT public_id, never a foreign key into another system's tables.
+--
+-- MB-11 is recommendation and planning only: one session per
+-- evolution cycle, no separate permanent-memory table -- unlike
+-- MB-09/MB-10, MB-11's own task spec never asks for permanent
+-- cross-cycle history, so none is added here; the session+event pair
+-- already gives full auditability of a single cycle.
+CREATE TABLE IF NOT EXISTS mini_brain_dataset_evolution_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_source_public_id TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'knowledge_evolution' CHECK (stage IN (
+        'knowledge_evolution', 'dataset_evolution', 'evolution_simulation', 'recommendation',
+        'awaiting_admin_review', 'rag_evaluation', 'awaiting_rag_review', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved_evolution', 'admin_edited_plan',
+        'admin_requested_more_research', 'admin_requested_provider_consensus',
+        'admin_expanded_dataset', 'admin_split_dataset', 'admin_merged_dataset',
+        'admin_archived_plan', 'admin_rejected', 'admin_sent_to_rag',
+        'rag_admin_approved', 'rag_admin_rejected', 'closed'
+    )),
+    evolution_analysis_json TEXT NOT NULL DEFAULT '{}',
+    dependency_graph_json TEXT NOT NULL DEFAULT '{}',
+    coverage_report_json TEXT NOT NULL DEFAULT '{}',
+    relationship_report_json TEXT NOT NULL DEFAULT '{}',
+    expansion_plan_json TEXT NOT NULL DEFAULT '{}',
+    version_plan_json TEXT NOT NULL DEFAULT '{}',
+    knowledge_factory_plan_json TEXT NOT NULL DEFAULT '{}',
+    synthetic_dataset_plan_json TEXT NOT NULL DEFAULT '{}',
+    quality_evolution_json TEXT NOT NULL DEFAULT '{}',
+    simulation_report_json TEXT NOT NULL DEFAULT '{}',
+    recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    evolution_report_json TEXT NOT NULL DEFAULT '{}',
+    draft_admin_decision TEXT,
+    draft_admin_decided_by TEXT,
+    draft_admin_decided_at TEXT,
+    rag_sandbox_experiment_public_id TEXT,
+    rag_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_admin_decision TEXT,
+    rag_admin_decided_by TEXT,
+    rag_admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_dataset_evolution_sessions_stage
+    ON mini_brain_dataset_evolution_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_dataset_evolution_sessions_status
+    ON mini_brain_dataset_evolution_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_dataset_evolution_sessions_source
+    ON mini_brain_dataset_evolution_sessions(dataset_source_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_dataset_evolution_sessions_created_at
+    ON mini_brain_dataset_evolution_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_dataset_evolution_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evolution_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evolution_session_id) REFERENCES mini_brain_dataset_evolution_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_dataset_evolution_events_session
+    ON mini_brain_dataset_evolution_events(evolution_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_dataset_evolution_events_created_at
+    ON mini_brain_dataset_evolution_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_dataset_evolution_events_immutable_update
+    BEFORE UPDATE ON mini_brain_dataset_evolution_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain dataset evolution events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_dataset_evolution_events_immutable_delete
+    BEFORE DELETE ON mini_brain_dataset_evolution_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain dataset evolution events are append-only'); END;
+"""
+
+MIGRATION_053_NAME = "053_mini_brain_pipeline_coordinator"
+PHASE53_SCHEMA = """
+-- MB-12: Brud Mini Brain Autonomous AI Knowledge Pipeline Coordinator.
+-- Seventh Mini Brain migration to add schema (after MB-06/v47,
+-- MB-07/v48, MB-08/v49, MB-09/v50, MB-10/v51, MB-11/v52). MB-12 never
+-- modifies any prior phase's tables -- it only reads MB-05, MB-05.1,
+-- MB-06, MB-08, MB-09, MB-10, and MB-11 through their own public read
+-- methods. Every reference to another system's row (mb09/mb10/mb11/
+-- mb06 session public IDs) is a plain opaque TEXT public_id, never a
+-- foreign key into another system's tables.
+--
+-- MB-12 deliberately never calls RAG Sandbox itself (see the
+-- completion report's Finding 1) -- it only reads whatever RAG result
+-- MB-11 or MB-06 already produced, so no RAG Sandbox experiment
+-- reference column exists here.
+CREATE TABLE IF NOT EXISTS mini_brain_pipeline_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'new' CHECK (stage IN (
+        'new', 'under_research', 'draft_ready', 'provider_consensus_pending', 'dataset_planned',
+        'rag_testing', 'training_candidate', 'training_running', 'benchmark_ready',
+        'release_candidate', 'completed', 'archived'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress',
+    mb09_session_public_id TEXT,
+    mb10_session_public_id TEXT,
+    mb11_session_public_id TEXT,
+    mb06_session_public_id TEXT,
+    pipeline_manager_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_first_report_json TEXT NOT NULL DEFAULT '{}',
+    training_readiness_report_json TEXT NOT NULL DEFAULT '{}',
+    lifecycle_timeline_json TEXT NOT NULL DEFAULT '{}',
+    improvement_prediction_json TEXT NOT NULL DEFAULT '{}',
+    recommendation_report_json TEXT NOT NULL DEFAULT '{}',
+    master_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_pipeline_sessions_stage
+    ON mini_brain_pipeline_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_pipeline_sessions_status
+    ON mini_brain_pipeline_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_pipeline_sessions_topic
+    ON mini_brain_pipeline_sessions(topic);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_pipeline_sessions_created_at
+    ON mini_brain_pipeline_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_pipeline_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    pipeline_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (pipeline_session_id) REFERENCES mini_brain_pipeline_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_pipeline_events_session
+    ON mini_brain_pipeline_events(pipeline_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_pipeline_events_created_at
+    ON mini_brain_pipeline_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_pipeline_events_immutable_update
+    BEFORE UPDATE ON mini_brain_pipeline_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain pipeline events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_pipeline_events_immutable_delete
+    BEFORE DELETE ON mini_brain_pipeline_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain pipeline events are append-only'); END;
+"""
+
+MIGRATION_054_NAME = "054_mini_brain_language_intelligence"
+PHASE54_SCHEMA = """
+-- MB-13: Brud Mini Brain Language Intelligence & Dataset Normalization
+-- Center. Eighth Mini Brain migration to add schema (after MB-06/v47,
+-- MB-07/v48, MB-08/v49, MB-09/v50, MB-10/v51, MB-11/v52, MB-12/v53).
+-- MB-13 never modifies any prior phase's tables -- it only reads
+-- Dataset Studio and MB-05 through their own public read methods, and
+-- reads the existing Document Tamil Correction Registry (Task
+-- Finalization) read-only for known correction rules. MB-13 never
+-- edits a dataset record, never starts training, never deploys, and
+-- never calls RAG Sandbox -- every reference to another system's row
+-- is a plain opaque TEXT public_id, never a foreign key into another
+-- system's tables.
+CREATE TABLE IF NOT EXISTS mini_brain_language_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    dataset_source_public_id TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'language_scan' CHECK (stage IN (
+        'language_scan', 'unicode_validation', 'spell_analysis', 'grammar_analysis',
+        'ocr_analysis', 'tanglish_analysis', 'translation_analysis', 'dataset_draft_generation',
+        'language_quality_score', 'language_report', 'awaiting_admin_review', 'certified', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_requested_fix', 'admin_archived'
+    )),
+    language_scan_report_json TEXT NOT NULL DEFAULT '{}',
+    unicode_report_json TEXT NOT NULL DEFAULT '{}',
+    spell_report_json TEXT NOT NULL DEFAULT '{}',
+    grammar_report_json TEXT NOT NULL DEFAULT '{}',
+    sentence_quality_report_json TEXT NOT NULL DEFAULT '{}',
+    ocr_report_json TEXT NOT NULL DEFAULT '{}',
+    tanglish_report_json TEXT NOT NULL DEFAULT '{}',
+    translation_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_draft_report_json TEXT NOT NULL DEFAULT '{}',
+    quality_score_report_json TEXT NOT NULL DEFAULT '{}',
+    language_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_language_sessions_stage
+    ON mini_brain_language_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_language_sessions_status
+    ON mini_brain_language_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_language_sessions_source
+    ON mini_brain_language_sessions(dataset_source_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_language_sessions_created_at
+    ON mini_brain_language_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_language_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    language_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (language_session_id) REFERENCES mini_brain_language_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_language_events_session
+    ON mini_brain_language_events(language_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_language_events_created_at
+    ON mini_brain_language_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_language_events_immutable_update
+    BEFORE UPDATE ON mini_brain_language_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain language events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_language_events_immutable_delete
+    BEFORE DELETE ON mini_brain_language_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain language events are append-only'); END;
+"""
+
+MIGRATION_055_NAME = "055_mini_brain_vision_intelligence"
+PHASE55_SCHEMA = """
+-- MB-14: Brud Mini Brain Vision Intelligence & Image Understanding
+-- Center. Ninth Mini Brain migration to add schema (after MB-06/v47
+-- through MB-13/v54). MB-14 never modifies any prior phase's tables --
+-- it only reads Document Workspace, MB-05, MB-05.1, and MB-13 through
+-- their own public read methods, and reads an already-stored PDF file
+-- from disk (via DocumentService's own public `.get()`/`.artifact()`)
+-- to extract image bytes for the first time anywhere in this
+-- codebase. MB-14 never writes to `document_sources`/`document_pages`
+-- or any Dataset Studio table -- every reference to another system's
+-- row is a plain opaque TEXT public_id, never a foreign key into
+-- another system's tables.
+--
+-- No vision model exists anywhere in this codebase (confirmed by
+-- audit -- see the completion report's Finding 1), so every
+-- auto-detected object starts as `source='auto_unknown'` with
+-- confidence 0.0; real objects/labels/boxes/captions come from the
+-- Admin Annotation stage. Object deletion is a soft status flip
+-- (`status='deleted'`), never a row delete, so "everything recorded"
+-- holds even for what an admin removed.
+CREATE TABLE IF NOT EXISTS mini_brain_vision_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_public_id TEXT NOT NULL,
+    dataset_source_public_id TEXT,
+    stage TEXT NOT NULL DEFAULT 'image_extraction' CHECK (stage IN (
+        'image_extraction', 'image_quality', 'vision_understanding', 'ocr_cross_validation',
+        'caption_generation', 'bounding_box_planning', 'admin_annotation', 'knowledge_graph',
+        'qa_generation', 'vision_dataset_draft', 'vision_quality_score', 'vision_report',
+        'awaiting_admin_review', 'certified', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_requested_fix', 'admin_archived'
+    )),
+    image_extraction_report_json TEXT NOT NULL DEFAULT '{}',
+    quality_report_json TEXT NOT NULL DEFAULT '{}',
+    vision_understanding_report_json TEXT NOT NULL DEFAULT '{}',
+    ocr_cross_validation_report_json TEXT NOT NULL DEFAULT '{}',
+    caption_report_json TEXT NOT NULL DEFAULT '{}',
+    bounding_box_report_json TEXT NOT NULL DEFAULT '{}',
+    annotation_report_json TEXT NOT NULL DEFAULT '{}',
+    knowledge_graph_report_json TEXT NOT NULL DEFAULT '{}',
+    qa_report_json TEXT NOT NULL DEFAULT '{}',
+    vision_dataset_draft_report_json TEXT NOT NULL DEFAULT '{}',
+    vision_quality_score_report_json TEXT NOT NULL DEFAULT '{}',
+    vision_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_sessions_stage
+    ON mini_brain_vision_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_sessions_status
+    ON mini_brain_vision_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_sessions_document
+    ON mini_brain_vision_sessions(document_source_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_sessions_created_at
+    ON mini_brain_vision_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_session_id INTEGER NOT NULL,
+    page_number INTEGER NOT NULL CHECK (page_number > 0),
+    image_index INTEGER NOT NULL CHECK (image_index >= 0),
+    stored_filename TEXT NOT NULL UNIQUE,
+    image_format TEXT NOT NULL,
+    width_pixels INTEGER NOT NULL CHECK (width_pixels > 0),
+    height_pixels INTEGER NOT NULL CHECK (height_pixels > 0),
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes > 0),
+    checksum_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_session_id) REFERENCES mini_brain_vision_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_images_session
+    ON mini_brain_vision_images(vision_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_images_page
+    ON mini_brain_vision_images(vision_session_id, page_number);
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_objects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_session_id INTEGER NOT NULL,
+    image_public_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.0 CHECK (confidence BETWEEN 0 AND 1),
+    bounding_box_json TEXT,
+    source TEXT NOT NULL CHECK (source IN ('auto_unknown', 'admin_added', 'admin_corrected')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deleted')),
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_session_id) REFERENCES mini_brain_vision_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_objects_session
+    ON mini_brain_vision_objects(vision_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_objects_image
+    ON mini_brain_vision_objects(image_public_id);
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_session_id) REFERENCES mini_brain_vision_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_events_session
+    ON mini_brain_vision_events(vision_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_events_created_at
+    ON mini_brain_vision_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_events_immutable_update
+    BEFORE UPDATE ON mini_brain_vision_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain vision events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_events_immutable_delete
+    BEFORE DELETE ON mini_brain_vision_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain vision events are append-only'); END;
+"""
+
+MIGRATION_056_NAME = "056_mini_brain_vision_model_integration"
+PHASE56_SCHEMA = """
+-- MB-15: Brud Mini Brain Vision Model Integration & Human-in-the-Loop
+-- Annotation Center. Tenth Mini Brain migration to add schema (after
+-- MB-06/v47 through MB-14/v55). MB-15 never modifies any prior
+-- phase's tables -- it only reads MB-14 (session/images/objects) and
+-- MB-13 (an optional language session) through their own public read
+-- methods. Every reference to another system's row is a plain opaque
+-- TEXT public_id, never a foreign key into another system's tables --
+-- the same discipline every prior Mini Brain phase has used.
+--
+-- No vision model file exists anywhere in this environment (confirmed
+-- by audit -- see the completion report). `llama-cpp-python` is
+-- installed and genuinely supports LLaVA-style multimodal chat
+-- handlers, so the provider registry below seeds it as a real,
+-- selectable backend -- but with no vision GGUF + mmproj file present
+-- on disk, it cannot actually be loaded, and every prediction this
+-- phase can produce today is empty/unavailable until an admin
+-- configures a real model path. CUDA/TPU/Cloud rows are seeded
+-- inactive as disclosed, unimplemented future extension points, the
+-- same "Future Model" pattern MB-01 established.
+CREATE TABLE IF NOT EXISTS mini_brain_vision_provider_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    backend_type TEXT NOT NULL CHECK (backend_type IN (
+        'onnx', 'openvino', 'llava_gguf', 'cuda', 'tpu', 'cloud'
+    )),
+    hardware_target TEXT NOT NULL DEFAULT 'cpu' CHECK (hardware_target IN ('cpu', 'cuda', 'tpu')),
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+    created_by_admin_public_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_provider_registry_status
+    ON mini_brain_vision_provider_registry(status);
+INSERT OR IGNORE INTO mini_brain_vision_provider_registry
+    (public_id, provider_key, display_name, backend_type, hardware_target, description, created_by_admin_public_id)
+VALUES
+    ('00000000-0000-0000-0000-0000000b0001', 'onnx_cpu', 'ONNX Runtime (CPU)', 'onnx', 'cpu', 'onnxruntime is not installed in this environment', NULL),
+    ('00000000-0000-0000-0000-0000000b0002', 'openvino_cpu', 'OpenVINO (CPU)', 'openvino', 'cpu', 'openvino is not installed in this environment', NULL),
+    ('00000000-0000-0000-0000-0000000b0003', 'llava_gguf_cpu', 'Local LLaVA GGUF (CPU)', 'llava_gguf', 'cpu', 'llama-cpp-python is installed and supports LLaVA chat handlers, but no vision GGUF + mmproj model file is present in this environment', NULL),
+    ('00000000-0000-0000-0000-0000000b0004', 'cuda_future', 'CUDA (future)', 'cuda', 'cuda', 'Reserved extension point -- not implemented', NULL),
+    ('00000000-0000-0000-0000-0000000b0005', 'tpu_future', 'TPU (future)', 'tpu', 'tpu', 'Reserved extension point -- not implemented', NULL),
+    ('00000000-0000-0000-0000-0000000b0006', 'cloud_future', 'Cloud Provider (future)', 'cloud', 'cpu', 'Reserved extension point -- not implemented', NULL);
+UPDATE mini_brain_vision_provider_registry SET status = 'inactive'
+    WHERE provider_key IN ('cuda_future', 'tpu_future', 'cloud_future');
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_model_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_session_public_id TEXT NOT NULL,
+    language_session_public_id TEXT,
+    provider_key TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'image_load' CHECK (stage IN (
+        'image_load', 'provider_selection', 'object_detection', 'scene_detection',
+        'caption_generation', 'relationship_detection', 'ocr_cross_validation', 'quality_score',
+        'admin_review', 'correction_memory', 'knowledge_graph', 'dataset_draft', 'vision_report',
+        'awaiting_admin_review', 'certified', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_requested_fix', 'admin_archived'
+    )),
+    image_load_report_json TEXT NOT NULL DEFAULT '{}',
+    provider_report_json TEXT NOT NULL DEFAULT '{}',
+    detection_report_json TEXT NOT NULL DEFAULT '{}',
+    scene_report_json TEXT NOT NULL DEFAULT '{}',
+    caption_report_json TEXT NOT NULL DEFAULT '{}',
+    relationship_report_json TEXT NOT NULL DEFAULT '{}',
+    ocr_cross_validation_report_json TEXT NOT NULL DEFAULT '{}',
+    quality_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_review_report_json TEXT NOT NULL DEFAULT '{}',
+    correction_memory_report_json TEXT NOT NULL DEFAULT '{}',
+    knowledge_graph_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_draft_report_json TEXT NOT NULL DEFAULT '{}',
+    vision_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_sessions_stage
+    ON mini_brain_vision_model_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_sessions_status
+    ON mini_brain_vision_model_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_sessions_vision_session
+    ON mini_brain_vision_model_sessions(vision_session_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_sessions_created_at
+    ON mini_brain_vision_model_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_model_predictions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_model_session_id INTEGER NOT NULL,
+    image_public_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0.0 CHECK (confidence BETWEEN 0 AND 1),
+    bounding_box_json TEXT,
+    object_class TEXT,
+    color TEXT,
+    shape TEXT,
+    approximate_size TEXT,
+    visibility TEXT,
+    provider_key TEXT NOT NULL,
+    model_version TEXT,
+    source TEXT NOT NULL DEFAULT 'ai_predicted' CHECK (source IN (
+        'ai_predicted', 'admin_added', 'admin_corrected'
+    )),
+    review_status TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN (
+        'pending', 'approved', 'rejected', 'deleted', 'split', 'merged'
+    )),
+    reviewed_by_admin_public_id TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_model_session_id) REFERENCES mini_brain_vision_model_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_predictions_session
+    ON mini_brain_vision_model_predictions(vision_model_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_predictions_image
+    ON mini_brain_vision_model_predictions(image_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_predictions_review_status
+    ON mini_brain_vision_model_predictions(review_status);
+
+-- Permanent, insert-only -- every correction an admin makes to an AI
+-- prediction, so a future training/fine-tuning phase can learn from
+-- exactly what this vision provider got wrong, without MB-15 itself
+-- ever retraining anything. Same immutable-append pattern as
+-- mini_brain_research_memory (MB-10).
+CREATE TABLE IF NOT EXISTS mini_brain_vision_correction_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_model_session_id INTEGER NOT NULL,
+    prediction_public_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    wrong_label TEXT,
+    correct_label TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    original_confidence REAL,
+    provider_key TEXT NOT NULL,
+    model_version TEXT,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_model_session_id) REFERENCES mini_brain_vision_model_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_correction_memory_session
+    ON mini_brain_vision_correction_memory(vision_model_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_correction_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_vision_correction_memory
+    BEGIN SELECT RAISE(ABORT, 'vision correction memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_correction_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_vision_correction_memory
+    BEGIN SELECT RAISE(ABORT, 'vision correction memory is permanent and append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per certified/closed
+-- session, for a future training phase to reuse. MB-15 itself never
+-- retrains anything; this table only ever records history.
+CREATE TABLE IF NOT EXISTS mini_brain_vision_learning_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_model_session_id INTEGER NOT NULL,
+    provider_key TEXT NOT NULL,
+    model_version TEXT,
+    total_predictions INTEGER NOT NULL DEFAULT 0,
+    approved_count INTEGER NOT NULL DEFAULT 0,
+    corrected_count INTEGER NOT NULL DEFAULT 0,
+    rejected_count INTEGER NOT NULL DEFAULT 0,
+    correction_rate REAL,
+    quality_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    notes TEXT NOT NULL DEFAULT '',
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_model_session_id) REFERENCES mini_brain_vision_model_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_learning_memory_session
+    ON mini_brain_vision_learning_memory(vision_model_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_learning_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_vision_learning_memory
+    BEGIN SELECT RAISE(ABORT, 'vision learning memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_learning_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_vision_learning_memory
+    BEGIN SELECT RAISE(ABORT, 'vision learning memory is permanent and append-only'); END;
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_model_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_model_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_model_session_id) REFERENCES mini_brain_vision_model_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_events_session
+    ON mini_brain_vision_model_events(vision_model_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_model_events_created_at
+    ON mini_brain_vision_model_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_model_events_immutable_update
+    BEFORE UPDATE ON mini_brain_vision_model_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain vision model events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_model_events_immutable_delete
+    BEFORE DELETE ON mini_brain_vision_model_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain vision model events are append-only'); END;
+"""
+
+MIGRATION_057_NAME = "057_mini_brain_multimodal_dataset_generator"
+PHASE57_SCHEMA = """
+-- MB-16: Brud Mini Brain Multimodal Dataset Generator Center.
+-- Eleventh Mini Brain migration to add schema (after MB-06/v47
+-- through MB-15/v56). MB-16 never modifies any prior phase's tables
+-- -- it only reads MB-13 (language), MB-14 (vision intelligence),
+-- MB-15 (vision model), Dataset Studio, and Document Workspace
+-- through their own public read methods. Every reference to another
+-- system's row is a plain opaque TEXT public_id, never a foreign key
+-- into another system's tables -- the same discipline every prior
+-- Mini Brain phase has used. Every generated record stays
+-- `verified=false` and every dataset stays in Draft status until an
+-- admin certifies it; nothing here is ever written into Dataset
+-- Studio.
+CREATE TABLE IF NOT EXISTS mini_brain_multimodal_dataset_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    document_source_public_id TEXT NOT NULL,
+    dataset_source_public_id TEXT,
+    language_session_public_id TEXT,
+    vision_session_public_id TEXT,
+    vision_model_session_public_id TEXT,
+    stage TEXT NOT NULL DEFAULT 'collect_sources' CHECK (stage IN (
+        'collect_sources', 'collect_text', 'collect_images', 'merge_metadata',
+        'conversation_builder', 'instruction_builder', 'dataset_draft', 'quality_analysis',
+        'duplicate_detection', 'report', 'awaiting_admin_review', 'certified', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_requested_changes',
+        'admin_archived', 'draft_deleted'
+    )),
+    source_report_json TEXT NOT NULL DEFAULT '{}',
+    text_section_json TEXT NOT NULL DEFAULT '{}',
+    image_section_json TEXT NOT NULL DEFAULT '{}',
+    metadata_report_json TEXT NOT NULL DEFAULT '{}',
+    conversation_report_json TEXT NOT NULL DEFAULT '{}',
+    instruction_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_draft_report_json TEXT NOT NULL DEFAULT '{}',
+    quality_report_json TEXT NOT NULL DEFAULT '{}',
+    duplicate_report_json TEXT NOT NULL DEFAULT '{}',
+    dataset_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    parent_session_public_id TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_sessions_stage
+    ON mini_brain_multimodal_dataset_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_sessions_status
+    ON mini_brain_multimodal_dataset_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_sessions_document
+    ON mini_brain_multimodal_dataset_sessions(document_source_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_sessions_created_at
+    ON mini_brain_multimodal_dataset_sessions(created_at);
+
+-- One row per generated draft record (conversation/instruction/qa/
+-- caption/vision/grounding/reasoning/training "flavor"). Never a
+-- Dataset Studio row -- Dataset Studio remains the only place a
+-- dataset is actually written, and only a human, outside this
+-- service, can ever copy a certified record there.
+CREATE TABLE IF NOT EXISTS mini_brain_multimodal_dataset_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    multimodal_dataset_session_id INTEGER NOT NULL,
+    record_type TEXT NOT NULL CHECK (record_type IN (
+        'conversation', 'instruction', 'qa', 'caption', 'vision', 'grounding', 'reasoning', 'training'
+    )),
+    content_json TEXT NOT NULL DEFAULT '{}',
+    record_checksum TEXT NOT NULL,
+    verified INTEGER NOT NULL DEFAULT 0 CHECK (verified IN (0, 1)),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'duplicate', 'deleted')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (multimodal_dataset_session_id) REFERENCES mini_brain_multimodal_dataset_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_records_session
+    ON mini_brain_multimodal_dataset_records(multimodal_dataset_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_records_type
+    ON mini_brain_multimodal_dataset_records(record_type);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_records_status
+    ON mini_brain_multimodal_dataset_records(status);
+
+-- Permanent, insert-only -- Dataset Memory: version, generation time,
+-- source documents/images/sessions, correction history and learning
+-- memory references, provider information. One row per certified/
+-- closed session. Same immutable-append pattern as
+-- mini_brain_research_memory (MB-10) and mini_brain_vision_learning_
+-- memory (MB-15).
+CREATE TABLE IF NOT EXISTS mini_brain_multimodal_dataset_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    multimodal_dataset_session_id INTEGER NOT NULL,
+    dataset_version INTEGER NOT NULL DEFAULT 1,
+    generated_at TEXT NOT NULL,
+    source_document_public_id TEXT NOT NULL,
+    source_dataset_public_id TEXT,
+    source_language_session_public_id TEXT,
+    source_vision_session_public_id TEXT,
+    source_vision_model_session_public_id TEXT,
+    total_records INTEGER NOT NULL DEFAULT 0,
+    correction_history_json TEXT NOT NULL DEFAULT '[]',
+    learning_memory_json TEXT NOT NULL DEFAULT '[]',
+    provider_information_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (multimodal_dataset_session_id) REFERENCES mini_brain_multimodal_dataset_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_memory_session
+    ON mini_brain_multimodal_dataset_memory(multimodal_dataset_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_multimodal_dataset_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_multimodal_dataset_memory
+    BEGIN SELECT RAISE(ABORT, 'multimodal dataset memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_multimodal_dataset_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_multimodal_dataset_memory
+    BEGIN SELECT RAISE(ABORT, 'multimodal dataset memory is permanent and append-only'); END;
+
+CREATE TABLE IF NOT EXISTS mini_brain_multimodal_dataset_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    multimodal_dataset_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (multimodal_dataset_session_id) REFERENCES mini_brain_multimodal_dataset_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_events_session
+    ON mini_brain_multimodal_dataset_events(multimodal_dataset_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_multimodal_dataset_events_created_at
+    ON mini_brain_multimodal_dataset_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_multimodal_dataset_events_immutable_update
+    BEFORE UPDATE ON mini_brain_multimodal_dataset_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain multimodal dataset events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_multimodal_dataset_events_immutable_delete
+    BEFORE DELETE ON mini_brain_multimodal_dataset_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain multimodal dataset events are append-only'); END;
+"""
+
+MIGRATION_058_NAME = "058_mini_brain_vision_rag"
+PHASE58_SCHEMA = """
+-- MB-17: Brud Mini Brain Vision RAG & Multimodal Retrieval Center.
+-- Twelfth Mini Brain migration to add schema (after MB-06/v47 through
+-- MB-16/v57). MB-17 never modifies any prior phase's tables -- it
+-- only reads MB-16 (certified datasets), MB-14 (vision intelligence),
+-- and MB-15 (vision model) through their own public read methods, and
+-- it never touches Dataset Studio or Document Workspace at all. Every
+-- reference to another system's row is a plain opaque TEXT public_id,
+-- never a foreign key into another system's tables -- the same
+-- discipline every prior Mini Brain phase has used.
+--
+-- MB-17 requires an already-certified MB-16 session -- it is the only
+-- input the architecture diagram names, and "every retrieval result
+-- must remain evidence-linked" only holds if the underlying dataset
+-- has already been through admin certification. Text/keyword scoring
+-- reuses the real, already-tested core_model.rag primitives
+-- (embed_local_custom, score_vectors, tokenize_for_keyword_index,
+-- classify_language, the bilingual insufficient-evidence policy) --
+-- MB-17 never reimplements retrieval math, and never runs a vision or
+-- language model of its own.
+CREATE TABLE IF NOT EXISTS mini_brain_vision_rag_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    multimodal_dataset_session_public_id TEXT NOT NULL,
+    document_source_public_id TEXT NOT NULL,
+    language_session_public_id TEXT,
+    vision_session_public_id TEXT,
+    vision_model_session_public_id TEXT,
+    query TEXT NOT NULL,
+    query_language TEXT,
+    stage TEXT NOT NULL DEFAULT 'query_session' CHECK (stage IN (
+        'query_session', 'text_retrieval', 'ocr_retrieval', 'image_retrieval', 'object_retrieval',
+        'knowledge_graph_retrieval', 'evidence_fusion', 'grounded_answer', 'quality_evaluation',
+        'hallucination_check', 'report', 'awaiting_admin_review', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_flagged_hallucination',
+        'admin_corrected', 'admin_archived'
+    )),
+    text_retrieval_report_json TEXT NOT NULL DEFAULT '{}',
+    ocr_retrieval_report_json TEXT NOT NULL DEFAULT '{}',
+    image_retrieval_report_json TEXT NOT NULL DEFAULT '{}',
+    object_retrieval_report_json TEXT NOT NULL DEFAULT '{}',
+    knowledge_graph_retrieval_report_json TEXT NOT NULL DEFAULT '{}',
+    evidence_fusion_report_json TEXT NOT NULL DEFAULT '{}',
+    answer_report_json TEXT NOT NULL DEFAULT '{}',
+    quality_report_json TEXT NOT NULL DEFAULT '{}',
+    hallucination_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_sessions_stage
+    ON mini_brain_vision_rag_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_sessions_status
+    ON mini_brain_vision_rag_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_sessions_dataset_session
+    ON mini_brain_vision_rag_sessions(multimodal_dataset_session_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_sessions_created_at
+    ON mini_brain_vision_rag_sessions(created_at);
+
+-- One row per retrieved evidence item (text/ocr/image/object/
+-- graph_edge) -- the structural backbone of "every retrieval result
+-- must remain evidence-linked." `used_in_answer` marks exactly which
+-- items the grounded answer actually cites, so the Hallucination
+-- Check stage can verify every claim traces to a row here.
+CREATE TABLE IF NOT EXISTS mini_brain_vision_rag_evidence (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_rag_session_id INTEGER NOT NULL,
+    evidence_type TEXT NOT NULL CHECK (evidence_type IN (
+        'text', 'ocr', 'image', 'object', 'graph_edge'
+    )),
+    source_record_public_id TEXT,
+    document_source_public_id TEXT,
+    page_number INTEGER,
+    image_public_id TEXT,
+    object_label TEXT,
+    bounding_box_json TEXT,
+    graph_edge_json TEXT,
+    content_snippet TEXT NOT NULL DEFAULT '',
+    relevance_score REAL NOT NULL DEFAULT 0.0 CHECK (relevance_score BETWEEN 0 AND 1),
+    used_in_answer INTEGER NOT NULL DEFAULT 0 CHECK (used_in_answer IN (0, 1)),
+    source TEXT NOT NULL DEFAULT 'ai_retrieved' CHECK (source IN ('ai_retrieved', 'admin_added')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'deleted')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_rag_session_id) REFERENCES mini_brain_vision_rag_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_evidence_session
+    ON mini_brain_vision_rag_evidence(vision_rag_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_evidence_type
+    ON mini_brain_vision_rag_evidence(evidence_type);
+
+-- Permanent, insert-only -- RAG Memory: query, retrieved evidence,
+-- final answer, confidence, admin decision, hallucination flag,
+-- correction history, retrieval latency. Same immutable-append
+-- pattern as mini_brain_research_memory (MB-10) and mini_brain_
+-- vision_learning_memory (MB-15).
+CREATE TABLE IF NOT EXISTS mini_brain_vision_rag_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_rag_session_id INTEGER NOT NULL,
+    query TEXT NOT NULL,
+    evidence_summary_json TEXT NOT NULL DEFAULT '{}',
+    final_answer TEXT,
+    confidence REAL,
+    admin_decision TEXT,
+    hallucination_flag INTEGER NOT NULL DEFAULT 0 CHECK (hallucination_flag IN (0, 1)),
+    correction_history_json TEXT NOT NULL DEFAULT '[]',
+    retrieval_latency_ms REAL,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_rag_session_id) REFERENCES mini_brain_vision_rag_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_memory_session
+    ON mini_brain_vision_rag_memory(vision_rag_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_rag_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_vision_rag_memory
+    BEGIN SELECT RAISE(ABORT, 'vision rag memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_rag_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_vision_rag_memory
+    BEGIN SELECT RAISE(ABORT, 'vision rag memory is permanent and append-only'); END;
+
+CREATE TABLE IF NOT EXISTS mini_brain_vision_rag_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    vision_rag_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vision_rag_session_id) REFERENCES mini_brain_vision_rag_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_events_session
+    ON mini_brain_vision_rag_events(vision_rag_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_vision_rag_events_created_at
+    ON mini_brain_vision_rag_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_rag_events_immutable_update
+    BEFORE UPDATE ON mini_brain_vision_rag_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain vision rag events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_vision_rag_events_immutable_delete
+    BEFORE DELETE ON mini_brain_vision_rag_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain vision rag events are append-only'); END;
+"""
+
+MIGRATION_059_NAME = "059_mini_brain_training_pipeline"
+PHASE59_SCHEMA = """
+-- MB-18: Brud Mini Brain Multimodal Training Pipeline Center.
+-- Thirteenth Mini Brain migration to add schema (after MB-06/v47
+-- through MB-17/v58). MB-18 never modifies any prior phase's tables
+-- -- it only reads MB-16 (certified datasets), MB-17 (approved
+-- grounded RAG memory), MB-13/14/15 (session detail), and MB-05/
+-- MB-05.1 (dataset readiness) through their own public read methods.
+-- Every reference to another system's row is a plain opaque TEXT
+-- public_id, never a foreign key into another system's tables.
+--
+-- MB-18 is a planning, validation, packaging, and reporting system
+-- only -- it never starts a training job, never calls a training or
+-- quantization API, never creates a GGUF file, and never deploys or
+-- activates a runtime. Every generated artifact is admin-approved
+-- metadata only: real JSON files written to an MB-18-owned directory
+-- on disk, with only their checksum and size recorded here -- no
+-- model weights are ever produced by this phase.
+CREATE TABLE IF NOT EXISTS mini_brain_training_pipeline_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    source_dataset_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_rag_memory_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    stage TEXT NOT NULL DEFAULT 'collect_datasets' CHECK (stage IN (
+        'collect_datasets', 'collect_rag_memory', 'analyze_language', 'analyze_vision',
+        'analyze_tokenizer', 'plan_splits', 'plan_curriculum', 'estimate_hardware',
+        'build_package', 'generate_report', 'awaiting_admin_review', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_archived'
+    )),
+    dataset_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_memory_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    language_distribution_report_json TEXT NOT NULL DEFAULT '{}',
+    image_statistics_report_json TEXT NOT NULL DEFAULT '{}',
+    grounding_quality_report_json TEXT NOT NULL DEFAULT '{}',
+    tokenizer_coverage_report_json TEXT NOT NULL DEFAULT '{}',
+    splits_report_json TEXT NOT NULL DEFAULT '{}',
+    curriculum_report_json TEXT NOT NULL DEFAULT '{}',
+    hardware_estimate_report_json TEXT NOT NULL DEFAULT '{}',
+    package_directory TEXT,
+    package_manifest_json TEXT NOT NULL DEFAULT '{}',
+    readiness_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_pipeline_sessions_stage
+    ON mini_brain_training_pipeline_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_pipeline_sessions_status
+    ON mini_brain_training_pipeline_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_pipeline_sessions_created_at
+    ON mini_brain_training_pipeline_sessions(created_at);
+
+-- One row per generated artifact file (manifest.json,
+-- dataset_summary.json, splits.json, curriculum_plan.json,
+-- training_recipe.json, tokenizer_coverage.json,
+-- language_distribution.json, image_statistics.json,
+-- grounding_quality.json, hardware_estimate.json,
+-- reproducibility.json). The database only ever holds metadata --
+-- the real file lives on disk under the session's own package
+-- directory.
+CREATE TABLE IF NOT EXISTS mini_brain_training_packages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    training_pipeline_session_id INTEGER NOT NULL,
+    artifact_name TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (training_pipeline_session_id) REFERENCES mini_brain_training_pipeline_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_packages_session
+    ON mini_brain_training_packages(training_pipeline_session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mini_brain_training_packages_session_artifact
+    ON mini_brain_training_packages(training_pipeline_session_id, artifact_name);
+
+CREATE TABLE IF NOT EXISTS mini_brain_training_pipeline_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    training_pipeline_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (training_pipeline_session_id) REFERENCES mini_brain_training_pipeline_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_pipeline_events_session
+    ON mini_brain_training_pipeline_events(training_pipeline_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_pipeline_events_created_at
+    ON mini_brain_training_pipeline_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_pipeline_events_immutable_update
+    BEFORE UPDATE ON mini_brain_training_pipeline_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain training pipeline events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_pipeline_events_immutable_delete
+    BEFORE DELETE ON mini_brain_training_pipeline_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain training pipeline events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per approved/rejected/
+-- archived session. Same immutable-append pattern as
+-- mini_brain_research_memory (MB-10) and mini_brain_vision_rag_memory
+-- (MB-17).
+CREATE TABLE IF NOT EXISTS mini_brain_training_pipeline_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    training_pipeline_session_id INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    source_dataset_count INTEGER NOT NULL DEFAULT 0,
+    source_rag_memory_count INTEGER NOT NULL DEFAULT 0,
+    package_manifest_checksum TEXT,
+    readiness_score REAL,
+    admin_decision TEXT NOT NULL,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (training_pipeline_session_id) REFERENCES mini_brain_training_pipeline_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_pipeline_memory_session
+    ON mini_brain_training_pipeline_memory(training_pipeline_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_pipeline_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_training_pipeline_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain training pipeline memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_pipeline_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_training_pipeline_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain training pipeline memory is permanent and append-only'); END;
+"""
+
+MIGRATION_060_NAME = "060_mini_brain_evaluation_center"
+PHASE60_SCHEMA = """
+-- MB-19: Brud Mini Brain Evaluation & Benchmark Center. Fourteenth
+-- Mini Brain migration to add schema (after MB-06/v47 through
+-- MB-18/v59). MB-19 never modifies any prior phase's tables -- it
+-- only reads MB-16 (certified datasets), MB-17 (approved grounded RAG
+-- sessions), and MB-18 (built training packages) through their own
+-- public read methods. Every reference to another system's row is a
+-- plain opaque TEXT public_id, never a foreign key into another
+-- system's tables.
+--
+-- MB-19 is an evaluation-only system -- it never trains, fine-tunes,
+-- exports, quantizes, deploys, or activates a runtime. Every benchmark
+-- output is admin-approved evaluation metadata only: real JSON export
+-- files written to an MB-19-owned directory on disk, with only their
+-- checksum and size recorded here.
+CREATE TABLE IF NOT EXISTS mini_brain_evaluation_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    source_dataset_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_rag_session_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_training_package_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    stage TEXT NOT NULL DEFAULT 'collect_datasets' CHECK (stage IN (
+        'collect_datasets', 'collect_rag_sessions', 'collect_training_packages',
+        'run_language_benchmarks', 'run_ocr_benchmarks', 'run_grounding_retrieval_benchmarks',
+        'run_multimodal_benchmarks', 'run_package_benchmarks', 'run_regression_comparison',
+        'generate_report', 'awaiting_admin_review', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_archived'
+    )),
+    dataset_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    package_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    language_benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    ocr_benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    grounding_benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    retrieval_benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    multimodal_benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    package_benchmark_report_json TEXT NOT NULL DEFAULT '{}',
+    regression_report_json TEXT NOT NULL DEFAULT '{}',
+    benchmark_suite_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_report_json TEXT NOT NULL DEFAULT '{}',
+    release_readiness_json TEXT NOT NULL DEFAULT '{}',
+    export_directory TEXT,
+    export_manifest_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_evaluation_sessions_stage
+    ON mini_brain_evaluation_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_evaluation_sessions_status
+    ON mini_brain_evaluation_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_evaluation_sessions_created_at
+    ON mini_brain_evaluation_sessions(created_at);
+
+-- One row per individual benchmark metric produced across every
+-- category -- language, ocr, grounding, retrieval, multimodal,
+-- package, regression. metric_value is nullable since some metrics
+-- (e.g. a status label) are not numeric.
+CREATE TABLE IF NOT EXISTS mini_brain_benchmark_results (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_session_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    metric_name TEXT NOT NULL,
+    metric_value REAL,
+    metric_status TEXT,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_session_id) REFERENCES mini_brain_evaluation_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_benchmark_results_session
+    ON mini_brain_benchmark_results(evaluation_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_benchmark_results_category
+    ON mini_brain_benchmark_results(evaluation_session_id, category);
+
+CREATE TABLE IF NOT EXISTS mini_brain_evaluation_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_session_id) REFERENCES mini_brain_evaluation_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_evaluation_events_session
+    ON mini_brain_evaluation_events(evaluation_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_evaluation_events_created_at
+    ON mini_brain_evaluation_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_evaluation_events_immutable_update
+    BEFORE UPDATE ON mini_brain_evaluation_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain evaluation events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_evaluation_events_immutable_delete
+    BEFORE DELETE ON mini_brain_evaluation_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain evaluation events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per approved/rejected/
+-- archived evaluation session. Same immutable-append pattern as
+-- mini_brain_research_memory (MB-10) and mini_brain_training_pipeline_memory (MB-18).
+CREATE TABLE IF NOT EXISTS mini_brain_evaluation_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    evaluation_session_id INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    source_dataset_count INTEGER NOT NULL DEFAULT 0,
+    source_rag_session_count INTEGER NOT NULL DEFAULT 0,
+    source_training_package_count INTEGER NOT NULL DEFAULT 0,
+    overall_score REAL,
+    release_readiness_status TEXT,
+    admin_decision TEXT NOT NULL,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (evaluation_session_id) REFERENCES mini_brain_evaluation_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_evaluation_memory_session
+    ON mini_brain_evaluation_memory(evaluation_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_evaluation_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_evaluation_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain evaluation memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_evaluation_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_evaluation_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain evaluation memory is permanent and append-only'); END;
+"""
+
+MIGRATION_061_NAME = "061_mini_brain_release_governance"
+PHASE61_SCHEMA = """
+-- MB-20: Brud Mini Brain Release Readiness & Deployment Governance
+-- Center. Fifteenth Mini Brain migration to add schema (after MB-06/
+-- v47 through MB-19/v60). MB-20 never modifies any prior phase's
+-- tables -- it only reads MB-16 (certified datasets), MB-17 (approved
+-- grounded RAG sessions), MB-18 (approved training packages), and
+-- MB-19 (approved evaluations) through their own public read methods.
+-- Every reference to another system's row is a plain opaque TEXT
+-- public_id, never a foreign key into another system's tables.
+--
+-- Table names are prefixed `mini_brain_release_governance_*`, not the
+-- shorter `mini_brain_release_*`, because MB-07 (migration 048,
+-- "Release Pipeline & Model Deployment Manager") already owns
+-- `mini_brain_release_sessions` and `mini_brain_release_events` --
+-- caught during this migration's own smoke test before any dependent
+-- code was written, never a collision that reached the database.
+--
+-- MB-20 is a decision-and-governance layer only -- it never deploys a
+-- model, starts an inference server or public chat, calls a runtime-
+-- manager start API, calls a Docker/Kubernetes deployment API,
+-- uploads weights anywhere, exports GGUF, quantizes, or enables
+-- production traffic. Every generated artifact is admin-approved
+-- governance metadata only: real JSON files written to an MB-20-owned
+-- directory on disk, with only their checksum and size recorded here.
+CREATE TABLE IF NOT EXISTS mini_brain_release_governance_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    source_dataset_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_rag_session_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_training_package_public_id TEXT,
+    source_evaluation_session_public_id TEXT,
+    stage TEXT NOT NULL DEFAULT 'collect_datasets' CHECK (stage IN (
+        'collect_datasets', 'collect_rag', 'collect_training_package', 'collect_evaluation',
+        'run_safety_gates', 'run_compliance_gates', 'run_benchmark_gates', 'build_risk_rollback',
+        'build_release_package', 'generate_report', 'awaiting_admin_review', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_approved', 'admin_rejected', 'admin_archived'
+    )),
+    dataset_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    rag_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    training_package_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    evaluation_collection_report_json TEXT NOT NULL DEFAULT '{}',
+    safety_gate_report_json TEXT NOT NULL DEFAULT '{}',
+    compliance_gate_report_json TEXT NOT NULL DEFAULT '{}',
+    benchmark_gate_report_json TEXT NOT NULL DEFAULT '{}',
+    risk_rollback_report_json TEXT NOT NULL DEFAULT '{}',
+    release_manifest_json TEXT NOT NULL DEFAULT '{}',
+    release_decision_json TEXT NOT NULL DEFAULT '{}',
+    readiness_report_json TEXT NOT NULL DEFAULT '{}',
+    release_directory TEXT,
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_sessions_stage
+    ON mini_brain_release_governance_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_sessions_status
+    ON mini_brain_release_governance_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_sessions_created_at
+    ON mini_brain_release_governance_sessions(created_at);
+
+-- One row per generated release artifact file (release_manifest.json,
+-- release_decision.json, safety_checklist.json, compliance_checklist.json,
+-- benchmark_summary.json, risk_register.json, rollback_plan.json,
+-- compatibility_matrix.json, deployment_prerequisites.json,
+-- operator_instructions.json, release_audit_trail.json,
+-- reproducibility.json). The database only ever holds metadata -- the
+-- real file lives on disk under the session's own release directory.
+CREATE TABLE IF NOT EXISTS mini_brain_release_governance_artifacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_session_id INTEGER NOT NULL,
+    artifact_name TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_session_id) REFERENCES mini_brain_release_governance_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_artifacts_session
+    ON mini_brain_release_governance_artifacts(release_session_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mini_brain_release_governance_artifacts_session_artifact
+    ON mini_brain_release_governance_artifacts(release_session_id, artifact_name);
+
+CREATE TABLE IF NOT EXISTS mini_brain_release_governance_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_session_id) REFERENCES mini_brain_release_governance_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_events_session
+    ON mini_brain_release_governance_events(release_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_events_created_at
+    ON mini_brain_release_governance_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_release_governance_events_immutable_update
+    BEFORE UPDATE ON mini_brain_release_governance_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain release governance events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_release_governance_events_immutable_delete
+    BEFORE DELETE ON mini_brain_release_governance_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain release governance events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per approved/rejected/
+-- archived release session. Same immutable-append pattern as
+-- mini_brain_research_memory (MB-10) and mini_brain_evaluation_memory (MB-19).
+CREATE TABLE IF NOT EXISTS mini_brain_release_governance_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    release_session_id INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    source_dataset_count INTEGER NOT NULL DEFAULT 0,
+    source_rag_session_count INTEGER NOT NULL DEFAULT 0,
+    overall_readiness_score REAL,
+    release_decision_status TEXT,
+    admin_decision TEXT NOT NULL,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (release_session_id) REFERENCES mini_brain_release_governance_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_release_governance_memory_session
+    ON mini_brain_release_governance_memory(release_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_release_governance_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_release_governance_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain release governance memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_release_governance_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_release_governance_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain release governance memory is permanent and append-only'); END;
+"""
+
+MIGRATION_062_NAME = "062_mini_brain_external_ai_gateway"
+PHASE62_SCHEMA = """
+-- MB-21: Brud Mini Brain External AI Evaluation Gateway. Sixteenth
+-- Mini Brain migration to add schema (after MB-06/v47 through MB-20/
+-- v61). MB-21 never modifies any prior phase's tables -- it only
+-- reads MB-16/17/18/19/20 through their own public read methods.
+-- Every reference to another system's row is a plain opaque TEXT
+-- public_id, never a foreign key into another system's tables.
+--
+-- Table names are prefixed `mini_brain_external_ai_*` -- checked
+-- against every existing table name in this file before being
+-- written, following the collision discovered and fixed during MB-20
+-- (which found MB-07 already owned the shorter `mini_brain_release_*`
+-- names); no collision exists for this prefix.
+--
+-- MB-21 uses external AI providers strictly as evaluation assistants,
+-- never as autonomous decision-makers. It never trains, modifies
+-- weights, starts a runtime, deploys, approves a dataset, approves a
+-- release, writes into Dataset Studio or Document Workspace, executes
+-- shell commands, or calls a provider without an explicit prior admin
+-- authorization recorded on this same session. Every provider output
+-- remains untrusted candidate evidence -- hashes are stored by
+-- default; only metadata is ever persisted unless an admin explicitly
+-- enables retention.
+CREATE TABLE IF NOT EXISTS mini_brain_external_ai_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    purpose TEXT NOT NULL CHECK (purpose IN ('public_style_stress_test', 'data_acquisition_assistance')),
+    source_dataset_public_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_rag_session_public_id TEXT,
+    source_training_package_public_id TEXT,
+    source_evaluation_session_public_id TEXT,
+    source_release_session_public_id TEXT,
+    stage TEXT NOT NULL DEFAULT 'validate_authorization' CHECK (stage IN (
+        'validate_authorization', 'sanitize_inputs', 'select_providers', 'dispatch_requests',
+        'collect_responses', 'normalize_responses', 'analyze_agreement', 'build_evidence',
+        'generate_report', 'awaiting_admin_review', 'reviewed', 'archived'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'admin_accepted', 'admin_rejected', 'admin_needs_followup', 'archived'
+    )),
+    admin_authorization_confirmed_by TEXT,
+    admin_authorization_note TEXT NOT NULL DEFAULT '',
+    admin_authorization_confirmed_at TEXT,
+    requested_provider_keys_json TEXT NOT NULL DEFAULT '[]',
+    authorization_report_json TEXT NOT NULL DEFAULT '{}',
+    sanitization_report_json TEXT NOT NULL DEFAULT '{}',
+    provider_selection_report_json TEXT NOT NULL DEFAULT '{}',
+    dispatch_report_json TEXT NOT NULL DEFAULT '{}',
+    collection_report_json TEXT NOT NULL DEFAULT '{}',
+    normalization_report_json TEXT NOT NULL DEFAULT '{}',
+    agreement_report_json TEXT NOT NULL DEFAULT '{}',
+    evidence_bundle_json TEXT NOT NULL DEFAULT '{}',
+    gateway_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_decision TEXT,
+    admin_decided_by TEXT,
+    admin_decided_at TEXT,
+    archived_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_sessions_stage
+    ON mini_brain_external_ai_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_sessions_status
+    ON mini_brain_external_ai_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_sessions_created_at
+    ON mini_brain_external_ai_sessions(created_at);
+
+-- One row per provider call. Only a hash of the raw response is
+-- stored by default (`response_hash`) -- `normalized_response_json`
+-- holds the structured, sanitized, already-normalized output; the
+-- raw provider text itself is never persisted unless an admin
+-- explicitly enables retention (`raw_response_retained`).
+CREATE TABLE IF NOT EXISTS mini_brain_external_ai_provider_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    external_ai_session_id INTEGER NOT NULL,
+    provider_key TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN (
+        'success', 'failed', 'timeout', 'rate_limited', 'unavailable', 'disabled'
+    )),
+    request_hash TEXT,
+    response_hash TEXT,
+    raw_response_retained INTEGER NOT NULL DEFAULT 0,
+    normalized_response_json TEXT NOT NULL DEFAULT '{}',
+    latency_ms REAL,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (external_ai_session_id) REFERENCES mini_brain_external_ai_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_provider_runs_session
+    ON mini_brain_external_ai_provider_runs(external_ai_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_provider_runs_status
+    ON mini_brain_external_ai_provider_runs(external_ai_session_id, status);
+
+CREATE TABLE IF NOT EXISTS mini_brain_external_ai_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    external_ai_session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (external_ai_session_id) REFERENCES mini_brain_external_ai_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_events_session
+    ON mini_brain_external_ai_events(external_ai_session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_events_created_at
+    ON mini_brain_external_ai_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_external_ai_events_immutable_update
+    BEFORE UPDATE ON mini_brain_external_ai_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain external ai events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_external_ai_events_immutable_delete
+    BEFORE DELETE ON mini_brain_external_ai_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain external ai events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per admin-reviewed
+-- session. Same immutable-append pattern as mini_brain_research_memory
+-- (MB-10) and mini_brain_release_governance_memory (MB-20).
+CREATE TABLE IF NOT EXISTS mini_brain_external_ai_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    external_ai_session_id INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    provider_count INTEGER NOT NULL DEFAULT 0,
+    successful_provider_count INTEGER NOT NULL DEFAULT 0,
+    agreement_score REAL,
+    admin_decision TEXT NOT NULL,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (external_ai_session_id) REFERENCES mini_brain_external_ai_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_external_ai_memory_session
+    ON mini_brain_external_ai_memory(external_ai_session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_external_ai_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_external_ai_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain external ai memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_external_ai_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_external_ai_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain external ai memory is permanent and append-only'); END;
+"""
+
+MIGRATION_063_NAME = "063_mini_brain_training_engine"
+PHASE63_SCHEMA = """
+-- MB-22: Brud Mini Brain Real Training Execution Engine. Seventeenth
+-- Mini Brain migration to add schema (after MB-06/v47 through MB-21/
+-- v62). MB-22 never modifies any prior phase's tables -- it only
+-- reads MB-18 (approved training packages) and MB-20 (approved
+-- release-governance sessions) through their own public read methods.
+-- Every reference to another system's row is a plain opaque TEXT
+-- public_id, never a foreign key into another system's tables.
+--
+-- Table names are prefixed `mini_brain_training_*` -- checked against
+-- every existing table name in this file first (MB-18's own
+-- `mini_brain_training_pipeline_sessions`/`_events`/`_memory` and
+-- `mini_brain_training_packages` use a different, non-colliding
+-- shape), following the naming-collision discipline established
+-- during MB-20.
+--
+-- MB-22 is the first phase allowed to execute a real training
+-- workflow, but only ever in a controlled, admin-gated, resumable
+-- way: it never auto-starts training after package approval, never
+-- auto-deploys or auto-promotes a trained model, never overwrites an
+-- existing checkpoint, never downloads a model automatically, and
+-- never bypasses a fresh, per-job admin authorization. Every real
+-- adapter besides the deterministic simulation adapter is an honest,
+-- disclosed stub in this environment.
+CREATE TABLE IF NOT EXISTS mini_brain_training_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    training_package_session_public_id TEXT NOT NULL,
+    release_governance_session_public_id TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    execution_mode TEXT NOT NULL DEFAULT 'simulation' CHECK (execution_mode IN ('simulation', 'cpu', 'gpu')),
+    stage TEXT NOT NULL DEFAULT 'validate_release' CHECK (stage IN (
+        'validate_release', 'validate_package', 'validate_authorization', 'plan_resources',
+        'build_manifest', 'reserve_runtime', 'start_training', 'streaming_metrics',
+        'generate_report', 'awaiting_archive', 'cancelled', 'archived'
+    )),
+    status TEXT NOT NULL DEFAULT 'in_progress' CHECK (status IN (
+        'in_progress', 'running', 'paused', 'completed', 'cancelled', 'failed', 'archived'
+    )),
+    admin_authorized_by TEXT,
+    admin_authorization_reason TEXT NOT NULL DEFAULT '',
+    admin_authorization_token TEXT,
+    release_validation_report_json TEXT NOT NULL DEFAULT '{}',
+    package_validation_report_json TEXT NOT NULL DEFAULT '{}',
+    authorization_report_json TEXT NOT NULL DEFAULT '{}',
+    resource_plan_report_json TEXT NOT NULL DEFAULT '{}',
+    training_manifest_json TEXT NOT NULL DEFAULT '{}',
+    runtime_reservation_report_json TEXT NOT NULL DEFAULT '{}',
+    training_state_json TEXT NOT NULL DEFAULT '{}',
+    final_report_json TEXT NOT NULL DEFAULT '{}',
+    output_directory TEXT,
+    checkpoint_directory TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    archived_at TEXT,
+    created_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_jobs_stage
+    ON mini_brain_training_jobs(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_jobs_status
+    ON mini_brain_training_jobs(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_jobs_created_at
+    ON mini_brain_training_jobs(created_at);
+
+-- Deterministic naming, no overwrite (unique index on job+checkpoint_name),
+-- SHA-256 verified. `is_metadata_only` is true whenever the simulation
+-- adapter produced the checkpoint (no real model weights exist to hash
+-- meaningfully) -- disclosed on every row, never silently implied real.
+CREATE TABLE IF NOT EXISTS mini_brain_training_checkpoints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    job_id INTEGER NOT NULL,
+    step INTEGER NOT NULL CHECK (step >= 0),
+    epoch INTEGER NOT NULL CHECK (epoch >= 0),
+    checkpoint_name TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL CHECK (file_size_bytes >= 0),
+    is_metadata_only INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES mini_brain_training_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_checkpoints_job
+    ON mini_brain_training_checkpoints(job_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mini_brain_training_checkpoints_job_name
+    ON mini_brain_training_checkpoints(job_id, checkpoint_name);
+
+-- Append-only, one row per recorded metric point -- streamed
+-- incrementally during training, never rewritten.
+CREATE TABLE IF NOT EXISTS mini_brain_training_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    job_id INTEGER NOT NULL,
+    step INTEGER NOT NULL CHECK (step >= 0),
+    epoch INTEGER NOT NULL CHECK (epoch >= 0),
+    loss REAL,
+    learning_rate REAL,
+    tokens_per_second REAL,
+    examples_per_second REAL,
+    gpu_memory_mb REAL,
+    cpu_memory_mb REAL,
+    recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES mini_brain_training_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_metrics_job
+    ON mini_brain_training_metrics(job_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_metrics_job_step
+    ON mini_brain_training_metrics(job_id, step);
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_metrics_immutable_update
+    BEFORE UPDATE ON mini_brain_training_metrics
+    BEGIN SELECT RAISE(ABORT, 'mini brain training metrics are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_metrics_immutable_delete
+    BEFORE DELETE ON mini_brain_training_metrics
+    BEGIN SELECT RAISE(ABORT, 'mini brain training metrics are append-only'); END;
+
+CREATE TABLE IF NOT EXISTS mini_brain_training_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    job_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES mini_brain_training_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_events_job
+    ON mini_brain_training_events(job_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_events_created_at
+    ON mini_brain_training_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_events_immutable_update
+    BEFORE UPDATE ON mini_brain_training_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain training events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_events_immutable_delete
+    BEFORE DELETE ON mini_brain_training_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain training events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per archived job. Same
+-- immutable-append pattern as mini_brain_research_memory (MB-10) and
+-- mini_brain_external_ai_memory (MB-21).
+CREATE TABLE IF NOT EXISTS mini_brain_training_engine_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    job_id INTEGER NOT NULL,
+    topic TEXT NOT NULL,
+    execution_mode TEXT NOT NULL,
+    final_status TEXT NOT NULL,
+    total_steps INTEGER NOT NULL DEFAULT 0,
+    final_loss REAL,
+    best_loss REAL,
+    checkpoint_count INTEGER NOT NULL DEFAULT 0,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_id) REFERENCES mini_brain_training_jobs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_training_engine_memory_job
+    ON mini_brain_training_engine_memory(job_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_engine_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_training_engine_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain training engine memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_training_engine_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_training_engine_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain training engine memory is permanent and append-only'); END;
+"""
+
+MIGRATION_064_NAME = "064_mini_brain_public_chat_runtime"
+PHASE64_SCHEMA = """
+-- MB-23: Brud Mini Brain Public Chat Runtime & Self-Improvement
+-- Feedback Loop. Eighteenth Mini Brain migration to add schema (after
+-- MB-06/v47 through MB-22/v63). MB-23 never modifies any prior
+-- phase's tables -- it reads the existing public chat runtime
+-- (`PublicChatRoutingService`/`PublicChatResponse`) for every real
+-- routing/RAG/vision/tool signal, and it never calls a write method on
+-- MB-16/17/18/19/20/21/22.
+--
+-- Table names are prefixed `mini_brain_public_chat_*` / `mini_brain_
+-- feedback_signals` / `mini_brain_improvement_candidates` -- checked
+-- against every existing table name in this file first (the
+-- pre-existing, differently-owned `public_chat_routing_events` and
+-- `public_chat_feedback_events` from Phase 18/20 use a different,
+-- unprefixed, non-colliding name), following the naming-collision
+-- discipline established during MB-20.
+--
+-- No raw message content, personal data, credentials, or tokens are
+-- ever stored: `mini_brain_public_chat_messages` stores only a
+-- content hash, and `mini_brain_feedback_signals` stores only text
+-- that has already passed through the deterministic sanitizer in
+-- `core_model/mini_brain/public_chat_runtime/feedback_sanitizer.py`.
+-- Every improvement candidate is created with
+-- status='pending_admin_review' and can only leave that status via an
+-- explicit admin review call -- MB-23 never self-trains and never
+-- bypasses admin approval.
+CREATE TABLE IF NOT EXISTS mini_brain_public_chat_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    user_session_hash TEXT NOT NULL,
+    conversation_id TEXT,
+    language TEXT NOT NULL DEFAULT 'auto',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'ended')),
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TEXT,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    satisfaction_score REAL,
+    unresolved_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_sessions_status
+    ON mini_brain_public_chat_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_sessions_created_at
+    ON mini_brain_public_chat_sessions(created_at);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_sessions_user_session_hash
+    ON mini_brain_public_chat_sessions(user_session_hash);
+
+-- No raw message content -- `content_hash` only. Real, sanitized
+-- normalized text for gap detection lives exclusively in
+-- `mini_brain_feedback_signals`, never here.
+CREATE TABLE IF NOT EXISTS mini_brain_public_chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content_hash TEXT NOT NULL,
+    topic_key TEXT,
+    token_estimate INTEGER NOT NULL DEFAULT 0,
+    used_rag INTEGER NOT NULL DEFAULT 0,
+    used_vision INTEGER NOT NULL DEFAULT 0,
+    used_tool INTEGER NOT NULL DEFAULT 0,
+    route_used TEXT,
+    evidence_status TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_public_chat_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_messages_session
+    ON mini_brain_public_chat_messages(session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_messages_topic_key
+    ON mini_brain_public_chat_messages(topic_key);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_messages_created_at
+    ON mini_brain_public_chat_messages(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_public_chat_messages_immutable_update
+    BEFORE UPDATE ON mini_brain_public_chat_messages
+    BEGIN SELECT RAISE(ABORT, 'mini brain public chat messages are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_public_chat_messages_immutable_delete
+    BEFORE DELETE ON mini_brain_public_chat_messages
+    BEGIN SELECT RAISE(ABORT, 'mini brain public chat messages are append-only'); END;
+
+-- Only ever holds text that has already been through
+-- feedback_sanitizer.py -- normalized_text is anonymized, never the
+-- raw user message.
+CREATE TABLE IF NOT EXISTS mini_brain_feedback_signals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    message_id INTEGER,
+    signal_type TEXT NOT NULL CHECK (signal_type IN (
+        'explicit_negative', 'low_confidence', 'insufficient_evidence',
+        'repeated_question', 'clarification_needed', 'safety_flag'
+    )),
+    severity TEXT NOT NULL DEFAULT 'low' CHECK (severity IN ('low', 'medium', 'high')),
+    normalized_text TEXT NOT NULL,
+    topic_key TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_public_chat_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES mini_brain_public_chat_messages(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_feedback_signals_session
+    ON mini_brain_feedback_signals(session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_feedback_signals_topic_key
+    ON mini_brain_feedback_signals(topic_key);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_feedback_signals_created_at
+    ON mini_brain_feedback_signals(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_feedback_signals_immutable_update
+    BEFORE UPDATE ON mini_brain_feedback_signals
+    BEGIN SELECT RAISE(ABORT, 'mini brain feedback signals are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_feedback_signals_immutable_delete
+    BEFORE DELETE ON mini_brain_feedback_signals
+    BEGIN SELECT RAISE(ABORT, 'mini brain feedback signals are append-only'); END;
+
+-- Every candidate is born pending_admin_review and can only ever
+-- leave that status via review_candidate() (see structural safety
+-- tests) -- MB-23 never self-approves, never self-trains.
+CREATE TABLE IF NOT EXISTS mini_brain_improvement_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    topic_key TEXT NOT NULL,
+    frequency INTEGER NOT NULL DEFAULT 0,
+    impact_score REAL NOT NULL DEFAULT 0,
+    priority_score REAL NOT NULL DEFAULT 0,
+    recommended_action TEXT NOT NULL DEFAULT '',
+    example_questions_json TEXT NOT NULL DEFAULT '[]',
+    suggested_missing_knowledge_json TEXT NOT NULL DEFAULT '{}',
+    handoff_report_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending_admin_review' CHECK (status IN (
+        'pending_admin_review', 'approved', 'rejected', 'actioned'
+    )),
+    reviewed_by_admin_public_id TEXT,
+    review_decision TEXT,
+    review_notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_improvement_candidates_status
+    ON mini_brain_improvement_candidates(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_improvement_candidates_priority
+    ON mini_brain_improvement_candidates(priority_score);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_improvement_candidates_topic_key
+    ON mini_brain_improvement_candidates(topic_key);
+
+CREATE TABLE IF NOT EXISTS mini_brain_public_chat_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER,
+    candidate_id INTEGER,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_public_chat_sessions(id) ON DELETE SET NULL,
+    FOREIGN KEY (candidate_id) REFERENCES mini_brain_improvement_candidates(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_events_session
+    ON mini_brain_public_chat_events(session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_events_candidate
+    ON mini_brain_public_chat_events(candidate_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_public_chat_events_created_at
+    ON mini_brain_public_chat_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_public_chat_events_immutable_update
+    BEFORE UPDATE ON mini_brain_public_chat_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain public chat events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_public_chat_events_immutable_delete
+    BEFORE DELETE ON mini_brain_public_chat_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain public chat events are append-only'); END;
+"""
+
+MIGRATION_065_NAME = "065_mini_brain_plugin_governance"
+PHASE65_SCHEMA = """
+-- MB-24: Brud Mini Brain Plugin & Tool Runtime Governance Center.
+-- Nineteenth Mini Brain migration to add schema (after MB-06/v47
+-- through MB-23/v64). MB-24 never modifies any prior phase's tables.
+--
+-- Table names are prefixed `mini_brain_plugin_*` -- checked against
+-- every existing table name in this file first, no collision found.
+--
+-- This is a governance layer only: no real sandbox execution, no
+-- OS-level isolation, no signed-plugin verification, and no plugin
+-- binary is ever executed as a result of any table here. A plugin is
+-- always created with status='disabled'; only an explicit admin
+-- action can change that. Execution tokens are never stored raw --
+-- only their SHA-256 hash, inside a runtime event row's own
+-- metadata_json, alongside every other governance decision this
+-- phase ever makes.
+CREATE TABLE IF NOT EXISTS mini_brain_plugins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    plugin_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    entrypoint TEXT NOT NULL DEFAULT '',
+    requested_scopes_json TEXT NOT NULL DEFAULT '[]',
+    allowed_domains_json TEXT NOT NULL DEFAULT '[]',
+    filesystem_roots_json TEXT NOT NULL DEFAULT '[]',
+    ui_components_json TEXT NOT NULL DEFAULT '[]',
+    local_storage_usage INTEGER NOT NULL DEFAULT 0,
+    cloud_storage_usage INTEGER NOT NULL DEFAULT 0,
+    minimum_brud_version TEXT NOT NULL DEFAULT '',
+    signature_placeholder TEXT NOT NULL DEFAULT '',
+    homepage TEXT NOT NULL DEFAULT '',
+    support_url TEXT NOT NULL DEFAULT '',
+    manifest_checksum_sha256 TEXT NOT NULL DEFAULT '',
+    stage TEXT NOT NULL DEFAULT 'register' CHECK (stage IN (
+        'register', 'validate_manifest', 'classify_capabilities', 'compute_risk',
+        'build_sandbox', 'build_filesystem_policy', 'build_network_policy',
+        'evaluate_permission', 'awaiting_consent', 'grant_permission', 'issue_token',
+        'governance_report', 'archived'
+    )),
+    status TEXT NOT NULL DEFAULT 'disabled' CHECK (status IN ('disabled', 'enabled', 'archived')),
+    validation_report_json TEXT NOT NULL DEFAULT '{}',
+    capability_classification_json TEXT NOT NULL DEFAULT '{}',
+    risk_score REAL,
+    risk_level TEXT,
+    sandbox_profile_json TEXT NOT NULL DEFAULT '{}',
+    filesystem_policy_json TEXT NOT NULL DEFAULT '{}',
+    network_policy_json TEXT NOT NULL DEFAULT '{}',
+    permission_evaluation_json TEXT NOT NULL DEFAULT '{}',
+    governance_report_json TEXT NOT NULL DEFAULT '{}',
+    admin_reviewed INTEGER NOT NULL DEFAULT 0,
+    admin_reviewed_by TEXT,
+    admin_reviewed_at TEXT,
+    registered_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugins_stage ON mini_brain_plugins(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugins_status ON mini_brain_plugins(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugins_plugin_id ON mini_brain_plugins(plugin_id);
+
+-- One row per requested/evaluated/granted scope. `status` tracks this
+-- specific grant's own lifecycle -- only `grant_permission()` may ever
+-- set it to 'granted', only `revoke_permission()` may ever set it to
+-- 'revoked'.
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_permissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    plugin_id INTEGER NOT NULL,
+    scope_key TEXT NOT NULL,
+    decision TEXT NOT NULL CHECK (decision IN (
+        'allow', 'deny', 'require_consent', 'require_admin_review', 'disabled'
+    )),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'granted', 'revoked', 'denied')),
+    granted_by_admin_public_id TEXT,
+    granted_at TEXT,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (plugin_id) REFERENCES mini_brain_plugins(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_permissions_plugin ON mini_brain_plugin_permissions(plugin_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_permissions_status ON mini_brain_plugin_permissions(status);
+
+-- User consent records. `user_id_hash` only -- never a raw user
+-- identity. `expires_at` is nullable -- consent that never expires
+-- has a NULL here, matching Step 8's "if configured" wording.
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_consents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    plugin_id INTEGER NOT NULL,
+    user_id_hash TEXT NOT NULL,
+    scope_key TEXT NOT NULL,
+    consent_given INTEGER NOT NULL DEFAULT 0,
+    consent_at TEXT,
+    expires_at TEXT,
+    revoked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (plugin_id) REFERENCES mini_brain_plugins(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_consents_plugin ON mini_brain_plugin_consents(plugin_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_consents_user_id_hash ON mini_brain_plugin_consents(user_id_hash);
+
+-- Append-only audit log -- covers every stage transition, every
+-- issued execution token (hash only, never the raw token), and every
+-- recorded runtime execution event.
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_runtime_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    plugin_id INTEGER,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (plugin_id) REFERENCES mini_brain_plugins(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_events_plugin ON mini_brain_plugin_runtime_events(plugin_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_events_event_type ON mini_brain_plugin_runtime_events(event_type);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_events_created_at ON mini_brain_plugin_runtime_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_events_immutable_update
+    BEFORE UPDATE ON mini_brain_plugin_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_events_immutable_delete
+    BEFORE DELETE ON mini_brain_plugin_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per archived plugin. Same
+-- immutable-append pattern as mini_brain_training_engine_memory
+-- (MB-22) and mini_brain_improvement_candidates' own event trail (MB-23).
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_runtime_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    plugin_id INTEGER NOT NULL,
+    final_status TEXT NOT NULL,
+    total_permissions_granted INTEGER NOT NULL DEFAULT 0,
+    total_consents_recorded INTEGER NOT NULL DEFAULT 0,
+    total_runtime_events INTEGER NOT NULL DEFAULT 0,
+    risk_score REAL,
+    risk_level TEXT,
+    recorded_by_admin_public_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (plugin_id) REFERENCES mini_brain_plugins(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_memory_plugin ON mini_brain_plugin_runtime_memory(plugin_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_plugin_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_plugin_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime memory is permanent and append-only'); END;
+"""
+
+MIGRATION_066_NAME = "066_mini_brain_plugin_runtime_execution"
+PHASE66_SCHEMA = """
+-- MB-25: Brud Mini Brain Secure Plugin Execution Runtime. Twentieth
+-- Mini Brain migration to add schema (after MB-06/v47 through
+-- MB-24/v65). MB-25 never modifies any prior phase's tables -- it
+-- only reads MB-24's own already-approved plugin/permission/consent
+-- records through its own public read methods.
+--
+-- IMPORTANT NAMING-COLLISION FINDING (same discipline established
+-- during MB-20): the task spec's own Step 6 names two tables --
+-- `mini_brain_plugin_runtime_events` and `mini_brain_plugin_runtime_
+-- memory` -- that collide directly with tables MB-24 already created
+-- (its own governance audit log and permanent rollup, migration
+-- v65). Those two names are renamed here to `mini_brain_plugin_
+-- runtime_execution_events` and `mini_brain_plugin_runtime_execution_
+-- memory` -- distinct, non-colliding, and still clearly prefixed
+-- `mini_brain_plugin_runtime_` as required. `mini_brain_plugin_
+-- runtime_executions` and `mini_brain_plugin_runtime_io` (the other
+-- two spec'd names) had no collision and are used verbatim.
+--
+-- Every reference to MB-24's own plugin record is a plain opaque TEXT
+-- `plugin_public_id`, never a foreign key into another system's
+-- table, matching the convention established since MB-18. Execution
+-- tokens are never stored raw -- only `token_hash_verified` (a hash),
+-- exactly matching MB-24's own token-storage discipline.
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_runtime_executions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    plugin_public_id TEXT NOT NULL,
+    execution_mode TEXT NOT NULL CHECK (execution_mode IN ('public_chat', 'admin_assistant', 'admin_manual')),
+    scope_key TEXT NOT NULL,
+    arguments_json TEXT NOT NULL DEFAULT '{}',
+    granted_scopes_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending', 'running', 'completed', 'failed', 'timeout', 'denied', 'cancelled', 'archived'
+    )),
+    denial_reason TEXT,
+    token_hash_verified TEXT,
+    requester_user_id_hash TEXT,
+    requester_admin_public_id TEXT,
+    duration_ms REAL,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_executions_plugin
+    ON mini_brain_plugin_runtime_executions(plugin_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_executions_status
+    ON mini_brain_plugin_runtime_executions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_executions_created_at
+    ON mini_brain_plugin_runtime_executions(created_at);
+
+-- Sanitized input/output only -- never raw secrets, never a raw
+-- execution token. `result_serializer.py` always runs before any row
+-- here is written.
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_runtime_io (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    execution_id INTEGER NOT NULL,
+    io_type TEXT NOT NULL CHECK (io_type IN ('input', 'output')),
+    sanitized_payload_json TEXT NOT NULL DEFAULT '{}',
+    truncated INTEGER NOT NULL DEFAULT 0,
+    redaction_categories_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (execution_id) REFERENCES mini_brain_plugin_runtime_executions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_io_execution
+    ON mini_brain_plugin_runtime_io(execution_id);
+
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_runtime_execution_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    execution_id INTEGER,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (execution_id) REFERENCES mini_brain_plugin_runtime_executions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_execution_events_execution
+    ON mini_brain_plugin_runtime_execution_events(execution_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_execution_events_created_at
+    ON mini_brain_plugin_runtime_execution_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_execution_events_immutable_update
+    BEFORE UPDATE ON mini_brain_plugin_runtime_execution_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime execution events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_execution_events_immutable_delete
+    BEFORE DELETE ON mini_brain_plugin_runtime_execution_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime execution events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per archived execution.
+CREATE TABLE IF NOT EXISTS mini_brain_plugin_runtime_execution_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    execution_id INTEGER NOT NULL,
+    plugin_public_id TEXT NOT NULL,
+    final_status TEXT NOT NULL,
+    duration_ms REAL,
+    guard_violation_count INTEGER NOT NULL DEFAULT 0,
+    recorded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (execution_id) REFERENCES mini_brain_plugin_runtime_executions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_plugin_runtime_execution_memory_execution
+    ON mini_brain_plugin_runtime_execution_memory(execution_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_execution_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_plugin_runtime_execution_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime execution memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_plugin_runtime_execution_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_plugin_runtime_execution_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain plugin runtime execution memory is permanent and append-only'); END;
+"""
+
+MIGRATION_067_NAME = "067_mini_brain_voice_runtime"
+PHASE67_SCHEMA = """
+-- MB-26: Brud Mini Brain Voice & Speech Runtime. Twenty-first Mini Brain
+-- migration to add schema (after MB-06/v47 through MB-25/v66). MB-26 never
+-- modifies any prior phase's tables -- for the admin voice path it only
+-- reads MB-24's own already-approved permission/consent state through
+-- MB-24's own real evaluate_permission() function; for the public voice
+-- path it uses a new, separate, explicit per-session consent gate (see
+-- mini_brain_voice_permissions below) rather than routing through MB-24's
+-- plugin-scoped consent pipeline, since Voice Runtime is a first-party
+-- product feature, not a third-party plugin -- documented explicitly in
+-- backend/services/mini_brain_voice_runtime_service.py's own docstring.
+--
+-- No raw audio blob is ever stored in any of these tables -- only
+-- metadata, sha256 hashes, durations, and sanitized generated text. The
+-- actual audio bytes live transiently on local disk under
+-- Settings.resolved_voice_audio_dir and are deleted when a session closes
+-- (ephemeral by default); a mini_brain_voice_messages row referencing a
+-- tts_audio_relative_path may therefore point at a file that no longer
+-- exists after close -- this is the intended, honest privacy property,
+-- not a bug.
+CREATE TABLE IF NOT EXISTS mini_brain_voice_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_mode TEXT NOT NULL CHECK (session_mode IN ('public_chat', 'admin_assistant')),
+    stage TEXT NOT NULL DEFAULT 'created' CHECK (stage IN (
+        'created', 'permission_checked', 'scopes_validated', 'capturing',
+        'stream_assembled', 'stt_complete', 'routed', 'response_received',
+        'tts_complete', 'response_ready', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
+        'active', 'completed', 'denied', 'failed', 'timeout', 'cancelled', 'archived'
+    )),
+    conversation_id TEXT,
+    requester_user_id_hash TEXT,
+    requester_admin_public_id TEXT,
+    consent_given INTEGER NOT NULL DEFAULT 0,
+    stt_backend TEXT,
+    tts_backend TEXT,
+    total_audio_bytes INTEGER NOT NULL DEFAULT 0,
+    total_chunks INTEGER NOT NULL DEFAULT 0,
+    recording_duration_ms REAL,
+    denial_reason TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_sessions_status
+    ON mini_brain_voice_sessions(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_sessions_stage
+    ON mini_brain_voice_sessions(stage);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_sessions_created_at
+    ON mini_brain_voice_sessions(created_at);
+
+-- Sanitized text only, never audio bytes. voice_result_sanitizer.py always
+-- runs (reusing public_chat_runtime/feedback_sanitizer.sanitize_text())
+-- before any row here is written.
+CREATE TABLE IF NOT EXISTS mini_brain_voice_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    message_type TEXT NOT NULL CHECK (message_type IN ('transcript', 'reply', 'tts_output')),
+    sanitized_text TEXT NOT NULL DEFAULT '',
+    redaction_categories_json TEXT NOT NULL DEFAULT '[]',
+    truncated INTEGER NOT NULL DEFAULT 0,
+    audio_hash TEXT,
+    audio_duration_ms REAL,
+    tts_audio_relative_path TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_voice_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_messages_session
+    ON mini_brain_voice_messages(session_id);
+
+-- Per-session, per-scope explicit consent record. For public_chat mode
+-- this is the actual, first-party enforcement gate (explicit_consent_given
+-- must be 1 for microphone.capture); for admin_assistant mode
+-- mb24_decision_json additionally records the real, freshly-computed
+-- result of core_model.mini_brain.plugin_governance.runtime_policy_
+-- evaluator.evaluate_permission() -- the same function MB-25's own
+-- service calls, reused here, never re-implemented or bypassed.
+CREATE TABLE IF NOT EXISTS mini_brain_voice_permissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    scope_key TEXT NOT NULL CHECK (scope_key IN (
+        'microphone.capture', 'plugin.storage.local', 'chat.read.current'
+    )),
+    decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny')),
+    reason TEXT,
+    explicit_consent_given INTEGER NOT NULL DEFAULT 0,
+    admin_authorized INTEGER NOT NULL DEFAULT 0,
+    mb24_decision_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_voice_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_permissions_session
+    ON mini_brain_voice_permissions(session_id);
+
+CREATE TABLE IF NOT EXISTS mini_brain_voice_runtime_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER,
+    event_type TEXT NOT NULL,
+    stage TEXT,
+    message TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_voice_sessions(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_runtime_events_session
+    ON mini_brain_voice_runtime_events(session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_runtime_events_created_at
+    ON mini_brain_voice_runtime_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_voice_runtime_events_immutable_update
+    BEFORE UPDATE ON mini_brain_voice_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain voice runtime events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_voice_runtime_events_immutable_delete
+    BEFORE DELETE ON mini_brain_voice_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain voice runtime events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per archived voice session.
+CREATE TABLE IF NOT EXISTS mini_brain_voice_runtime_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id INTEGER NOT NULL,
+    session_mode TEXT NOT NULL,
+    final_status TEXT NOT NULL,
+    stt_backend_used TEXT,
+    tts_backend_used TEXT,
+    duration_ms REAL,
+    total_chunks INTEGER NOT NULL DEFAULT 0,
+    total_audio_bytes INTEGER NOT NULL DEFAULT 0,
+    recorded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_voice_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_voice_runtime_memory_session
+    ON mini_brain_voice_runtime_memory(session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_voice_runtime_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_voice_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain voice runtime memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_voice_runtime_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_voice_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain voice runtime memory is permanent and append-only'); END;
+"""
+
+MIGRATION_068_NAME = "068_mini_brain_provider_settings"
+PHASE68_SCHEMA = """
+-- MB-27: Brud AI Secrets & Provider Settings UI. Twenty-second Mini
+-- Brain migration to add schema (after MB-06/v47 through MB-26/v67).
+-- MB-27 never modifies any prior phase's tables.
+--
+-- Encrypted secret values are TEXT, not BLOB -- cryptography.fernet.
+-- Fernet.encrypt() produces a URL-safe base64 token, which is genuine
+-- ASCII text (verified directly: encrypt() -> bytes -> .decode("ascii")
+-- round-trips losslessly through Fernet.decrypt() again), consistent
+-- with every other opaque-but-textual column in this schema (e.g.
+-- *_json columns). No plaintext secret value, and no column literally
+-- shaped to hold one, ever appears in mini_brain_provider_settings,
+-- mini_brain_provider_audit_events, or mini_brain_provider_settings_
+-- memory -- only mini_brain_provider_secrets.encrypted_value ever
+-- holds secret-derived material, and only in encrypted form.
+CREATE TABLE IF NOT EXISTS mini_brain_provider_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_key TEXT NOT NULL UNIQUE CHECK (provider_key IN (
+        'openrouter', 'openai', 'anthropic', 'gemini', 'faster_whisper', 'coqui_tts', 'local_llm'
+    )),
+    provider_type TEXT NOT NULL CHECK (provider_type IN ('external_ai', 'speech', 'local_model')),
+    enabled INTEGER NOT NULL DEFAULT 0,
+    config_json TEXT NOT NULL DEFAULT '{}',
+    archived INTEGER NOT NULL DEFAULT 0,
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_provider_settings_provider_type
+    ON mini_brain_provider_settings(provider_type);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_provider_settings_enabled
+    ON mini_brain_provider_settings(enabled);
+
+-- Encrypted secret material only. secret_encryptor.py (core_model.
+-- mini_brain.provider_settings) is the only module in the codebase
+-- that ever calls Fernet.encrypt()/.decrypt() against this column's
+-- values -- the service layer never writes a raw value here.
+CREATE TABLE IF NOT EXISTS mini_brain_provider_secrets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    setting_public_id TEXT NOT NULL,
+    secret_name TEXT NOT NULL,
+    encrypted_value TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (setting_public_id, secret_name),
+    FOREIGN KEY (setting_public_id) REFERENCES mini_brain_provider_settings(public_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_provider_secrets_setting
+    ON mini_brain_provider_secrets(setting_public_id);
+
+-- Append-only. changed_fields_json stores only field NAMES (e.g.
+-- ["enabled"] or ["secret:api_key"]) -- never a value, encrypted or
+-- otherwise.
+CREATE TABLE IF NOT EXISTS mini_brain_provider_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_key TEXT NOT NULL,
+    setting_public_id TEXT,
+    action TEXT NOT NULL,
+    admin_id TEXT,
+    changed_fields_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_provider_audit_events_provider_key
+    ON mini_brain_provider_audit_events(provider_key);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_provider_audit_events_created_at
+    ON mini_brain_provider_audit_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_provider_audit_events_immutable_update
+    BEFORE UPDATE ON mini_brain_provider_audit_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain provider audit events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_provider_audit_events_immutable_delete
+    BEFORE DELETE ON mini_brain_provider_audit_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain provider audit events are append-only'); END;
+
+-- Permanent, insert-only -- one rollup row per lifecycle event,
+-- same trigger-protection discipline as mini_brain_voice_runtime_memory.
+CREATE TABLE IF NOT EXISTS mini_brain_provider_settings_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    provider_key TEXT NOT NULL,
+    setting_public_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'created', 'enabled', 'disabled', 'secret_set', 'secret_deleted',
+        'test_connection_run', 'archived'
+    )),
+    recorded_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_provider_settings_memory_provider
+    ON mini_brain_provider_settings_memory(provider_key);
+CREATE TRIGGER IF NOT EXISTS mini_brain_provider_settings_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_provider_settings_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain provider settings memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_provider_settings_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_provider_settings_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain provider settings memory is permanent and append-only'); END;
+"""
+
+MIGRATION_069_NAME = "069_mini_brain_llm_runtime"
+PHASE69_SCHEMA = """
+-- MB-28: Real Mini Brain LLM Runtime & Admin Assistant Intelligence
+-- Layer. Twenty-third Mini Brain migration to add schema (after
+-- MB-06/v47 through MB-27/v68). MB-28 never modifies any prior
+-- phase's tables -- including the separate, pre-existing "Phase 8"
+-- Admin Assistant system (conversation_sessions/conversation_turns),
+-- which this phase deliberately does not touch or reuse.
+CREATE TABLE IF NOT EXISTS mini_brain_llm_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    admin_public_id TEXT NOT NULL,
+    title TEXT,
+    stage TEXT NOT NULL DEFAULT 'created' CHECK (stage IN (
+        'created', 'context_built', 'awaiting_reply', 'reply_received',
+        'tool_call_dispatched', 'tool_call_complete', 'closed'
+    )),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN (
+        'active', 'completed', 'failed', 'deleted', 'archived'
+    )),
+    backend_type TEXT CHECK (backend_type IN ('local', 'external', 'unavailable')),
+    external_provider_key TEXT,
+    total_messages INTEGER NOT NULL DEFAULT 0,
+    last_message_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_llm_sessions_admin
+    ON mini_brain_llm_sessions(admin_public_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_llm_sessions_status
+    ON mini_brain_llm_sessions(status);
+
+CREATE TABLE IF NOT EXISTS mini_brain_llm_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'assistant', 'system', 'tool')),
+    capability TEXT NOT NULL CHECK (capability IN (
+        'chat', 'explain_page', 'summarize_report', 'summarize_regression',
+        'explain_error', 'next_actions', 'step_guide', 'checklist', 'clarify'
+    )),
+    sanitized_text TEXT NOT NULL,
+    backend_type TEXT CHECK (backend_type IN ('local', 'external', 'unavailable')),
+    tool_call_json TEXT,
+    truncated INTEGER NOT NULL DEFAULT 0,
+    token_estimate INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_llm_sessions(public_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_llm_messages_session
+    ON mini_brain_llm_messages(session_id);
+
+-- Append-only.
+CREATE TABLE IF NOT EXISTS mini_brain_llm_runtime_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id TEXT,
+    event_type TEXT NOT NULL,
+    backend_type TEXT CHECK (backend_type IN ('local', 'external', 'unavailable')),
+    admin_id TEXT,
+    detail_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_llm_runtime_events_session
+    ON mini_brain_llm_runtime_events(session_id);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_llm_runtime_events_created_at
+    ON mini_brain_llm_runtime_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_llm_runtime_events_immutable_update
+    BEFORE UPDATE ON mini_brain_llm_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain llm runtime events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_llm_runtime_events_immutable_delete
+    BEFORE DELETE ON mini_brain_llm_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain llm runtime events are append-only'); END;
+
+-- Permanent, insert-only rollup -- same trigger-protection discipline
+-- as mini_brain_voice_runtime_memory and mini_brain_provider_settings_memory.
+CREATE TABLE IF NOT EXISTS mini_brain_llm_runtime_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    session_id TEXT NOT NULL,
+    admin_public_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'session_started', 'reply_generated', 'tool_call_dispatched',
+        'fallback_to_external', 'session_closed', 'session_deleted'
+    )),
+    backend_type TEXT CHECK (backend_type IN ('local', 'external', 'unavailable')),
+    total_messages INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES mini_brain_llm_sessions(public_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_llm_runtime_memory_session
+    ON mini_brain_llm_runtime_memory(session_id);
+CREATE TRIGGER IF NOT EXISTS mini_brain_llm_runtime_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_llm_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain llm runtime memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_llm_runtime_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_llm_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain llm runtime memory is permanent and append-only'); END;
+"""
+
+MIGRATION_070_NAME = "070_mini_brain_runtime_manager"
+PHASE70_SCHEMA = """
+-- MB-30: Production Runtime Manager & One-Click Local Model Lifecycle.
+-- Twenty-fourth Mini Brain migration to add schema (after MB-06/v47
+-- through MB-29/v69). MB-30 never modifies any prior phase's tables --
+-- including MB-04's unrelated, pre-existing mini_brain_runtime_manager_
+-- service and its own tables (a different "runtime" concept entirely:
+-- core-model response-plan generation, not GGUF/llama.cpp inference).
+CREATE TABLE IF NOT EXISTS mini_brain_model_installations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_name TEXT NOT NULL,
+    family TEXT,
+    quantization TEXT,
+    file_name TEXT NOT NULL,
+    install_path TEXT NOT NULL,
+    file_size_bytes INTEGER,
+    sha256 TEXT,
+    status TEXT NOT NULL DEFAULT 'downloading' CHECK (status IN (
+        'downloading', 'installed', 'failed', 'removed'
+    )),
+    installed_at TEXT,
+    removed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_model_installations_status
+    ON mini_brain_model_installations(status);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_model_installations_model_name
+    ON mini_brain_model_installations(model_name);
+
+-- One row per load/benchmark event (historical, not a singleton) --
+-- the Performance/History dashboard sub-tabs read this as a log.
+CREATE TABLE IF NOT EXISTS mini_brain_model_runtime (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_name TEXT NOT NULL,
+    loaded INTEGER NOT NULL DEFAULT 0,
+    backend TEXT NOT NULL DEFAULT 'none' CHECK (backend IN (
+        'llama_cpp', 'mock', 'external', 'none'
+    )),
+    context_length INTEGER,
+    max_tokens INTEGER,
+    temperature REAL,
+    threads INTEGER,
+    load_time_ms REAL,
+    last_used_at TEXT,
+    peak_ram_mb REAL,
+    tokens_per_second REAL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_model_runtime_model_name
+    ON mini_brain_model_runtime(model_name);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_model_runtime_created_at
+    ON mini_brain_model_runtime(created_at);
+
+-- Append-only.
+CREATE TABLE IF NOT EXISTS mini_brain_runtime_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_name TEXT,
+    event_type TEXT NOT NULL,
+    admin_id TEXT,
+    detail_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_runtime_events_model_name
+    ON mini_brain_runtime_events(model_name);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_runtime_events_created_at
+    ON mini_brain_runtime_events(created_at);
+CREATE TRIGGER IF NOT EXISTS mini_brain_runtime_events_immutable_update
+    BEFORE UPDATE ON mini_brain_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain runtime events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_runtime_events_immutable_delete
+    BEFORE DELETE ON mini_brain_runtime_events
+    BEGIN SELECT RAISE(ABORT, 'mini brain runtime events are append-only'); END;
+
+-- Permanent, insert-only rollup -- same trigger-protection discipline
+-- as every prior phase's own memory table.
+CREATE TABLE IF NOT EXISTS mini_brain_runtime_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    model_name TEXT,
+    event_type TEXT NOT NULL CHECK (event_type IN (
+        'installed', 'loaded', 'unloaded', 'benchmarked', 'removed', 'download_failed'
+    )),
+    admin_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_mini_brain_runtime_memory_model_name
+    ON mini_brain_runtime_memory(model_name);
+CREATE TRIGGER IF NOT EXISTS mini_brain_runtime_memory_immutable_update
+    BEFORE UPDATE ON mini_brain_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain runtime memory is permanent and append-only'); END;
+CREATE TRIGGER IF NOT EXISTS mini_brain_runtime_memory_immutable_delete
+    BEFORE DELETE ON mini_brain_runtime_memory
+    BEGIN SELECT RAISE(ABORT, 'mini brain runtime memory is permanent and append-only'); END;
 """

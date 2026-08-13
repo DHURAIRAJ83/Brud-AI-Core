@@ -36,15 +36,12 @@ from backend.models.model_evaluation import (
 )
 from backend.services.tokenizer_registry import TokenizerService
 from core_model.architecture.config import BrudModelConfig
-from core_model.architecture.model import BrudForCausalLM
-from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 from core_model.instruction_tuning.evaluation import (
     bounded_length,
     no_role_token_leakage,
     no_system_prompt_leakage,
 )
 from core_model.instruction_tuning.formatter import render_example
-from core_model.instruction_tuning.generation import generate_greedy
 from core_model.instruction_tuning.templates import InstructionTemplate
 from core_model.model_evaluation import LANGUAGES
 from core_model.model_evaluation.comparison import compare_runs as assess_comparison
@@ -464,6 +461,9 @@ class ModelEvaluationService:
         )
 
     def _load_model_and_processor(self, run) -> tuple[Any, Any, BrudModelConfig, bool]:
+        from core_model.architecture.model import BrudForCausalLM
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         model_config = self._model_config(run["candidate_core_model_version_id"])
         manager = TrainingCheckpointManager(
             self.settings.resolved_pretraining_dir, self.settings.core_checkpoint_max_bytes
@@ -490,6 +490,8 @@ class ModelEvaluationService:
         return None
 
     def execute_run(self, run_public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.instruction_tuning.generation import generate_greedy
+
         with self.repository.transaction() as connection:
             run = self.repository.run(connection, run_public_id)
             if run["status"] not in {"validated", "queued"}:

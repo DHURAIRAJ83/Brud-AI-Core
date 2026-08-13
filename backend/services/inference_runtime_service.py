@@ -29,15 +29,7 @@ from backend.database.repositories.tokenizers import TokenizerRepository
 from backend.models.inference_runtime import RuntimeProfileCreate, RuntimeProfilePatch
 from backend.services.tokenizer_registry import TokenizerService
 from core_model.architecture.config import BrudModelConfig
-from core_model.architecture.model import BrudForCausalLM, count_parameters
-from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 from core_model.inference_runtime import HEALTH_CHECK_TYPES, REGISTRY_FIXTURE_MARKERS
-from core_model.inference_runtime.generation_engine import (
-    no_role_token_leakage,
-    no_system_prompt_leakage,
-    run_bounded_generation,
-    valid_unicode,
-)
 from core_model.inference_runtime.model_loader import (
     assess_runtime_compatibility,
     missing_special_tokens,
@@ -423,6 +415,9 @@ class InferenceRuntimeService:
     def load_instance_using_connection(
         self, connection, instance_public_id: str, release_public_id: str, admin_id: str
     ) -> dict[str, Any]:
+        from core_model.architecture.model import BrudForCausalLM, count_parameters
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         instance = self.repository.instance(connection, instance_public_id)
         facts = self.gather_release_facts(connection, release_public_id)
         release = facts["release"]
@@ -610,6 +605,9 @@ class InferenceRuntimeService:
     # --- health checks -----------------------------------------------------
 
     def run_health_check(self, instance_public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+        from core_model.inference_runtime.generation_engine import run_bounded_generation
+
         with self.repository.transaction() as connection:
             instance = self.repository.instance(connection, instance_public_id)
             loaded = _LOADED_MODELS.get(self._loaded_key(instance_public_id))
@@ -711,6 +709,13 @@ class InferenceRuntimeService:
         seed: int | None = None,
         system_text: str = "",
     ) -> dict[str, Any]:
+        from core_model.inference_runtime.generation_engine import (
+            no_role_token_leakage,
+            no_system_prompt_leakage,
+            run_bounded_generation,
+            valid_unicode,
+        )
+
         loaded = _LOADED_MODELS.get(self._loaded_key(instance_public_id))
         if not loaded:
             raise ValidationError("runtime instance has no loaded model")

@@ -1077,6 +1077,15 @@ class Settings(BaseSettings):
     corpus_max_active_processing_runs: int = Field(
         default=3, ge=1, validation_alias="BRUD_CORPUS_MAX_ACTIVE_PROCESSING_RUNS"
     )
+    # Phase 5D-A: admin-only tooling routes (Mini Brain, Production Readiness,
+    # RAG Sandbox) can be registered lazily instead of at process startup, to
+    # reduce cold-start time in deployments that don't serve the admin
+    # dashboard from this process. Defaults to False (current, unchanged
+    # eager-registration behavior) so nothing changes unless explicitly opted
+    # into via BRUD_DEFER_ADMIN_TOOL_ROUTES.
+    defer_admin_tool_routes: bool = Field(
+        default=False, validation_alias="BRUD_DEFER_ADMIN_TOOL_ROUTES"
+    )
 
     @field_validator("log_level")
     @classmethod

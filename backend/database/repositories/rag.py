@@ -483,6 +483,19 @@ class RagRepository(BaseRepository):
             (space_id,),
         ).fetchone()
 
+    def latest_vector_index_for_space(
+        self, connection: sqlite3.Connection, space_id: int
+    ) -> sqlite3.Row | None:
+        # MB-43: unlike active_vector_index_for_space (active only), this
+        # returns the most recent index regardless of status, so the
+        # Retrieval Profile Management UI can show its real current state
+        # (e.g. "validated, not yet active") rather than nothing at all.
+        return connection.execute(
+            "SELECT * FROM rag_vector_indexes WHERE knowledge_space_id=? "
+            "ORDER BY created_at DESC, id DESC LIMIT 1",
+            (space_id,),
+        ).fetchone()
+
     # --- keyword indexes -----------------------------------------------------
 
     def create_keyword_index(self, connection: sqlite3.Connection, values: dict[str, Any]) -> str:
@@ -589,8 +602,15 @@ class RagRepository(BaseRepository):
         ).fetchall()
 
     def list_retrieval_profiles(self, connection: sqlite3.Connection) -> list[sqlite3.Row]:
+        # MB-43: joins in the owning space's public_id/name (additive
+        # columns only) so the Retrieval Profile Management UI can show
+        # "knowledge space name" without an extra round trip per row --
+        # every existing caller of list_profiles() is unaffected since no
+        # column is removed or renamed.
         return connection.execute(
-            "SELECT * FROM rag_retrieval_profiles ORDER BY created_at DESC,id DESC"
+            """SELECT p.*, sp.public_id AS knowledge_space_public_id, sp.name AS knowledge_space_name
+            FROM rag_retrieval_profiles p JOIN rag_knowledge_spaces sp ON sp.id=p.knowledge_space_id
+            ORDER BY p.created_at DESC, p.id DESC"""
         ).fetchall()
 
     def update_retrieval_profile(

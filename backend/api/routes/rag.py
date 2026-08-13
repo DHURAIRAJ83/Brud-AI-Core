@@ -400,6 +400,18 @@ async def activate_retrieval_profile(
     return retrieval_service(settings).activate_profile(public_id, admin.admin.public_id)
 
 
+@router.post("/retrieval-profiles/{public_id}/deactivate")
+async def deactivate_retrieval_profile(
+    public_id: str, settings: SettingsDependency, admin: CsrfDependency
+):
+    return retrieval_service(settings).deactivate_profile(public_id, admin.admin.public_id)
+
+
+@router.get("/spaces/{space_public_id}/latest-vector-index")
+async def latest_vector_index_for_space(space_public_id: str, settings: SettingsDependency):
+    return ingestion_service(settings).get_latest_vector_index_for_space(space_public_id)
+
+
 # --- retrieval -----------------------------------------------------
 
 

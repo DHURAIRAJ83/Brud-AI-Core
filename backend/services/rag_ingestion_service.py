@@ -707,6 +707,16 @@ class RagIngestionService:
         with self.repository.transaction() as connection:
             return public_row(self.repository.vector_index(connection, public_id))
 
+    def get_latest_vector_index_for_space(self, space_public_id: str) -> dict[str, Any] | None:
+        # MB-43: read-only lookup for the Retrieval Profile Management UI
+        # -- the most recent index for a space regardless of status, so
+        # "no index yet" and "validated but not active" are both shown
+        # honestly rather than only ever reporting an active one.
+        with self.repository.transaction() as connection:
+            space = self.repository.space(connection, space_public_id)
+            row = self.repository.latest_vector_index_for_space(connection, space["id"])
+            return public_row(row) if row is not None else None
+
     def build_vector_index(self, public_id: str, admin_id: str) -> dict[str, Any]:
         with self.repository.transaction() as connection:
             index = self.repository.vector_index(connection, public_id)

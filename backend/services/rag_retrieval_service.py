@@ -124,6 +124,22 @@ class RagRetrievalService:
             self._audit(connection, "rag_retrieval_profile_activated", admin_id, public_id)
             return public_row(self.repository.retrieval_profile(connection, public_id))
 
+    def deactivate_profile(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        # MB-43: the reverse of activate_profile() -- returns an active
+        # profile to "validated" (never "draft", so re-activating later
+        # doesn't require re-validating weights) rather than deleting or
+        # archiving it. retrieve() already refuses any non-active profile,
+        # so this alone is what makes a profile stop being usable.
+        with self.repository.transaction() as connection:
+            profile = self.repository.retrieval_profile(connection, public_id)
+            if profile["status"] != "active":
+                raise ValidationError("only an active profile can be deactivated")
+            self.repository.update_retrieval_profile(
+                connection, profile["id"], {"status": "validated"}
+            )
+            self._audit(connection, "rag_retrieval_profile_deactivated", admin_id, public_id)
+            return public_row(self.repository.retrieval_profile(connection, public_id))
+
     # --- retrieval -----------------------------------------------------
 
     def retrieve(self, payload: RetrieveRequest, admin_id: str) -> dict[str, Any]:

@@ -30,6 +30,24 @@ class RoutePlugin:
     tags: Tuple[str, ...] = ()
 
 
+def _get_registered_plugin_names(api_router) -> set[str]:
+    names = getattr(api_router, "_brud_registered_plugins", None)
+    if names is None:
+        names = set()
+        setattr(api_router, "_brud_registered_plugins", names)
+    return names
+
+
+def should_load_plugin(plugin: RoutePlugin, mode: str) -> bool:
+    if mode in ("dev", "admin"):
+        return True
+    if mode == "public":
+        return plugin.public
+    if mode == "worker":
+        return plugin.name in {"auth", "health"}
+    raise ValueError(f"Unknown deployment mode: {mode}")
+
+
 ROUTE_PLUGINS: Tuple[RoutePlugin, ...] = (
     # -- Public APIs (must remain eager, per Phase 5D-C hard constraints) --
     RoutePlugin("health", True, True, "backend.api.routes.health", tags=("public", "health")),
@@ -129,19 +147,26 @@ ROUTE_PLUGINS: Tuple[RoutePlugin, ...] = (
 
 def load_plugins(
     api_router: "APIRouter",
-    plugins: Tuple[RoutePlugin, ...] = ROUTE_PLUGINS,
+    mode: str = "dev",
+    plugins: Tuple[RoutePlugin, ...] = None,
 ) -> None:
-    """Register every plugin in `plugins` onto `api_router`.
+    """Register every plugin in `plugins` that passes `should_load_plugin`
+    for the given `mode` onto `api_router`.
 
-    Imports are lazy (inside the loop) so callers that pass a filtered
-    subset only pay the import cost for what they actually load. No
-    deployment-mode filtering happens here -- that is the caller's
-    responsibility (see backend/api/router.py for the eager/deferred
-    split preserved from Phase 5D-A/5D-B).
+    Imports are lazy (inside the loop) so callers -- or a mode filter --
+    that skip a subset only pay the import cost for what actually loads.
+    `plugins` defaults to the full ROUTE_PLUGINS registry; callers may
+    still pass a pre-filtered subset (see backend/api/router.py for the
+    eager/deferred split preserved from Phase 5D-A/5D-B).
     """
 
-    seen: set[str] = set()
+    if plugins is None:
+        plugins = ROUTE_PLUGINS
+
+    seen = _get_registered_plugin_names(api_router)
     for plugin in plugins:
+        if not should_load_plugin(plugin, mode):
+            continue
         if plugin.name in seen:
             raise RuntimeError(f"duplicate route plugin name: {plugin.name!r}")
         seen.add(plugin.name)

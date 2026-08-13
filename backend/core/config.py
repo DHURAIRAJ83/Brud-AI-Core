@@ -4,6 +4,7 @@ import logging
 import sqlite3
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import AnyHttpUrl, Field, field_validator, model_validator
@@ -1085,6 +1086,20 @@ class Settings(BaseSettings):
     # into via BRUD_DEFER_ADMIN_TOOL_ROUTES.
     defer_admin_tool_routes: bool = Field(
         default=False, validation_alias="BRUD_DEFER_ADMIN_TOOL_ROUTES"
+    )
+    # Phase 5D-C: which route groups this process registers at startup.
+    # "dev" (the default) registers everything, identical to today's
+    # unconditional behavior -- this is the only mode that guarantees zero
+    # change for any deployment that doesn't explicitly opt in.
+    #   public -> only the always-eager public API routes (chat, auth,
+    #             health, rag, ...); never any admin tooling.
+    #   admin  -> the full route set, equivalent to defer_admin_tool_routes=False.
+    #   worker -> a minimal surface for background-job processes.
+    #   dev    -> everything (default; matches current behavior exactly).
+    # defer_admin_tool_routes keeps working independently of this setting
+    # for backward compatibility during this phase.
+    deployment_mode: Literal["public", "admin", "worker", "dev"] = Field(
+        default="dev", validation_alias="BRUD_DEPLOYMENT_MODE"
     )
 
     @field_validator("log_level")

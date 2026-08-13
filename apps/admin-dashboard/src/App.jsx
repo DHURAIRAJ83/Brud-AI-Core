@@ -1,54 +1,56 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import DashboardLayout from './components/DashboardLayout.jsx'
-import AdminAssistantPage from './pages/AdminAssistantPage.jsx'
-import AssistantCenterPage from './pages/AssistantCenterPage.jsx'
-import BaseTrainingPage from './pages/BaseTrainingPage.jsx'
-import BuildsPipelinesPage from './pages/BuildsPipelinesPage.jsx'
-import DatasetDiscoveryPage from './pages/DatasetDiscoveryPage.jsx'
-import DatasetSampleImportPage from './pages/DatasetSampleImportPage.jsx'
-import DatasetVerificationPage from './pages/DatasetVerificationPage.jsx'
-import DatasetsPage from './pages/DatasetsPage.jsx'
-import DocumentsPage from './pages/DocumentsPage.jsx'
-import DocumentWizardPage from './pages/DocumentWizardPage.jsx'
-import DataWorkspaceWizardPage from './pages/DataWorkspaceWizardPage.jsx'
-import ConversationMemoryPage from './pages/ConversationMemoryPage.jsx'
-import CorpusPage from './pages/CorpusPage.jsx'
-import CoreModelPage from './pages/CoreModelPage.jsx'
-import ChunkStudioPage from './pages/ChunkStudioPage.jsx'
-import DataHelpPage from './pages/DataHelpPage.jsx'
-import DataOverviewPage from './pages/DataOverviewPage.jsx'
-import ExternalDataProvidersPage from './pages/ExternalDataProvidersPage.jsx'
-import GovernancePage from './pages/GovernancePage.jsx'
-import IncrementalTrainingPage from './pages/IncrementalTrainingPage.jsx'
-import FeedbackPage from './pages/FeedbackPage.jsx'
-import InferenceRuntimePage from './pages/InferenceRuntimePage.jsx'
-import InstructionTuningPage from './pages/InstructionTuningPage.jsx'
+import Skeleton from './components/Skeleton.jsx'
 import LoginPage from './pages/LoginPage.jsx'
-import ManualDataPage from './pages/ManualDataPage.jsx'
-import MiniBrainPage from './pages/MiniBrainPage.jsx'
-import ModelEvaluationPage from './pages/ModelEvaluationPage.jsx'
-import ModelRegistryPage from './pages/ModelRegistryPage.jsx'
-import OverviewPage from './pages/OverviewPage.jsx'
 import PlaceholderPage from './pages/PlaceholderPage.jsx'
-import PretrainingReadinessPage from './pages/PretrainingReadinessPage.jsx'
-import ProductionReadinessPage from './pages/ProductionReadinessPage.jsx'
-import KnowledgeGapsPage from './pages/KnowledgeGapsPage.jsx'
-import KnowledgeRoutingPage from './pages/KnowledgeRoutingPage.jsx'
-import PublicChatRoutingPage from './pages/PublicChatRoutingPage.jsx'
-import TrustedWebPage from './pages/TrustedWebPage.jsx'
-import DeterministicToolsPage from './pages/DeterministicToolsPage.jsx'
-import GatewayDatasetRagBridgePage from './pages/GatewayDatasetRagBridgePage.jsx'
-import PilotMetricsPage from './pages/PilotMetricsPage.jsx'
-import PilotOperationsPage from './pages/PilotOperationsPage.jsx'
-import PromptOptimizationPage from './pages/PromptOptimizationPage.jsx'
-import RagPage from './pages/RagPage.jsx'
-import RagSandboxPage from './pages/RagSandboxPage.jsx'
-import SourcesRightsPage from './pages/SourcesRightsPage.jsx'
-import SystemPage from './pages/SystemPage.jsx'
-import TokenizerPage from './pages/TokenizerPage.jsx'
-import TrainingPage from './pages/TrainingPage.jsx'
 import { getMe, login, logout } from './services/api.js'
 import { buildDocumentsHash, buildWizardHash, parseHash } from './services/documentNavigation.js'
+
+const AdminAssistantPage = lazy(() => import('./pages/AdminAssistantPage.jsx'))
+const AssistantCenterPage = lazy(() => import('./pages/AssistantCenterPage.jsx'))
+const BaseTrainingPage = lazy(() => import('./pages/BaseTrainingPage.jsx'))
+const BuildsPipelinesPage = lazy(() => import('./pages/BuildsPipelinesPage.jsx'))
+const DatasetDiscoveryPage = lazy(() => import('./pages/DatasetDiscoveryPage.jsx'))
+const DatasetSampleImportPage = lazy(() => import('./pages/DatasetSampleImportPage.jsx'))
+const DatasetVerificationPage = lazy(() => import('./pages/DatasetVerificationPage.jsx'))
+const DatasetsPage = lazy(() => import('./pages/DatasetsPage.jsx'))
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage.jsx'))
+const DocumentWizardPage = lazy(() => import('./pages/DocumentWizardPage.jsx'))
+const DataWorkspaceWizardPage = lazy(() => import('./pages/DataWorkspaceWizardPage.jsx'))
+const ConversationMemoryPage = lazy(() => import('./pages/ConversationMemoryPage.jsx'))
+const CorpusPage = lazy(() => import('./pages/CorpusPage.jsx'))
+const CoreModelPage = lazy(() => import('./pages/CoreModelPage.jsx'))
+const ChunkStudioPage = lazy(() => import('./pages/ChunkStudioPage.jsx'))
+const DataHelpPage = lazy(() => import('./pages/DataHelpPage.jsx'))
+const DataOverviewPage = lazy(() => import('./pages/DataOverviewPage.jsx'))
+const ExternalDataProvidersPage = lazy(() => import('./pages/ExternalDataProvidersPage.jsx'))
+const GovernancePage = lazy(() => import('./pages/GovernancePage.jsx'))
+const IncrementalTrainingPage = lazy(() => import('./pages/IncrementalTrainingPage.jsx'))
+const FeedbackPage = lazy(() => import('./pages/FeedbackPage.jsx'))
+const InferenceRuntimePage = lazy(() => import('./pages/InferenceRuntimePage.jsx'))
+const InstructionTuningPage = lazy(() => import('./pages/InstructionTuningPage.jsx'))
+const ManualDataPage = lazy(() => import('./pages/ManualDataPage.jsx'))
+const MiniBrainPage = lazy(() => import('./pages/MiniBrainPage.jsx'))
+const ModelEvaluationPage = lazy(() => import('./pages/ModelEvaluationPage.jsx'))
+const ModelRegistryPage = lazy(() => import('./pages/ModelRegistryPage.jsx'))
+const OverviewPage = lazy(() => import('./pages/OverviewPage.jsx'))
+const PretrainingReadinessPage = lazy(() => import('./pages/PretrainingReadinessPage.jsx'))
+const ProductionReadinessPage = lazy(() => import('./pages/ProductionReadinessPage.jsx'))
+const KnowledgeGapsPage = lazy(() => import('./pages/KnowledgeGapsPage.jsx'))
+const KnowledgeRoutingPage = lazy(() => import('./pages/KnowledgeRoutingPage.jsx'))
+const PublicChatRoutingPage = lazy(() => import('./pages/PublicChatRoutingPage.jsx'))
+const TrustedWebPage = lazy(() => import('./pages/TrustedWebPage.jsx'))
+const DeterministicToolsPage = lazy(() => import('./pages/DeterministicToolsPage.jsx'))
+const GatewayDatasetRagBridgePage = lazy(() => import('./pages/GatewayDatasetRagBridgePage.jsx'))
+const PilotMetricsPage = lazy(() => import('./pages/PilotMetricsPage.jsx'))
+const PilotOperationsPage = lazy(() => import('./pages/PilotOperationsPage.jsx'))
+const PromptOptimizationPage = lazy(() => import('./pages/PromptOptimizationPage.jsx'))
+const RagPage = lazy(() => import('./pages/RagPage.jsx'))
+const RagSandboxPage = lazy(() => import('./pages/RagSandboxPage.jsx'))
+const SourcesRightsPage = lazy(() => import('./pages/SourcesRightsPage.jsx'))
+const SystemPage = lazy(() => import('./pages/SystemPage.jsx'))
+const TokenizerPage = lazy(() => import('./pages/TokenizerPage.jsx'))
+const TrainingPage = lazy(() => import('./pages/TrainingPage.jsx'))
 
 export default function App() {
   const [auth, setAuth] = useState({ checking: true, admin: null })
@@ -143,5 +145,18 @@ export default function App() {
   if (active === 'Admin Assistant') page = <AdminAssistantPage />
   if (active === 'Assistant Center') page = <AssistantCenterPage admin={auth.admin} />
   if (active === 'Brud Mini Brain') page = <MiniBrainPage initialTab={miniBrainInitialTab} admin={auth.admin} />
-  return <DashboardLayout active={active} onSelect={selectPage} onOpenMiniBrainAssistant={openMiniBrainAssistant} admin={auth.admin} onLogout={signOut}>{page}</DashboardLayout>
+  return <DashboardLayout active={active} onSelect={selectPage} onOpenMiniBrainAssistant={openMiniBrainAssistant} admin={auth.admin} onLogout={signOut}>
+      <Suspense fallback={<PageSkeleton />}>{page}</Suspense>
+    </DashboardLayout>
+}
+
+function PageSkeleton() {
+  return (
+    <div className="page-skeleton" style={{ padding: '1.5rem' }}>
+      <Skeleton lines={1} height="1.75rem" width="240px" className="page-skeleton-title" />
+      <div style={{ marginTop: '1rem' }}>
+        <Skeleton lines={6} height="1rem" />
+      </div>
+    </div>
+  )
 }

@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter
 
-from backend.api.routes.documents import tamil_correction_rules_router
 from backend.api.routes import (
     admin,
     admin_assistant,
@@ -14,12 +13,7 @@ from backend.api.routes import (
     corpus,
     data_lineage,
     data_sources,
-    dataset_discovery,
-    dataset_sample_import,
-    dataset_verification,
-    datasets,
     deterministic_tools_admin,
-    documents,
     external_data_providers,
     external_gateway_dataset_bridge,
     feedback,
@@ -65,9 +59,6 @@ api_router.include_router(admin_assistant.router)
 api_router.include_router(external_gateway_dataset_bridge.router)
 api_router.include_router(system.router)
 api_router.include_router(imports.router)
-api_router.include_router(documents.router)
-api_router.include_router(tamil_correction_rules_router)
-api_router.include_router(datasets.router)
 api_router.include_router(tokenizers.router)
 api_router.include_router(core_models.router)
 api_router.include_router(pretraining.router)
@@ -90,9 +81,6 @@ api_router.include_router(governance.router)
 api_router.include_router(governed_builds.router)
 api_router.include_router(data_lineage.router)
 api_router.include_router(external_data_providers.router)
-api_router.include_router(dataset_discovery.router)
-api_router.include_router(dataset_verification.router)
-api_router.include_router(dataset_sample_import.router)
 api_router.include_router(incremental_training.router)
 api_router.include_router(knowledge_routing.router)
 api_router.include_router(knowledge_gap_admin.router)
@@ -101,16 +89,22 @@ api_router.include_router(trusted_web_admin.router)
 api_router.include_router(deterministic_tools_admin.router)
 
 
-# Phase 5D-A: Mini Brain, Production Readiness, and RAG Sandbox are
-# admin-only tooling -- never reached by the public chatbot/voice runtime --
-# so their route modules (and the module-level imports that trigger,
-# e.g. torch via some Mini Brain services) can be registered lazily instead
-# of unconditionally at process startup. This is purely a registration-time
-# optimization: once registered (eagerly here, or later via
-# register_deferred_admin_routes()), these routes behave identically --
-# same prefixes, tags, dependencies, and paths.
+# Phase 5D-A/5D-B: Mini Brain, Production Readiness, RAG Sandbox, and the
+# dataset/document admin-management routes are admin-only tooling -- never
+# reached by the public chatbot/voice runtime -- so their route modules
+# (and the module-level imports that trigger, e.g. torch via some Mini
+# Brain services) can be registered lazily instead of unconditionally at
+# process startup. This is purely a registration-time optimization: once
+# registered (eagerly here, or later via register_deferred_admin_routes()),
+# these routes behave identically -- same prefixes, tags, dependencies,
+# and paths.
 def _register_admin_tool_routes(router: APIRouter) -> None:
     from backend.api.routes import (
+        dataset_discovery,
+        dataset_sample_import,
+        dataset_verification,
+        datasets,
+        documents,
         mini_brain,
         mini_brain_advanced_dataset,
         mini_brain_capability,
@@ -150,6 +144,12 @@ def _register_admin_tool_routes(router: APIRouter) -> None:
         rag_sandbox,
     )
 
+    router.include_router(documents.router)
+    router.include_router(documents.tamil_correction_rules_router)
+    router.include_router(datasets.router)
+    router.include_router(dataset_discovery.router)
+    router.include_router(dataset_verification.router)
+    router.include_router(dataset_sample_import.router)
     router.include_router(mini_brain.router)
     router.include_router(mini_brain_knowledge.router)
     router.include_router(mini_brain_intelligence.router)
@@ -197,8 +197,9 @@ def register_deferred_admin_routes() -> None:
     """Explicit opt-in hook for a future admin-only startup path.
 
     When BRUD_DEFER_ADMIN_TOOL_ROUTES=true, Mini Brain / Production
-    Readiness / RAG Sandbox routes are not registered above -- call this
-    once, before serving traffic, to register them on demand instead.
+    Readiness / RAG Sandbox / dataset & document admin routes are not
+    registered above -- call this once, before serving traffic, to
+    register them on demand instead.
     """
 
     _register_admin_tool_routes(api_router)

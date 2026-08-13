@@ -511,7 +511,17 @@ class ChatOrchestrationService:
                 memory_retrieval_run_id=memory_retrieval_run_id,
                 rag_retrieval_run_id=rag_retrieval_run_id,
                 context_assembly=context_assembly, language_info=language_info,
-                status_result=status_result, answer_text=generation["generated_text"],
+                status_result=status_result,
+                # An empty generation (a tiny/undertrained model emitting an
+                # immediate end-of-sequence token is a real, expected
+                # outcome -- see test_public_chat_routing_service.py's
+                # core_model test) must be treated the same as "no answer",
+                # matching answer_checksum_sha256's existing `if answer_text`
+                # convention below. Passing "" through unchanged used to
+                # reach create_turn()'s `if answer_text is not None:` guard,
+                # which then failed turn validation's empty_content check
+                # and raised past this method uncaught.
+                answer_text=generation["generated_text"] or None,
                 admin_id=admin_id, citations=citation_rows, issues=issues,
                 runtime_ms=runtime_ms, generation=generation,
             )

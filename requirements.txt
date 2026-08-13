@@ -13,3 +13,5 @@ sentencepiece>=0.2,<0.3
 torch>=2.13,<3.0
 numpy~=2.5
 python-docx>=1.1,<2.0
+llama-cpp-python>=0.3,<0.4
+gguf>=0.19,<0.20

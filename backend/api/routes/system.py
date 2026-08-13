@@ -11,6 +11,7 @@ from backend.database.connection import database_connection
 from backend.database.migrations import migration_status
 from backend.database.repositories import AuditLogRepository
 from backend.models.domain import AuditEventCreate
+from backend.services.pilot_metrics import pilot_metric_counts
 
 router = APIRouter(prefix="/admin", tags=["admin-system"], dependencies=[Depends(require_admin)])
 
@@ -111,3 +112,9 @@ async def recent_audit(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.get("/system/pilot-metrics")
+async def pilot_metrics(settings: SettingsDependency) -> dict[str, int]:
+    _record_read(settings, "read_pilot_metrics")
+    return pilot_metric_counts(settings)

@@ -962,6 +962,17 @@ class AuditLogRepository(BaseRepository):
             ).fetchall()
         return [self._public(row) for row in rows]
 
+    def count_by_actions(self, actions: tuple[str, ...]) -> dict[str, int]:
+        if not actions:
+            return {}
+        placeholders = ",".join("?" for _ in actions)
+        with self.transaction() as connection:
+            rows = connection.execute(
+                f"SELECT action, COUNT(*) FROM audit_logs WHERE action IN ({placeholders}) GROUP BY action",
+                actions,
+            ).fetchall()
+        return {row[0]: row[1] for row in rows}
+
     @staticmethod
     def _public(row: sqlite3.Row) -> AuditEventPublic:
         return AuditEventPublic(

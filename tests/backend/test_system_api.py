@@ -21,6 +21,7 @@ async def get(app: FastAPI, path: str):
         "/api/admin/system/configuration",
         "/api/admin/system/schema",
         "/api/admin/audit/recent",
+        "/api/admin/system/pilot-metrics",
     ],
 )
 async def test_system_endpoints_are_safe(protected_api_app: FastAPI, path: str) -> None:
@@ -103,8 +104,47 @@ async def test_schema_and_audit_endpoints(protected_api_app: FastAPI) -> None:
             "042_trusted_web_tool_gateway",
             "043_document_sft_workflow",
             "044_document_sft_finalization",
+            "045_mini_brain_foundation",
+            "046_mini_brain_knowledge_core",
+            "047_mini_brain_learning_supervisor",
+            "048_mini_brain_release_pipeline",
+            "049_mini_brain_continuous_learning",
+            "050_mini_brain_continuous_learning_center",
+            "051_mini_brain_research_center",
+            "052_mini_brain_dataset_evolution",
+            "053_mini_brain_pipeline_coordinator",
+            "054_mini_brain_language_intelligence",
+            "055_mini_brain_vision_intelligence",
+            "056_mini_brain_vision_model_integration",
+            "057_mini_brain_multimodal_dataset_generator",
+            "058_mini_brain_vision_rag",
+            "059_mini_brain_training_pipeline",
+            "060_mini_brain_evaluation_center",
+            "061_mini_brain_release_governance",
+            "062_mini_brain_external_ai_gateway",
+            "063_mini_brain_training_engine",
+            "064_mini_brain_public_chat_runtime",
+            "065_mini_brain_plugin_governance",
+            "066_mini_brain_plugin_runtime_execution",
+            "067_mini_brain_voice_runtime",
+            "068_mini_brain_provider_settings",
+            "069_mini_brain_llm_runtime",
+            "070_mini_brain_runtime_manager",
         }
     audit = (await get(protected_api_app, "/api/admin/audit/recent?limit=2")).json()
     assert audit["limit"] == 2
     assert audit["offset"] == 0
     assert audit["items"]
+
+
+async def test_pilot_metrics_endpoint_returns_all_six_counters(protected_api_app: FastAPI) -> None:
+    payload = (await get(protected_api_app, "/api/admin/system/pilot-metrics")).json()
+    assert set(payload) == {
+        "widget_plain_chat_count",
+        "widget_grounded_chat_count",
+        "grounded_chat_citation_render_count",
+        "retrieval_profile_switch_count",
+        "prompt_optimization_run_count",
+        "gateway_export_run_count",
+    }
+    assert all(isinstance(value, int) for value in payload.values())

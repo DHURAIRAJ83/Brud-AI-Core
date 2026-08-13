@@ -200,5 +200,24 @@ class PublicChatRoutingRepository(BaseRepository):
             ).fetchone()
         return _feedback_public(row)
 
+    def list_feedback_events(
+        self, *, limit: int, offset: int, feedback_type: str | None = None
+    ) -> list[dict[str, Any]]:
+        """MB-08: read-only listing, added because no accessor existed for
+        already-stored feedback events -- mirrors `list_events()` exactly,
+        adds no table and changes no existing method."""
+
+        limit, offset = self.pagination(limit, offset)
+        clause = "WHERE feedback_type = ?" if feedback_type else ""
+        params: tuple[Any, ...] = (feedback_type,) if feedback_type else ()
+        with self.transaction() as connection:
+            rows = connection.execute(
+                f"""SELECT public_id, request_id, route_used, answer_hash, feedback_type, comment,
+                created_at FROM public_chat_feedback_events
+                {clause} ORDER BY id DESC LIMIT ? OFFSET ?""",
+                (*params, limit, offset),
+            ).fetchall()
+        return [_feedback_public(row) for row in rows]
+
 
 __all__ = ["PublicChatRoutingRepository"]

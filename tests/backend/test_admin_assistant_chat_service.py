@@ -161,6 +161,25 @@ def test_session_and_turns_persist_when_an_active_memory_policy_exists(
     assert len(turns) == 4
 
 
+def test_conversation_persisted_true_when_a_memory_policy_is_active(
+    settings: Settings, service: AdminAssistantChatService
+) -> None:
+    _activate_a_memory_policy(settings)
+    result = service.send_message(admin_id=ADMIN_ID, message="Hello", page_id="overview")
+    assert result["conversation_persisted"] is True
+    assert result["conversation_session_public_id"] is not None
+
+
+def test_conversation_persisted_false_when_no_memory_policy_is_active(
+    service: AdminAssistantChatService,
+) -> None:
+    # No _activate_a_memory_policy() call -- this is the default,
+    # out-of-the-box state a fresh install starts in.
+    result = service.send_message(admin_id=ADMIN_ID, message="Hello", page_id="overview")
+    assert result["conversation_persisted"] is False
+    assert result["conversation_session_public_id"] is None
+
+
 def test_secrets_are_never_present_in_recorded_context(
     settings: Settings, service: AdminAssistantChatService
 ) -> None:
@@ -236,3 +255,124 @@ def test_trusted_web_faq_answers_deterministically_without_an_llm_call(
     assert result["status"] == "completed"
     assert "external_mcp_enabled" in result["answer"]
     assert "MCP" in result["answer"]
+
+
+# -- MB-39: chat -> proposal bridge ------------------------------------------------
+
+
+def test_actionable_message_creates_a_real_pending_proposal(
+    service: AdminAssistantChatService,
+) -> None:
+    result = service.send_message(
+        admin_id=ADMIN_ID,
+        message="Please import dataset content from an external provider",
+        page_id="overview",
+    )
+    assert result["proposal"] is not None
+    assert result["proposal"]["action_type"] == "register_external_data_provider"
+    assert result["proposal"]["status"] == "pending"
+    assert result["proposal"]["public_id"]
+    assert "proposal" in result["answer"].lower()
+
+    # Real proof this only created a proposal -- it did not execute anything.
+    stored = service.assistant.get_proposal(result["proposal"]["public_id"])
+    assert stored.status == "pending"
+    assert stored.execution_status != "succeeded"
+    assert stored.executed_at is None
+
+
+def test_actionable_message_proposal_is_not_auto_executed(
+    service: AdminAssistantChatService,
+) -> None:
+    result = service.send_message(
+        admin_id=ADMIN_ID, message="I'd like to use an external provider", page_id="overview",
+    )
+    proposal_id = result["proposal"]["public_id"]
+    # Confirm the only way execution could occur is a separate, explicit
+    # `execute()` call -- send_message() never makes one itself.
+    stored = service.assistant.get_proposal(proposal_id)
+    assert stored.status == "pending"
+    assert stored.execution_status in ("not_applicable", "pending")
+    assert stored.executed_at is None
+    assert stored.execution_result == {}
+
+
+def test_dataset_clean_proposes_when_entity_context_matches(
+    service: AdminAssistantChatService,
+) -> None:
+    result = service.send_message(
+        admin_id=ADMIN_ID,
+        message="Please clean dataset records now",
+        page_id="dataset_sample_import",
+        entity_type="external_dataset_sample_import",
+        entity_public_id="sample-import-123",
+    )
+    assert result["proposal"] is not None
+    assert result["proposal"]["action_type"] == "run_sample_quality_checks"
+
+
+def test_dataset_clean_falls_back_to_guidance_without_entity_context(
+    service: AdminAssistantChatService,
+) -> None:
+    result = service.send_message(
+        admin_id=ADMIN_ID, message="Please clean dataset records now", page_id="overview",
+    )
+    assert result["proposal"] is None
+
+
+def test_rag_build_and_rag_evaluate_never_auto_propose(
+    service: AdminAssistantChatService,
+) -> None:
+    # Both real action types need configuration (embedding model, chunking
+    # config, or an answer_run_public_id) this bridge is never given --
+    # it must decline rather than invent values, and fall back to the
+    # existing RAG Sandbox guidance.
+    build_result = service.send_message(
+        admin_id=ADMIN_ID,
+        message="Let's build rag sandbox index for this experiment",
+        page_id="rag_sandbox",
+    )
+    assert build_result["proposal"] is None
+    assert build_result["navigation_target"] == {"page_id": "rag_sandbox", "nav_key": "RAG Sandbox"}
+
+    evaluate_result = service.send_message(
+        admin_id=ADMIN_ID, message="run a rag test please", page_id="rag_sandbox",
+    )
+    assert evaluate_result["proposal"] is None
+
+
+def test_ambiguous_query_never_creates_a_proposal(
+    service: AdminAssistantChatService,
+) -> None:
+    result = service.send_message(
+        admin_id=ADMIN_ID, message="What's the weather like today?", page_id="overview",
+    )
+    assert result["proposal"] is None
+
+
+def test_blocked_training_intent_never_creates_a_proposal(
+    service: AdminAssistantChatService,
+) -> None:
+    # "clean dataset" alone would match dataset.clean -- the presence of
+    # "training" anywhere in the message must still block the proposal.
+    result = service.send_message(
+        admin_id=ADMIN_ID,
+        message="clean dataset and then start training the model",
+        page_id="overview",
+        entity_type="external_dataset_sample_import",
+        entity_public_id="sample-import-123",
+    )
+    assert result["proposal"] is None
+
+
+def test_navigation_target_still_works_for_non_actionable_queries(
+    service: AdminAssistantChatService,
+) -> None:
+    # Existing behavior (pre-MB-39) must be completely unaffected.
+    result = service.send_message(
+        admin_id=ADMIN_ID, message="take me to Builds & Pipelines", page_id="overview",
+    )
+    assert result["proposal"] is None
+    assert result["navigation_target"] == {
+        "page_id": "builds_pipelines", "nav_key": "Builds & Pipelines",
+    }

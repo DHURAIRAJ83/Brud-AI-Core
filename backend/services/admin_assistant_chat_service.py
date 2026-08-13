@@ -32,6 +32,7 @@ docs/admin_assistant/phase10a_language_preference_plan.md.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any
 
 from backend.core.config import Settings
@@ -49,6 +50,7 @@ from backend.services.admin_assistant_tools import ReadOnlyToolError, run_tool
 from backend.services.conversation_session_service import ConversationSessionService
 from backend.services.inference_runtime_service import InferenceRuntimeService
 from backend.services.model_assignment_service import ModelAssignmentService
+from core_model.admin_assistant.chat_action_bridge import ChatActionMatch, match_actionable_intent
 from core_model.admin_assistant.dashboard_registry import (
     REGISTRY_VERSION,
     get_page_by_id,
@@ -247,6 +249,25 @@ class AdminAssistantChatService:
         bilingual = {
             "en": f"Use the button below to go to {page.nav_key}.",
             "ta": f"{page.nav_key} பக்கத்திற்கு செல்ல கீழே உள்ள பொத்தானை பயன்படுத்தவும்.",
+        }
+        return localize(bilingual, resolved_language)
+
+    # -- MB-39: chat -> proposal confirmation reply --------------------------
+
+    def _reply_chat_action_proposed(self, proposal: dict[str, Any], resolved_language: str) -> str:
+        bilingual = {
+            "en": (
+                f"I've created a proposal ({proposal['action_type']}, id "
+                f"{proposal['public_id']}) for this request. It is only a "
+                f"proposal -- status: {proposal['status']}. Nothing will run until an "
+                "admin reviews and approves it on the Admin Assistant page."
+            ),
+            "ta": (
+                f"இந்த கோரிக்கைக்காக ஒரு proposal ({proposal['action_type']}, id "
+                f"{proposal['public_id']}) உருவாக்கப்பட்டது. இது ஒரு proposal மட்டுமே -- "
+                f"நிலை: {proposal['status']}. ஒரு admin அதை Admin Assistant "
+                "பக்கத்தில் review செய்து approve செய்யும் வரை எதுவும் இயக்கப்படாது."
+            ),
         }
         return localize(bilingual, resolved_language)
 
@@ -517,6 +538,75 @@ class AdminAssistantChatService:
 
         message_lower = message.lower()
         return any(keyword in message_lower for keyword in self._RAG_SANDBOX_KEYWORDS)
+
+    # -- MB-39: chat -> proposal bridge (creates proposals, never executes) --
+
+    def _propose_register_external_data_provider(
+        self, match: ChatActionMatch, message: str, admin_id: str,
+    ) -> dict[str, Any]:
+        provider_code = f"chat-{uuid.uuid4().hex[:10]}"
+        proposal = self.assistant.propose(
+            action_type=match.action_type,
+            target_type=match.target_type,
+            target_public_id=provider_code,
+            request_payload={
+                "provider_code": provider_code,
+                "name": f"Chat-requested provider ({provider_code})",
+                "provider_type": "custom_api",
+                "access_mode": "public",
+                "description": f"Registered from an Admin Assistant chat message: {message[:200]!r}",
+            },
+            requested_by=admin_id,
+            summary="Register a new external data provider requested via Admin Assistant chat",
+        )
+        return {"public_id": proposal.public_id, "action_type": proposal.action_type, "status": proposal.status}
+
+    def _propose_run_sample_quality_checks(
+        self, match: ChatActionMatch, admin_id: str, entity_public_id: str,
+    ) -> dict[str, Any]:
+        proposal = self.assistant.propose(
+            action_type=match.action_type,
+            target_type=match.target_type,
+            target_public_id=entity_public_id,
+            request_payload={},
+            requested_by=admin_id,
+            summary="Run dataset quality checks requested via Admin Assistant chat",
+        )
+        return {"public_id": proposal.public_id, "action_type": proposal.action_type, "status": proposal.status}
+
+    def _maybe_propose_chat_action(
+        self, message: str, admin_id: str, entity_type: str | None, entity_public_id: str | None,
+    ) -> dict[str, Any] | None:
+        """Returns a proposal summary when `message` names one of the
+        MB-39 actionable scopes AND enough real context exists to
+        propose it for real -- this never invents a target entity or a
+        payload value it was not actually given, and it never calls
+        `AdminAssistantService.execute()`. A returned proposal is always
+        `status="pending"` -- a human must still review and execute it
+        through the existing, unmodified proposal flow."""
+
+        match = match_actionable_intent(message)
+        if match is None:
+            return None
+
+        if match.action_type == "register_external_data_provider":
+            # Registering a brand-new provider needs no pre-existing
+            # target, so this scope is always proposable once matched.
+            return self._propose_register_external_data_provider(match, message, admin_id)
+
+        if match.action_type == "run_sample_quality_checks":
+            if entity_type == match.target_type and entity_public_id:
+                return self._propose_run_sample_quality_checks(match, admin_id, entity_public_id)
+            return None
+
+        # build_rag_sandbox_index and run_rag_sandbox_evaluation both
+        # require real configuration this bridge was never given
+        # (index_kind/chunking_config/embedding_model_public_id, or an
+        # answer_run_public_id) -- inventing those would produce a
+        # proposal whose own preview misrepresents what was asked for,
+        # so this bridge deliberately declines and falls back to the
+        # existing RAG Sandbox guidance/navigation instead.
+        return None
 
     def _reply_rag_sandbox_guidance(self, resolved_language: str) -> str:
         bilingual = {
@@ -945,6 +1035,7 @@ class AdminAssistantChatService:
         intent_result = classify_intent(message)
         generation_failed = False
         navigation_target: dict[str, Any] | None = None
+        proposal: dict[str, Any] | None = None
         answer_text: str
 
         if intent_result.intent == "greeting":
@@ -973,13 +1064,18 @@ class AdminAssistantChatService:
             answer_text = self._reply_navigation(page, resolved_language)
             navigation_target = {"page_id": page.page_id, "nav_key": page.nav_key}
         else:
-            provider_match = self._match_external_data_provider(message)
+            proposal = self._maybe_propose_chat_action(
+                message, admin_id, entity_type, entity_public_id
+            )
+            provider_match = None if proposal is not None else self._match_external_data_provider(message)
             dataset_verification_faq_key = self._match_dataset_verification_faq(message)
             sample_import_faq_key = self._match_sample_import_faq(message)
             rag_sandbox_faq_key = self._match_rag_sandbox_faq(message)
             knowledge_gap_faq_key = self._match_knowledge_gap_faq(message)
             trusted_web_faq_key = self._match_trusted_web_faq(message)
-            if provider_match is not None:
+            if proposal is not None:
+                answer_text = self._reply_chat_action_proposed(proposal, resolved_language)
+            elif provider_match is not None:
                 connection_status = self._run_tool_logged(
                     "get_provider_connection_status",
                     mode="data",
@@ -1091,6 +1187,8 @@ class AdminAssistantChatService:
             "language_source": resolved.source,
             "status": status_result["status"],
             "navigation_target": navigation_target,
+            "proposal": proposal,
             "conversation_session_public_id": session_public_id,
+            "conversation_persisted": session_public_id is not None,
             "registry_version": REGISTRY_VERSION,
         }

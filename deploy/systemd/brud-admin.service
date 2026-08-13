@@ -1,0 +1,15 @@
+[Unit]
+Description=Brud AI Admin API
+After=network.target
+
+[Service]
+Type=simple
+User=dhurai
+WorkingDirectory=/home/dhurai/Projects/brud-ai
+EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/admin.env
+ExecStart=/home/dhurai/Projects/brud-ai/deploy/scripts/start-admin.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

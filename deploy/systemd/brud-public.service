@@ -1,0 +1,15 @@
+[Unit]
+Description=Brud AI Public API
+After=network.target
+
+[Service]
+Type=simple
+User=dhurai
+WorkingDirectory=/home/dhurai/Projects/brud-ai
+EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/public.env
+ExecStart=/home/dhurai/Projects/brud-ai/deploy/scripts/start-public.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

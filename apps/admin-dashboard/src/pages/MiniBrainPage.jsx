@@ -1,46 +1,50 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import Button from '../components/Button.jsx'
 import ChatPanel from '../components/chat/ChatPanel.jsx'
 import ErrorBanner from '../components/ErrorBanner.jsx'
 import Skeleton from '../components/Skeleton.jsx'
 import StatusCard from '../components/StatusCard.jsx'
 import { useToast } from '../components/Toast.jsx'
+// Overview/Settings/Logs/Diagnostics stay eager: all <2 kB, and together
+// form the "core status" cluster a user checks immediately after landing
+// on Mini Brain (Overview is also the default tab, so lazy-loading it
+// would add a Suspense flash on the single most common entry path).
 import DiagnosticsTab from './mini-brain/DiagnosticsTab.jsx'
-import AssistantIntelligenceTab from './mini-brain/AssistantIntelligenceTab.jsx'
-import CapabilityTab from './mini-brain/CapabilityTab.jsx'
-import ContinuousLearningCenterTab from './mini-brain/ContinuousLearningCenterTab.jsx'
-import ContinuousLearningTab from './mini-brain/ContinuousLearningTab.jsx'
-import DatasetEvolutionTab from './mini-brain/DatasetEvolutionTab.jsx'
-import DatasetIntelligenceTab from './mini-brain/DatasetIntelligenceTab.jsx'
-import EvaluationCenterTab from './mini-brain/EvaluationCenterTab.jsx'
-import ExternalAIGatewayTab from './mini-brain/ExternalAIGatewayTab.jsx'
-import FutureModelTab from './mini-brain/FutureModelTab.jsx'
-import IntelligenceEngineTab from './mini-brain/IntelligenceEngineTab.jsx'
-import KnowledgeCoreTab from './mini-brain/KnowledgeCoreTab.jsx'
-import LanguageIntelligenceTab from './mini-brain/LanguageIntelligenceTab.jsx'
-import LearningSupervisorTab from './mini-brain/LearningSupervisorTab.jsx'
-import LocalSetupTab from './mini-brain/LocalSetupTab.jsx'
 import LogsTab from './mini-brain/LogsTab.jsx'
-import MultimodalDatasetGeneratorTab from './mini-brain/MultimodalDatasetGeneratorTab.jsx'
 import OverviewTab from './mini-brain/OverviewTab.jsx'
-import PipelineCoordinatorTab from './mini-brain/PipelineCoordinatorTab.jsx'
-import PluginGovernanceTab from './mini-brain/PluginGovernanceTab.jsx'
-import PluginRuntimeTab from './mini-brain/PluginRuntimeTab.jsx'
-import ProviderSettingsTab from './mini-brain/ProviderSettingsTab.jsx'
-import PublicChatRuntimeTab from './mini-brain/PublicChatRuntimeTab.jsx'
-import ReleaseGovernanceTab from './mini-brain/ReleaseGovernanceTab.jsx'
-import ReleasePipelineTab from './mini-brain/ReleasePipelineTab.jsx'
-import ResearchCenterTab from './mini-brain/ResearchCenterTab.jsx'
-import ResponseQualityTab from './mini-brain/ResponseQualityTab.jsx'
-import RuntimeManagerTab from './mini-brain/RuntimeManagerTab.jsx'
-import RuntimeTab from './mini-brain/RuntimeTab.jsx'
 import SettingsTab from './mini-brain/SettingsTab.jsx'
-import TrainingEngineTab from './mini-brain/TrainingEngineTab.jsx'
-import TrainingPipelineTab from './mini-brain/TrainingPipelineTab.jsx'
-import VisionIntelligenceTab from './mini-brain/VisionIntelligenceTab.jsx'
-import VisionModelCenterTab from './mini-brain/VisionModelCenterTab.jsx'
-import VisionRAGTab from './mini-brain/VisionRAGTab.jsx'
-import VoiceRuntimeTab from './mini-brain/VoiceRuntimeTab.jsx'
+const AssistantIntelligenceTab = lazy(() => import('./mini-brain/AssistantIntelligenceTab.jsx'))
+const CapabilityTab = lazy(() => import('./mini-brain/CapabilityTab.jsx'))
+const ContinuousLearningCenterTab = lazy(() => import('./mini-brain/ContinuousLearningCenterTab.jsx'))
+const ContinuousLearningTab = lazy(() => import('./mini-brain/ContinuousLearningTab.jsx'))
+const DatasetEvolutionTab = lazy(() => import('./mini-brain/DatasetEvolutionTab.jsx'))
+const DatasetIntelligenceTab = lazy(() => import('./mini-brain/DatasetIntelligenceTab.jsx'))
+const EvaluationCenterTab = lazy(() => import('./mini-brain/EvaluationCenterTab.jsx'))
+const ExternalAIGatewayTab = lazy(() => import('./mini-brain/ExternalAIGatewayTab.jsx'))
+const FutureModelTab = lazy(() => import('./mini-brain/FutureModelTab.jsx'))
+const IntelligenceEngineTab = lazy(() => import('./mini-brain/IntelligenceEngineTab.jsx'))
+const KnowledgeCoreTab = lazy(() => import('./mini-brain/KnowledgeCoreTab.jsx'))
+const LanguageIntelligenceTab = lazy(() => import('./mini-brain/LanguageIntelligenceTab.jsx'))
+const LearningSupervisorTab = lazy(() => import('./mini-brain/LearningSupervisorTab.jsx'))
+const LocalSetupTab = lazy(() => import('./mini-brain/LocalSetupTab.jsx'))
+const MultimodalDatasetGeneratorTab = lazy(() => import('./mini-brain/MultimodalDatasetGeneratorTab.jsx'))
+const PipelineCoordinatorTab = lazy(() => import('./mini-brain/PipelineCoordinatorTab.jsx'))
+const PluginGovernanceTab = lazy(() => import('./mini-brain/PluginGovernanceTab.jsx'))
+const PluginRuntimeTab = lazy(() => import('./mini-brain/PluginRuntimeTab.jsx'))
+const ProviderSettingsTab = lazy(() => import('./mini-brain/ProviderSettingsTab.jsx'))
+const PublicChatRuntimeTab = lazy(() => import('./mini-brain/PublicChatRuntimeTab.jsx'))
+const ReleaseGovernanceTab = lazy(() => import('./mini-brain/ReleaseGovernanceTab.jsx'))
+const ReleasePipelineTab = lazy(() => import('./mini-brain/ReleasePipelineTab.jsx'))
+const ResearchCenterTab = lazy(() => import('./mini-brain/ResearchCenterTab.jsx'))
+const ResponseQualityTab = lazy(() => import('./mini-brain/ResponseQualityTab.jsx'))
+const RuntimeManagerTab = lazy(() => import('./mini-brain/RuntimeManagerTab.jsx'))
+const RuntimeTab = lazy(() => import('./mini-brain/RuntimeTab.jsx'))
+const TrainingEngineTab = lazy(() => import('./mini-brain/TrainingEngineTab.jsx'))
+const TrainingPipelineTab = lazy(() => import('./mini-brain/TrainingPipelineTab.jsx'))
+const VisionIntelligenceTab = lazy(() => import('./mini-brain/VisionIntelligenceTab.jsx'))
+const VisionModelCenterTab = lazy(() => import('./mini-brain/VisionModelCenterTab.jsx'))
+const VisionRAGTab = lazy(() => import('./mini-brain/VisionRAGTab.jsx'))
+const VoiceRuntimeTab = lazy(() => import('./mini-brain/VoiceRuntimeTab.jsx'))
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
   continuousLearningAnalyzeDifficulty, continuousLearningAnalyzeFailures,
@@ -3091,6 +3095,7 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
       {error && <ErrorBanner message={error} onRetry={() => selectTab(tab)} />}
       {notice && <div className="success-note" role="status">{notice}</div>}
 
+      <Suspense fallback={<Skeleton lines={6} height="1rem" />}>
       {tab === 'Overview' && (
         <OverviewTab status={status} version={version} busy={busy} toggle={toggle} runHealthCheck={runHealthCheck} />
       )}
@@ -3647,6 +3652,7 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
       )}
 
       {tab === 'Future Model' && <FutureModelTab />}
+      </Suspense>
     </section>
   )
 }

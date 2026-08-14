@@ -1,0 +1,23 @@
+=== SecurityHeadersMiddleware ===
+backend/main.py:16:from backend.core.security_headers_middleware import SecurityHeadersMiddleware
+backend/main.py:69:    application.add_middleware(SecurityHeadersMiddleware)
+backend/core/security_headers_middleware.py:28:class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+
+=== GlobalRateLimitMiddleware ===
+backend/main.py:15:from backend.core.rate_limit_middleware import GlobalRateLimitMiddleware
+backend/main.py:68:    application.add_middleware(GlobalRateLimitMiddleware, settings=active_settings)
+backend/core/rate_limit_middleware.py:33:class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
+
+=== BRUD_ADMIN_COOKIE_SECURE ===
+deploy/env/admin.env.example:6:BRUD_ADMIN_COOKIE_SECURE=true
+
+=== ProtectSystem=strict ===
+deploy/systemd/brud-worker.service:19:ProtectSystem=strict
+deploy/systemd/brud-admin.service:32:ProtectSystem=strict
+deploy/systemd/brud-public.service:24:ProtectSystem=strict
+
+=== brud-backup-encryption.timer ===
+deploy/runbooks/PRODUCTION_HARDENING_CHECKLIST.md:41:- [ ] `systemctl enable --now brud-backup-encryption.timer`
+deploy/runbooks/PRODUCTION_HARDENING_CHECKLIST.md:89:- [ ] Periodically confirm `brud-backup-encryption.timer` is still active (`systemctl list-timers | grep brud-backup-encryption`) and its last run succeeded
+deploy/release-candidate/reports/deploy-file-inventory.txt:35:deploy/systemd/brud-backup-encryption.timer
+deploy/runbooks/PRODUCTION_HTTPS_RUNBOOK.md:143:- [ ] `brud-backup-encryption.timer` is installed and enabled (`systemctl enable --now brud-backup-encryption.timer`) so plaintext backups are encrypted, verified, and the plaintext deleted automatically (Phase 6B-2) — without this, backups remain unencrypted by default as found in Phase 6A

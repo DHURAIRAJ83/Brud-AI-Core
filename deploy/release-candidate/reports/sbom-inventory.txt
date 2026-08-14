@@ -1,0 +1,3 @@
+deploy/sbom/admin-dashboard.cdx.json
+deploy/sbom/backend.cdx.json
+deploy/sbom/chatbot.cdx.json

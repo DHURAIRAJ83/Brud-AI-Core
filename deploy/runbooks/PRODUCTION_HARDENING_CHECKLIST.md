@@ -58,6 +58,29 @@ intentionally out of this phase's scope.
 - [ ] If a deployment ever sets `BRUD_ALLOW_EXTERNAL_STORAGE=true` to point a data directory outside the repo, the matching systemd unit's `ReadWritePaths` must be extended to cover it, or that feature will fail under the sandbox
 - [ ] After restarting a service, `journalctl -u brud-<mode> -n 50` shows a clean `Application startup complete` with no `Failed to set up mount namespacing` or `NAMESPACE`/`SECCOMP` exit codes — a mount or syscall-filter problem shows up immediately on start, not later under load
 
+## Dependency governance (Phase 6D)
+
+- [ ] `apps/admin-dashboard/package.json` and `apps/chatbot/package.json`'s `dependencies` blocks are all exact-pinned versions (no `latest`, `^`, `~`, `*`) — `deploy/scripts/verify-dependencies.sh`'s check 1 confirms this; `devDependencies` intentionally keep caret ranges, that's normal for dev/test tooling
+- [ ] `requirements.txt` and `pyproject.toml`'s `[project.dependencies]`/`dev` extras agree exactly — a manifest drift here is how a package like `cryptography` (security-critical, used by backup encryption) can end up silently excluded from a `pip-audit -r requirements.txt` run; re-run the reconciliation check before ever hand-editing either file:
+  ```bash
+  python3 -c "
+  import re, tomllib
+  req = {re.match(r'^([A-Za-z0-9_.\-]+)', l.strip()).group(1).lower(): l.strip()
+         for l in open('requirements.txt') if l.strip()}
+  proj = tomllib.load(open('pyproject.toml', 'rb'))
+  pdeps = {}
+  for l in proj['project']['dependencies'] + proj['project']['optional-dependencies'].get('dev', []):
+      pdeps[re.match(r'^([A-Za-z0-9_.\-]+)', l).group(1).lower()] = l
+  print('only in requirements.txt:', sorted(set(req)-set(pdeps)))
+  print('only in pyproject.toml:', sorted(set(pdeps)-set(req)))
+  print('mismatches:', [(k, req[k], pdeps[k]) for k in set(req)&set(pdeps) if req[k]!=pdeps[k]])
+  "
+  ```
+- [ ] `pip install -e .[audit]` (installs `pip-audit`) has been run in the venv before using either new script
+- [ ] `deploy/scripts/verify-dependencies.sh` passes with exit 0 before a release — if it fails, read the printed findings (it never auto-fixes; `npm audit fix`/dependency upgrades are a deliberate, separately-reviewed decision, not something this script does for you)
+- [ ] `deploy/scripts/generate-sbom.sh` has been re-run recently and `deploy/sbom/{backend,admin-dashboard,chatbot}.cdx.json` reflect the current manifests — these are generated artifacts (like `deploy/benchmarks/reports/`), not committed
+- [ ] Known, currently-unresolved vulnerabilities (do not silently upgrade past a pinned range to fix these without separately testing — see "Still open"): frontend `nanoid` (high, transitive via vite toolchain) and `postcss` (moderate); backend `pillow`, `starlette`, `cryptography`, `pytest`, `diskcache` — run `deploy/scripts/verify-dependencies.sh` for the current, authoritative list rather than trusting this snapshot as it ages
+
 ## Ongoing / periodic
 
 - [ ] TLS certificate expiry monitored (30-day-out alert at minimum)
@@ -67,14 +90,17 @@ intentionally out of this phase's scope.
 
 ## Still open (not this phase — see the Phase 6A audit report)
 
-These were identified in the Phase 6A security review but are **out of
-scope for Phase 6B-1/6B-2/6B-3/6C** (deployment-hardening,
-backup-encryption automation, web-security-surface hardening, and
-systemd sandboxing only, no unrelated backend logic changes). Do not
-consider a deployment fully hardened until these are tracked as their
-own follow-up work:
+These were identified in the Phase 6A security review (or, for the
+dependency findings, during Phase 6D's own audit tooling) but are **out
+of scope for Phase 6B-1/6B-2/6B-3/6C/6D** (deployment-hardening,
+backup-encryption automation, web-security-surface hardening, systemd
+sandboxing, and dependency governance/pinning only -- upgrading a
+pinned version to fix a CVE is a separate, deliberate decision this
+phase didn't make). Do not consider a deployment fully hardened until
+these are tracked as their own follow-up work:
 
-- [ ] Frontend core dependencies (`react`, `react-dom`, `vite`, `@vitejs/plugin-react`) are pinned to `"latest"` in both `apps/admin-dashboard/package.json` and `apps/chatbot/package.json`
 - [ ] The global rate limiter (Phase 6B-3) is in-process/per-worker, matching this codebase's existing `public_chat_rate_limiter.py` pattern — if a future phase moves to multiple uvicorn workers or processes behind one deployment mode, each would keep its own independent counters (a shared store like Redis would be needed for a real shared limit)
 - [ ] `admin`'s sandboxing is intentionally more conservative than `public`/`worker` (Phase 6C) because its torch/GPU code paths were never validated under `PrivateDevices`/`MemoryDenyWriteExecute`/`SystemCallFilter` on real GPU hardware — narrowing this gap is future work, not a current gap to "fix" casually
 - [ ] `CPUQuota` is not set on any of the three units — no load-test data exists yet to size it without risking a visible slowdown under real traffic
+- [ ] Known vulnerabilities found by Phase 6D's audit tooling remain unfixed on purpose (fixing means upgrading past a pinned range, needing its own testing pass): frontend `nanoid` (high) and `postcss` (moderate, both transitive via the vite toolchain, `npm audit fix` available); backend `pillow` (large number of CVEs, fix is a major version bump to 12.x), `starlette` (9 findings, fix is a FastAPI-compatible-range check first), `cryptography` (fix 50.0.0), `pytest` (fix 9.0.3), `diskcache` (no fix version published yet, transitive — trace which declared dependency pulls it in before deciding how to respond)
+- [ ] `deploy/scripts/verify-dependencies.sh`'s pinning check only covers frontend `dependencies` — the backend has no equivalent "is every requirements.txt/pyproject.toml line an exact pin" check, because this codebase's existing convention is deliberately range-pinned (`>=X,<Y`) for the backend, not exact-pinned; that's a different governance model from the frontend's, not an oversight, but worth being explicit about if a future phase wants to unify them

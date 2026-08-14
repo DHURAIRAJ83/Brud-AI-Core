@@ -18,8 +18,6 @@ import time
 from typing import Any
 from uuid import uuid4
 
-import torch
-
 from backend.core.config import Settings
 from backend.core.json_utils import dumps_json, loads_json
 from backend.database.repositories.base import NotFoundError, ValidationError
@@ -40,8 +38,6 @@ from backend.models.pretraining import PretrainingJobCreate
 from backend.services.pretraining_service import PretrainingService
 from backend.services.tokenizer_registry import TokenizerService
 from backend.services.training_evaluation_service import TrainingEvaluationService
-from core_model.architecture.model import BrudForCausalLM
-from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 from core_model.instruction_tuning.batch_builder import (
     InstructionProfileThresholds,
     build_instruction_examples,
@@ -57,7 +53,6 @@ from core_model.instruction_tuning.evaluation import (
     valid_unicode,
 )
 from core_model.instruction_tuning.fixed_eval_fixtures import FIXTURE_VERSION, all_fixtures
-from core_model.instruction_tuning.generation import generate_greedy
 from core_model.instruction_tuning.label_masking import LabelMaskingThresholds
 from core_model.instruction_tuning.learning_checks import (
     InstructionLearningCheckThresholds,
@@ -76,7 +71,6 @@ from core_model.instruction_tuning.templates import (
 )
 from core_model.training.metrics import available_memory_bytes
 from core_model.training.pretraining_config import from_mapping
-from core_model.training.trainer import instruction_response_loss, run_instruction_tuning
 
 LANGUAGES = ("ta", "en", "tgl", "mixed")
 ELIGIBLE_BASE_STATUSES = {"staging", "active"}
@@ -489,6 +483,11 @@ class InstructionTuningService:
     def _run_claimed_instruction_job(
         self, job, worker_id: str, lease_generation: int
     ) -> dict[str, Any]:
+        import torch
+
+        from core_model.architecture.model import BrudForCausalLM
+        from core_model.training.trainer import run_instruction_tuning
+
         config = from_mapping(loads_json(job["configuration_json"]))
         model_config = self.pretraining_service._model_config(job)
         torch.manual_seed(int(job["initialization_seed"]))
@@ -677,6 +676,9 @@ class InstructionTuningService:
         return checkpoint
 
     def _load_model_and_processor(self, job, checkpoint):
+        from core_model.architecture.model import BrudForCausalLM
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         model_config = self.pretraining_service._model_config(job)
         manager = TrainingCheckpointManager(
             self.settings.resolved_pretraining_dir, self.settings.core_checkpoint_max_bytes
@@ -698,6 +700,9 @@ class InstructionTuningService:
     def _evaluate_run(
         self, run_public_id: str, admin_id: str, *, include_test: bool
     ) -> dict[str, Any]:
+        from core_model.instruction_tuning.generation import generate_greedy
+        from core_model.training.trainer import instruction_response_loss
+
         with self.repository.transaction() as connection:
             run = self.repository.run(connection, run_public_id)
             if run["job_status"] not in {"completed", "completed_with_warnings"}:
@@ -984,6 +989,8 @@ class InstructionTuningService:
     def diagnostic_generate(
         self, run_public_id: str, prompt_text: str, max_new_tokens: int, admin_id: str
     ) -> dict[str, Any]:
+        from core_model.instruction_tuning.generation import generate_greedy
+
         with self.repository.transaction() as connection:
             run = self.repository.run(connection, run_public_id)
             if run["job_status"] not in {"completed", "completed_with_warnings"}:
@@ -1071,6 +1078,8 @@ class InstructionTuningService:
     def select_candidate(
         self, public_id: str, override_comment: str | None, admin_id: str
     ) -> dict[str, Any]:
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         with self.repository.transaction() as connection:
             experiment = self.repository.experiment(connection, public_id)
             runs = self.repository.runs_for_experiment(connection, experiment["id"])
@@ -1259,6 +1268,8 @@ class InstructionTuningService:
     # --- reproducibility manifest -----------------------------------------------------
 
     def generate_manifest(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        import torch
+
         with self.repository.transaction() as connection:
             experiment = self.repository.experiment(connection, public_id)
             runs = self.repository.runs_for_experiment(connection, experiment["id"])

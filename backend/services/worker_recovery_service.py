@@ -17,8 +17,6 @@ from backend.database.repositories.pretraining import PretrainingRepository, pub
 from backend.database.repositories.training_reliability import TrainingReliabilityRepository
 from backend.database.repositories.training_reliability import public_row as reliability_public_row
 from core_model.architecture.config import BrudModelConfig
-from core_model.checkpoints.recovery_validator import validate_checkpoint_for_recovery
-from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 
 RECOVERY_TYPES = {
     "pause_resume",
@@ -76,6 +74,9 @@ class WorkerRecoveryService:
     def _validate_latest_checkpoint(
         self, connection, job
     ) -> tuple[Any, dict[str, Any], list[str], int | None, int | None]:
+        from core_model.checkpoints.recovery_validator import validate_checkpoint_for_recovery
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         checkpoint_row = connection.execute(
             """SELECT * FROM pretraining_checkpoints
             WHERE pretraining_job_id=? AND is_latest=1

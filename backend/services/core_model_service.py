@@ -7,28 +7,13 @@ import re
 from typing import Any
 from uuid import uuid4
 
-import torch
-
 from backend.core.config import Settings
 from backend.core.json_utils import dumps_json, redact_secrets
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.core_models import CoreModelRepository, public_row
 from backend.models.core_models import CoreConfigCreate
 from core_model.architecture.config import BrudModelConfig, micro_preset, tiny_preset
-from core_model.architecture.model import BrudForCausalLM, count_parameters
-from core_model.checkpoints.manager import CheckpointManager
 from core_model.checkpoints.manifest import sha256_file
-from core_model.evaluation.architecture_checks import (
-    actual_parameter_count,
-    causal_isolation_check,
-    config_checksum,
-    estimate_memory,
-    estimate_parameters,
-    smoke_forward_checks,
-    weights_checksum,
-)
-from core_model.training.batch import pad_sequences
-from core_model.training.smoke_train import tiny_overfit
 
 ALLOWED_ASSIGNMENTS = {
     "architecture_default",
@@ -74,6 +59,8 @@ class CoreModelService:
         self.settings = settings
 
     def capabilities(self) -> dict[str, Any]:
+        import torch
+
         return {
             "pytorch_available": True,
             "pytorch_version": torch.__version__,
@@ -132,6 +119,12 @@ class CoreModelService:
             return public_row(self.repository.family(connection, public_id))
 
     def estimate_config(self, payload: CoreConfigCreate) -> dict[str, Any]:
+        from core_model.evaluation.architecture_checks import (
+            config_checksum,
+            estimate_memory,
+            estimate_parameters,
+        )
+
         with self.repository.transaction() as connection:
             tokenizer = self.repository.tokenizer(connection, payload.tokenizer_version_public_id)
         config = self._config_from_payload(payload, tokenizer)
@@ -146,6 +139,12 @@ class CoreModelService:
         }
 
     def create_config(self, payload: CoreConfigCreate, admin_id: str) -> dict[str, Any]:
+        from core_model.evaluation.architecture_checks import (
+            config_checksum,
+            estimate_memory,
+            estimate_parameters,
+        )
+
         with self.repository.transaction() as connection:
             tokenizer = self.repository.tokenizer(connection, payload.tokenizer_version_public_id)
             config = self._config_from_payload(payload, tokenizer)
@@ -213,6 +212,8 @@ class CoreModelService:
             return public_row(self.repository.config(connection, public_id))
 
     def validate_config(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.evaluation.architecture_checks import actual_parameter_count
+
         with self.repository.transaction() as connection:
             row = self.repository.config(connection, public_id)
             config = self._config_from_row(row)
@@ -227,6 +228,8 @@ class CoreModelService:
             return public_row(self.repository.config(connection, public_id)) | {"actual_parameter_count": actual}
 
     def create_version(self, payload, admin_id: str) -> dict[str, Any]:
+        from core_model.evaluation.architecture_checks import estimate_memory
+
         with self.repository.transaction() as connection:
             family = self.repository.family(connection, payload.family_public_id)
             config = self.repository.config(connection, payload.config_public_id)
@@ -271,6 +274,11 @@ class CoreModelService:
             return public_row(self.repository.version(connection, public_id))
 
     def initialize(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        import torch
+
+        from core_model.architecture.model import BrudForCausalLM, count_parameters
+        from core_model.evaluation.architecture_checks import weights_checksum
+
         with self.repository.transaction() as connection:
             row = self.repository.version(connection, public_id)
             if row["lifecycle_status"] not in {"draft", "failed"}:
@@ -300,6 +308,14 @@ class CoreModelService:
             return public_row(self.repository.version(connection, public_id))
 
     def verify_architecture(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        import torch
+
+        from core_model.architecture.model import BrudForCausalLM, count_parameters
+        from core_model.evaluation.architecture_checks import (
+            causal_isolation_check,
+            smoke_forward_checks,
+        )
+
         with self.repository.transaction() as connection:
             row = self.repository.version(connection, public_id)
             config = self._config_for_version(connection, row)
@@ -341,6 +357,8 @@ class CoreModelService:
             return {"status": status, "checks": checks}
 
     def forward_test(self, public_id: str, input_ids: list[int], labels: list[int] | None, admin_id: str) -> dict[str, Any]:
+        from core_model.training.batch import pad_sequences
+
         with self.repository.transaction() as connection:
             row = self.repository.version(connection, public_id)
             config = self._config_for_version(connection, row)
@@ -367,6 +385,8 @@ class CoreModelService:
         }
 
     def smoke_test(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.training.smoke_train import tiny_overfit
+
         with self.repository.transaction() as connection:
             row = self.repository.version(connection, public_id)
             config = self._config_for_version(connection, row)
@@ -468,6 +488,8 @@ class CoreModelService:
         return {"items": items}
 
     def verify_checkpoint(self, checkpoint_public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.checkpoints.manager import CheckpointManager
+
         with self.repository.transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM core_model_checkpoints WHERE public_id=?",
@@ -605,6 +627,8 @@ class CoreModelService:
             raise ValidationError("tokenizer artifact checksums are required")
 
     def _save_checkpoint(self, version, config: BrudModelConfig, model, kind: str, step: int) -> dict[str, Any]:
+        from core_model.checkpoints.manager import CheckpointManager
+
         safe_name = f"{_safe(version['family_name'])}_{_safe(version['version'])}_{kind}_{uuid4().hex[:8]}"
         target = self.settings.resolved_core_checkpoint_dir / safe_name
         manager = CheckpointManager(self.settings.resolved_core_checkpoint_dir, self.settings.core_checkpoint_max_bytes)
@@ -631,6 +655,11 @@ class CoreModelService:
         return {"public_id": checkpoint_id, **saved}
 
     def _load_or_new(self, version, config: BrudModelConfig) -> BrudForCausalLM:
+        import torch
+
+        from core_model.architecture.model import BrudForCausalLM
+        from core_model.checkpoints.manager import CheckpointManager
+
         with self.repository.transaction() as connection:
             row = connection.execute(
                 """SELECT * FROM core_model_checkpoints WHERE core_model_version_id=?
@@ -646,6 +675,10 @@ class CoreModelService:
         return BrudForCausalLM(config)
 
     def _checkpoint_round_trip(self, version, config: BrudModelConfig, model: BrudForCausalLM) -> bool:
+        import torch
+
+        from core_model.checkpoints.manager import CheckpointManager
+
         checkpoint = self._save_checkpoint(version, config, model, "manual", 0)
         with self.repository.transaction() as connection:
             row = connection.execute(
@@ -661,6 +694,10 @@ class CoreModelService:
             return bool(torch.allclose(model(sample).logits, loaded(sample).logits, atol=1e-6))
 
     def _backward_and_padding_checks(self, config: BrudModelConfig) -> list[dict[str, Any]]:
+        import torch
+
+        from core_model.architecture.model import BrudForCausalLM
+
         torch.manual_seed(4321)
         model = BrudForCausalLM(config)
         input_ids = torch.tensor([[config.bos_token_id, 5, 6, config.pad_token_id]])

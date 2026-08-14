@@ -11,7 +11,6 @@ from typing import Any
 from uuid import uuid4
 
 import numpy as np
-import torch
 
 from backend.core.config import Settings
 from backend.core.json_utils import dumps_json, loads_json, redact_secrets
@@ -23,14 +22,11 @@ from backend.models.pretraining import PretrainingJobCreate, PretrainingJobPatch
 from backend.services.tokenizer_registry import TokenizerService
 from backend.services.worker_recovery_service import WorkerRecoveryService
 from core_model.architecture.config import BrudModelConfig
-from core_model.architecture.model import BrudForCausalLM
-from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 from core_model.training.coverage import generate_coverage
 from core_model.training.dataset_stream import token_sequences
 from core_model.training.diagnostics import loss_improvement_ratio, safe_perplexity
 from core_model.training.packing import pack_stream
 from core_model.training.pretraining_config import from_mapping
-from core_model.training.trainer import run_pretraining
 
 
 class StaleWorkerError(RuntimeError):
@@ -73,6 +69,8 @@ class PretrainingService:
         self.reliability = TrainingReliabilityRepository(repository.database_path)
 
     def capabilities(self) -> dict[str, Any]:
+        import torch
+
         return {
             "pytorch_version": torch.__version__,
             "numpy_version": np.__version__,
@@ -335,6 +333,8 @@ class PretrainingService:
         return public_row(row)
 
     def verify_checkpoint(self, public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         with self.repository.transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM pretraining_checkpoints WHERE public_id=?", (public_id,)
@@ -520,6 +520,11 @@ class PretrainingService:
             }
 
     def _run_claimed(self, job, worker_id: str, lease_generation: int) -> dict[str, Any]:
+        import torch
+
+        from core_model.architecture.model import BrudForCausalLM
+        from core_model.training.trainer import run_pretraining
+
         config = from_mapping(loads_json(job["configuration_json"]))
         model_config = self._model_config(job)
         torch.manual_seed(int(job["initialization_seed"]))
@@ -635,6 +640,8 @@ class PretrainingService:
         }
 
     def _latest_checkpoint_state(self, job, model) -> dict[str, Any]:
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         with self.repository.transaction() as connection:
             row = connection.execute(
                 """SELECT * FROM pretraining_checkpoints
@@ -1040,6 +1047,8 @@ class PretrainingService:
     def _save_periodic_checkpoint(
         self, job, worker_id: str, lease_generation: int, model, config, state: dict[str, Any]
     ) -> None:
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         with self.repository.transaction() as connection:
             current = self.repository.job(connection, job["public_id"])
             if current["worker_id"] != worker_id or current["lease_generation"] != lease_generation:
@@ -1132,6 +1141,8 @@ class PretrainingService:
         self, job, worker_id: str, lease_generation: int, model, config, result
     ) -> dict[str, Any]:
         import torch as _torch
+
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 
         opt = _torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
         sched = _torch.optim.lr_scheduler.LambdaLR(opt, lambda _: 1.0)

@@ -15,7 +15,6 @@ from backend.database.repositories.training_reliability import public_row as rel
 from backend.services.tokenizer_registry import TokenizerService
 from core_model.checkpoints.comparison import compare_checkpoints as _compare_checkpoints
 from core_model.checkpoints.retention import RetentionPolicy, classify
-from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
 from core_model.training.coverage import generate_coverage
 from core_model.training.dataset_stream import token_sequences
 from core_model.training.diagnostics import is_diverging
@@ -180,6 +179,8 @@ class TrainingEvaluationService:
     # --- quality -----------------------------------------------------
 
     def assess_quality(self, job_public_id: str, admin_id: str) -> dict[str, Any]:
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+
         with self.repository.transaction() as connection:
             job = self.repository.job(connection, job_public_id)
             coverage_rows = {

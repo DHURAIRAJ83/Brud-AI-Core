@@ -7,9 +7,46 @@ Type=simple
 User=dhurai
 WorkingDirectory=/home/dhurai/Projects/brud-ai
 EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/worker.env
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/home/dhurai/Projects/brud-ai/deploy/scripts/start-worker.sh
 Restart=always
 RestartSec=5
+
+# Phase 6C sandboxing -- see brud-public.service for the full rationale.
+# `worker` is confirmed torch-free (Phase 5F-3), so it gets the same
+# full hardening set as `public`.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/dhurai/Projects/brud-ai/data
+ReadWritePaths=/home/dhurai/Projects/brud-ai/models
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Safety-net ceiling derived from Phase 5G-A's measured idle RSS
+# (~48MB) with generous headroom -- not a load-tested cap. CPUQuota
+# deliberately not set (see brud-public.service).
+MemoryMax=512M
+TasksMax=256
 
 [Install]
 WantedBy=multi-user.target

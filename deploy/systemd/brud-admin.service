@@ -7,9 +7,57 @@ Type=simple
 User=dhurai
 WorkingDirectory=/home/dhurai/Projects/brud-ai
 EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/admin.env
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/home/dhurai/Projects/brud-ai/deploy/scripts/start-admin.sh
 Restart=always
 RestartSec=5
+
+# Phase 6C sandboxing -- see brud-public.service for the full rationale
+# on the shared directives. `admin` deliberately gets a smaller set than
+# `public`/`worker`: unlike those two (confirmed torch-free in Phase
+# 5F-3), `admin` can load torch-backed local model inference on demand,
+# and this repo has no GPU hardware here to test against. Three
+# directives are omitted specifically because they're the ones most
+# likely to break a real CUDA/torch code path if one is ever exercised:
+#   - PrivateDevices    (would hide /dev/nvidia* from the process)
+#   - MemoryDenyWriteExecute (some JIT/kernel-compiling ML code paths
+#     violate W^X; torch/CUDA JIT kernels are the known risk case)
+#   - SystemCallFilter=@system-service (an untested allowlist against
+#     GPU driver ioctls this repo can't exercise in this environment)
+# Revisit narrowing this once `admin`'s actual GPU/torch code paths are
+# exercised and observed to tolerate these -- until then, the safer
+# default in the "don't break runtime behavior" constraint is to leave
+# them off here.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/dhurai/Projects/brud-ai/data
+ReadWritePaths=/home/dhurai/Projects/brud-ai/models
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+
+# Safety-net ceiling, generous above Phase 5G-A's measured idle RSS
+# (~389MB) to leave headroom for on-demand local model loads -- not a
+# load-tested cap, and there's no real data yet on peak usage during an
+# actual model load. CPUQuota deliberately not set (see
+# brud-public.service).
+MemoryMax=4G
+TasksMax=512
 
 [Install]
 WantedBy=multi-user.target

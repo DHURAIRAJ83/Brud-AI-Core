@@ -49,6 +49,15 @@ intentionally out of this phase's scope.
 - [ ] Send more than `BRUD_HTTP_RATE_LIMIT_MAX_REQUESTS` (default 120) requests to any non-exempt route within `BRUD_HTTP_RATE_LIMIT_WINDOW_SECONDS` (default 60s) and confirm a `429` — `/api/health`/`/api/version` are deliberately exempt so monitoring isn't affected
 - [ ] nginx/Caddy templates no longer duplicate `add_header`/`header` security-header directives — confirm only one copy of each security header appears in `curl -sI` output through the proxy (a leftover custom proxy config with its own `add_header` block would double them up)
 
+## systemd sandboxing (Phase 6C)
+
+- [ ] After `deploy/scripts/install-systemd.sh` and a restart, `systemctl show brud-<mode> -p MemoryMax,TasksMax` reflects the unit's configured ceiling (1G/512 public, 512M/256 worker, 4G/512 admin) — confirms the units actually reloaded, not stale pre-6C copies
+- [ ] `admin`/`public`/`worker` all pass `systemd-analyze verify deploy/systemd/brud-<mode>.service` with no warnings
+- [ ] `public`/`worker` additionally have `PrivateDevices=true`, `MemoryDenyWriteExecute=true`, `SystemCallFilter=@system-service` (confirmed torch-free in Phase 5F-3); `admin` deliberately omits all three because it can load torch-backed local model inference on demand and this was never validated against real GPU hardware — see the comment block in `brud-admin.service` before ever adding them there
+- [ ] `ReadWritePaths` on all three is exactly `data/` and `models/` under the repo root — if a future config change adds a writable directory outside those two (check `backend/core/config.py` for any new `Path = Field(default=Path(...))` that isn't under `data/`or `models/`), the unit files need a matching update or the service will fail to start (`ProtectSystem=strict` makes everything else read-only)
+- [ ] If a deployment ever sets `BRUD_ALLOW_EXTERNAL_STORAGE=true` to point a data directory outside the repo, the matching systemd unit's `ReadWritePaths` must be extended to cover it, or that feature will fail under the sandbox
+- [ ] After restarting a service, `journalctl -u brud-<mode> -n 50` shows a clean `Application startup complete` with no `Failed to set up mount namespacing` or `NAMESPACE`/`SECCOMP` exit codes — a mount or syscall-filter problem shows up immediately on start, not later under load
+
 ## Ongoing / periodic
 
 - [ ] TLS certificate expiry monitored (30-day-out alert at minimum)
@@ -59,11 +68,13 @@ intentionally out of this phase's scope.
 ## Still open (not this phase — see the Phase 6A audit report)
 
 These were identified in the Phase 6A security review but are **out of
-scope for Phase 6B-1/6B-2/6B-3** (deployment-hardening, backup-encryption
-automation, and web-security-surface hardening only, no unrelated backend
-logic changes). Do not consider a deployment fully hardened until these
-are tracked as their own follow-up work:
+scope for Phase 6B-1/6B-2/6B-3/6C** (deployment-hardening,
+backup-encryption automation, web-security-surface hardening, and
+systemd sandboxing only, no unrelated backend logic changes). Do not
+consider a deployment fully hardened until these are tracked as their
+own follow-up work:
 
 - [ ] Frontend core dependencies (`react`, `react-dom`, `vite`, `@vitejs/plugin-react`) are pinned to `"latest"` in both `apps/admin-dashboard/package.json` and `apps/chatbot/package.json`
-- [ ] No systemd sandboxing directives (`NoNewPrivileges`, `ProtectSystem`, etc.) on any of the units
 - [ ] The global rate limiter (Phase 6B-3) is in-process/per-worker, matching this codebase's existing `public_chat_rate_limiter.py` pattern — if a future phase moves to multiple uvicorn workers or processes behind one deployment mode, each would keep its own independent counters (a shared store like Redis would be needed for a real shared limit)
+- [ ] `admin`'s sandboxing is intentionally more conservative than `public`/`worker` (Phase 6C) because its torch/GPU code paths were never validated under `PrivateDevices`/`MemoryDenyWriteExecute`/`SystemCallFilter` on real GPU hardware — narrowing this gap is future work, not a current gap to "fix" casually
+- [ ] `CPUQuota` is not set on any of the three units — no load-test data exists yet to size it without risking a visible slowdown under real traffic

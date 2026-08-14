@@ -7,9 +7,54 @@ Type=simple
 User=dhurai
 WorkingDirectory=/home/dhurai/Projects/brud-ai
 EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/public.env
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/home/dhurai/Projects/brud-ai/deploy/scripts/start-public.sh
 Restart=always
 RestartSec=5
+
+# Phase 6C sandboxing. `public` is confirmed torch-free (Phase 5F-3), so
+# it gets the full hardening set including PrivateDevices,
+# MemoryDenyWriteExecute, and a syscall allowlist -- see
+# deploy/runbooks/PRODUCTION_HARDENING_CHECKLIST.md for why `admin`
+# intentionally omits these three. Every writable path the app uses by
+# default (with BRUD_ALLOW_EXTERNAL_STORAGE unset/false, which config.py
+# itself enforces) lives under data/ or models/ -- ReadWritePaths carves
+# out exactly those two, nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/dhurai/Projects/brud-ai/data
+ReadWritePaths=/home/dhurai/Projects/brud-ai/models
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0027
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource ceilings are OOM/runaway-process safety nets, not a
+# performance tune -- derived from Phase 5G-A's measured idle RSS
+# (~101MB) with generous headroom, not a load-tested cap.
+# CPUQuota is deliberately not set: throttling could visibly degrade the
+# public API under legitimate traffic and there's no load-test data yet
+# to size it safely -- left for a future phase.
+MemoryMax=1G
+TasksMax=512
 
 [Install]
 WantedBy=multi-user.target

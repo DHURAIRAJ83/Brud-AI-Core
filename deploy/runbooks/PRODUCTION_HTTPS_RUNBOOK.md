@@ -62,7 +62,16 @@ deploy/scripts/install-systemd.sh
 ```
 
 This copies `deploy/systemd/brud-*.service` into `/etc/systemd/system/` and
-runs `systemctl daemon-reload`. **Do not start the services yet** — the
+runs `systemctl daemon-reload`. All three units are sandboxed (Phase
+6C: `ProtectSystem=strict` plus a `ReadWritePaths` carve-out for
+`data/`/`models/`, `NoNewPrivileges`, capability dropping, and more --
+see `PRODUCTION_HARDENING_CHECKLIST.md`'s systemd sandboxing section for
+the full list and per-service differences). This doesn't change what
+the app can do functionally, only what it can touch on disk and which
+syscalls it can make -- if you've customized any data directory outside
+`data/`/`models/` (e.g. via `BRUD_ALLOW_EXTERNAL_STORAGE=true`), extend
+the matching unit's `ReadWritePaths` first or the service will fail at
+startup. **Do not start the services yet** — the
 reverse proxy needs to be in place first so `admin`'s cookies (which
 require TLS to actually be useful with `Secure` set) aren't exercised
 without it.

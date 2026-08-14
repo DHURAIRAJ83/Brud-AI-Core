@@ -1,0 +1,11 @@
+[Unit]
+Description=Brud AI Backup Encryption (encrypt + verify + delete plaintext)
+After=network.target
+
+[Service]
+Type=oneshot
+User=dhurai
+WorkingDirectory=/home/dhurai/Projects/brud-ai
+EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/public.env
+EnvironmentFile=/home/dhurai/Projects/brud-ai/deploy/env/backup-encryption.env
+ExecStart=/home/dhurai/Projects/brud-ai/venv/bin/python -m backend.backup_encryption_cli

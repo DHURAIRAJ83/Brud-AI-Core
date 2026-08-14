@@ -125,7 +125,8 @@ curl -v http://<vps-ip>:8002/api/health
 - [ ] Both TLS server blocks include HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` (present in both templates by default)
 - [ ] Consider enabling the commented-out IP-allowlist block in either template for the admin vhost, if the admin panel only needs to be reachable from known IPs/VPN
 - [ ] `.env` files are not committed (`git check-ignore -v deploy/env/*.env`)
-- [ ] Automatic backups are still **not encrypted by default** (Phase 6A finding, not addressed by this phase) — either trigger `encrypt_latest_backup` manually after each backup, or treat this as a Phase 6B-2 follow-up
+- [ ] `brud-backup-encryption.timer` is installed and enabled (`systemctl enable --now brud-backup-encryption.timer`) so plaintext backups are encrypted, verified, and the plaintext deleted automatically (Phase 6B-2) — without this, backups remain unencrypted by default as found in Phase 6A
+- [ ] `deploy/env/backup-encryption.env` exists with a real generated key (`chmod 600`, not committed) — the timer's service unit will fail closed (and leave plaintext untouched) if this key is missing
 - [ ] `BRUD_TRUST_PROXY_HEADERS` is present in the env templates but **not yet consumed by the application** (Phase 6A/6B-1 finding) — until a future phase adds real `X-Forwarded-*` trust logic to `backend/main.py`, the app doesn't yet distinguish the proxy's real client IP from the proxy itself; don't rely on IP-based logic in the app until that's wired up
 
 ## Rollback

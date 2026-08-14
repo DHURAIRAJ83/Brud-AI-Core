@@ -34,20 +34,28 @@ intentionally out of this phase's scope.
 - [ ] From the same external machine: the admin domain over HTTPS **does** return a real response (login page or 401), confirming the proxy path itself works
 - [ ] Login through the real admin domain succeeds and the session cookie is confirmed `Secure` (check via browser devtools or `curl -v` cookie output) — this is the one item that can only be verified with TLS actually in front, so do it last
 
+## Backup encryption (Phase 6B-2)
+
+- [ ] `deploy/env/backup-encryption.env` exists, generated from `.example`, with a real key (`chmod 600`, not committed)
+- [ ] `deploy/systemd/brud-backup-encryption.{service,timer}` installed via `deploy/scripts/install-systemd.sh`
+- [ ] `systemctl enable --now brud-backup-encryption.timer`
+- [ ] `systemctl start brud-backup-encryption.service` once manually to confirm a real run succeeds (`journalctl -u brud-backup-encryption.service`) before relying on the daily schedule
+- [ ] Confirm plaintext backups are actually deleted after a verified encrypt (check `deploy/*/backups` — or wherever `BRUD_DATABASE_BACKUP_DIR` points — for `.enc`/`.enc.meta.json` pairs with no matching plaintext `brud_ai_before_v*_*.db`)
+
 ## Ongoing / periodic
 
 - [ ] TLS certificate expiry monitored (30-day-out alert at minimum)
 - [ ] Re-run this checklist after any change to `deploy/env/*.env`, systemd units, or reverse-proxy config
 - [ ] Re-run `deploy/benchmarks/smoke_soak_10m.sh` after any dependency or config change that touches startup behavior
+- [ ] Periodically confirm `brud-backup-encryption.timer` is still active (`systemctl list-timers | grep brud-backup-encryption`) and its last run succeeded
 
 ## Still open (not this phase — see the Phase 6A audit report)
 
 These were identified in the Phase 6A security review but are **out of
-scope for Phase 6B-1** (deployment-hardening only, no backend logic
-changes). Do not consider a deployment fully hardened until these are
-tracked as their own follow-up work:
+scope for Phase 6B-1/6B-2** (deployment-hardening and backup-encryption
+automation only, no backend logic changes). Do not consider a deployment
+fully hardened until these are tracked as their own follow-up work:
 
-- [ ] Automatic backups are unencrypted by default — `encrypt_latest_backup` must currently be triggered manually after each backup
 - [ ] No security-headers middleware exists at the application layer (this checklist's TLS section covers proxy-level headers only, which protects the proxied hostnames but not any direct-to-backend access path)
 - [ ] No rate-limiting middleware exists anywhere in the application
 - [ ] Frontend core dependencies (`react`, `react-dom`, `vite`, `@vitejs/plugin-react`) are pinned to `"latest"` in both `apps/admin-dashboard/package.json` and `apps/chatbot/package.json`

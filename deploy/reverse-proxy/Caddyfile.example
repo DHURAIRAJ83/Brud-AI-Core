@@ -1,0 +1,62 @@
+# Brud AI -- Caddy reverse-proxy + TLS termination template.
+#
+# Copy this file, fill in your actual domain names, and install it as
+# /etc/caddy/Caddyfile (or reference it from there). This is a
+# template, not a ready-to-use config -- every <PLACEHOLDER> below
+# must be replaced before use.
+#
+# Unlike the nginx template in this same directory, Caddy provisions
+# and renews TLS certificates automatically (via Let's Encrypt/ZeroSSL)
+# for any domain listed as a site address below -- no ssl_certificate
+# paths to manage. Caddy's reverse_proxy directive also sets
+# X-Forwarded-For/-Proto/-Host automatically, so no manual header
+# configuration is needed for the X-Forwarded-* headers that
+# BRUD_TRUST_PROXY_HEADERS is intended for.
+#
+# Matches this repo's deploy/env/*.env.example bindings:
+#   public -> 127.0.0.1:8000 (upstream only; Caddy is what's actually
+#             internet-reachable, not uvicorn directly)
+#   admin  -> 127.0.0.1:8001 (local-only upstream, reached only through
+#             this proxy -- see deploy/env/admin.env.example)
+#   worker -> 127.0.0.1:8002 (intentionally NOT proxied here -- worker
+#             is local-only by design; if you ever need to reach its
+#             /api/health for debugging, use an SSH tunnel instead of
+#             exposing it through Caddy)
+
+# ---------------------------------------------------------------------
+# Public API -- externally reachable, TLS auto-provisioned by Caddy.
+# ---------------------------------------------------------------------
+
+<PUBLIC_DOMAIN> {
+	reverse_proxy 127.0.0.1:8000
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}
+
+# ---------------------------------------------------------------------
+# Admin API -- serve on a separate subdomain with its own certificate,
+# so the admin login is never reachable via the public hostname at
+# all. Consider adding a `remote_ip` matcher below for defense-in-depth
+# beyond TLS + cookie auth.
+# ---------------------------------------------------------------------
+
+<ADMIN_DOMAIN> {
+	reverse_proxy 127.0.0.1:8001
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Optional defense-in-depth -- uncomment and fill in to restrict the
+	# admin panel to known source IPs in addition to cookie auth:
+	# @blocked not remote_ip <TRUSTED_IP>
+	# respond @blocked 403
+}

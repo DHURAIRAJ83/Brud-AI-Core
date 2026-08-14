@@ -30,12 +30,11 @@
 <PUBLIC_DOMAIN> {
 	reverse_proxy 127.0.0.1:8000
 
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-	}
+	# Security response headers (HSTS, X-Content-Type-Options,
+	# X-Frame-Options, Referrer-Policy) are set by the app itself
+	# (backend/core/security_headers_middleware.py, Phase 6B-3) so they
+	# also cover any direct-to-backend access path, not just requests
+	# proxied through here.
 }
 
 # ---------------------------------------------------------------------
@@ -48,12 +47,9 @@
 <ADMIN_DOMAIN> {
 	reverse_proxy 127.0.0.1:8001
 
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-	}
+	# Security response headers are set by the app itself
+	# (backend/core/security_headers_middleware.py, Phase 6B-3) -- see
+	# the matching comment in the public site block above.
 
 	# Optional defense-in-depth -- uncomment and fill in to restrict the
 	# admin panel to known source IPs in addition to cookie auth:

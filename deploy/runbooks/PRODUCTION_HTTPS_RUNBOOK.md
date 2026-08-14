@@ -16,9 +16,14 @@ brud-worker.service (:8002, 127.0.0.1) — never proxied; local-only, background
 ```
 
 Only the reverse proxy is ever directly internet-reachable. `admin` and
-`worker` bind to `127.0.0.1` (Phase 6B-1 Step 2) — they are unreachable
-from outside the host even if the proxy is misconfigured or absent, which
-is a second, independent layer of protection beyond TLS termination.
+`worker` bind to `127.0.0.1` — they are unreachable from outside the
+host even if the proxy is misconfigured or absent, which is a second,
+independent layer of protection beyond TLS termination. The env
+templates declared this binding since Phase 6B-1 Step 2, but
+`deploy/scripts/start-{admin,worker}.sh` ignored `HOST`/`PORT` entirely
+and hardcoded `0.0.0.0` until Phase 6B-3 fixed them to actually read it
+— if you deployed between those two phases, re-run Step 2 below and
+restart the affected services to pick up the fix.
 
 ## Prerequisites
 
@@ -122,12 +127,13 @@ curl -v http://<vps-ip>:8002/api/health
 - [ ] `admin`/`worker` bind to `127.0.0.1` (verified in Step 1)
 - [ ] `BRUD_ADMIN_COOKIE_SECURE=true` is set (verified in Step 1) — **only effective because TLS is now in front**; setting this without real TLS just breaks cookie delivery entirely, it doesn't add protection
 - [ ] Admin is served on a **separate domain/subdomain** from public, each with its own certificate — never the same hostname, so a public-facing link or redirect can never accidentally point at the admin login
-- [ ] Both TLS server blocks include HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` (present in both templates by default)
+- [ ] HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` are present on responses — set by the app itself (`backend/core/security_headers_middleware.py`, Phase 6B-3), not the proxy, so check with `curl -sI` against the real domain rather than reading the proxy config
+- [ ] A global per-IP rate limit is active (`backend/core/rate_limit_middleware.py`, Phase 6B-3; tune via `BRUD_HTTP_RATE_LIMIT_MAX_REQUESTS`/`BRUD_HTTP_RATE_LIMIT_WINDOW_SECONDS`) — confirm it doesn't false-positive on normal dashboard usage before relying on it under load
 - [ ] Consider enabling the commented-out IP-allowlist block in either template for the admin vhost, if the admin panel only needs to be reachable from known IPs/VPN
 - [ ] `.env` files are not committed (`git check-ignore -v deploy/env/*.env`)
 - [ ] `brud-backup-encryption.timer` is installed and enabled (`systemctl enable --now brud-backup-encryption.timer`) so plaintext backups are encrypted, verified, and the plaintext deleted automatically (Phase 6B-2) — without this, backups remain unencrypted by default as found in Phase 6A
 - [ ] `deploy/env/backup-encryption.env` exists with a real generated key (`chmod 600`, not committed) — the timer's service unit will fail closed (and leave plaintext untouched) if this key is missing
-- [ ] `BRUD_TRUST_PROXY_HEADERS` is present in the env templates but **not yet consumed by the application** (Phase 6A/6B-1 finding) — until a future phase adds real `X-Forwarded-*` trust logic to `backend/main.py`, the app doesn't yet distinguish the proxy's real client IP from the proxy itself; don't rely on IP-based logic in the app until that's wired up
+- [ ] `BRUD_TRUST_PROXY_HEADERS=true` and `BRUD_TRUSTED_PROXY_IPS=127.0.0.1` are set in `admin.env`/`public.env` (Phase 6B-3) — `deploy/scripts/start-{admin,public}.sh` pass these to uvicorn as `--proxy-headers --forwarded-allow-ips`, so `X-Forwarded-For`/`-Proto` are only trusted when they come from the reverse proxy itself; verify with `ps aux | grep uvicorn` that the running process actually has `--proxy-headers` in its args, since a stale process from before this was wired up won't have it until restarted
 
 ## Rollback
 

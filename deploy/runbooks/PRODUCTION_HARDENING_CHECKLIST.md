@@ -24,7 +24,7 @@ intentionally out of this phase's scope.
 - [ ] TLS certificates are valid and auto-renewing (certbot timer for nginx, or confirmed automatic for Caddy)
 - [ ] `curl -I https://<public-domain>/` and `https://<admin-domain>/` both complete a TLS handshake
 - [ ] HTTP→HTTPS redirect confirmed on both vhosts (nginx template) or implicit via Caddy's default behavior
-- [ ] Security response headers present on both vhosts: `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` — check with `curl -sI https://<domain>/`
+- [ ] Security response headers present on both vhosts: `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` — check with `curl -sI https://<domain>/` (set by the app itself since Phase 6B-3, not the proxy — see the App-layer security section below)
 
 ## Post-deployment verification
 
@@ -42,6 +42,13 @@ intentionally out of this phase's scope.
 - [ ] `systemctl start brud-backup-encryption.service` once manually to confirm a real run succeeds (`journalctl -u brud-backup-encryption.service`) before relying on the daily schedule
 - [ ] Confirm plaintext backups are actually deleted after a verified encrypt (check `deploy/*/backups` — or wherever `BRUD_DATABASE_BACKUP_DIR` points — for `.enc`/`.enc.meta.json` pairs with no matching plaintext `brud_ai_before_v*_*.db`)
 
+## App-layer security (Phase 6B-3)
+
+- [ ] `curl -sI` against a direct-to-backend URL (bypassing the proxy, e.g. from the VPS itself to `127.0.0.1:8001`) still shows `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` — proves `SecurityHeadersMiddleware` protects this path too, not just the proxied one
+- [ ] `admin.env`/`public.env` have `BRUD_TRUST_PROXY_HEADERS=true` and `BRUD_TRUSTED_PROXY_IPS=127.0.0.1`; `ps aux | grep uvicorn` shows `--proxy-headers --forwarded-allow-ips` in the running process args for those two services (`worker` intentionally has neither, it's never proxied)
+- [ ] Send more than `BRUD_HTTP_RATE_LIMIT_MAX_REQUESTS` (default 120) requests to any non-exempt route within `BRUD_HTTP_RATE_LIMIT_WINDOW_SECONDS` (default 60s) and confirm a `429` — `/api/health`/`/api/version` are deliberately exempt so monitoring isn't affected
+- [ ] nginx/Caddy templates no longer duplicate `add_header`/`header` security-header directives — confirm only one copy of each security header appears in `curl -sI` output through the proxy (a leftover custom proxy config with its own `add_header` block would double them up)
+
 ## Ongoing / periodic
 
 - [ ] TLS certificate expiry monitored (30-day-out alert at minimum)
@@ -52,12 +59,11 @@ intentionally out of this phase's scope.
 ## Still open (not this phase — see the Phase 6A audit report)
 
 These were identified in the Phase 6A security review but are **out of
-scope for Phase 6B-1/6B-2** (deployment-hardening and backup-encryption
-automation only, no backend logic changes). Do not consider a deployment
-fully hardened until these are tracked as their own follow-up work:
+scope for Phase 6B-1/6B-2/6B-3** (deployment-hardening, backup-encryption
+automation, and web-security-surface hardening only, no unrelated backend
+logic changes). Do not consider a deployment fully hardened until these
+are tracked as their own follow-up work:
 
-- [ ] No security-headers middleware exists at the application layer (this checklist's TLS section covers proxy-level headers only, which protects the proxied hostnames but not any direct-to-backend access path)
-- [ ] No rate-limiting middleware exists anywhere in the application
 - [ ] Frontend core dependencies (`react`, `react-dom`, `vite`, `@vitejs/plugin-react`) are pinned to `"latest"` in both `apps/admin-dashboard/package.json` and `apps/chatbot/package.json`
-- [ ] `BRUD_TRUST_PROXY_HEADERS` exists in the env templates but is not yet consumed by `backend/main.py` — don't rely on the app correctly identifying real client IPs behind the proxy until this is wired up
-- [ ] No systemd sandboxing directives (`NoNewPrivileges`, `ProtectSystem`, etc.) on any of the three units
+- [ ] No systemd sandboxing directives (`NoNewPrivileges`, `ProtectSystem`, etc.) on any of the units
+- [ ] The global rate limiter (Phase 6B-3) is in-process/per-worker, matching this codebase's existing `public_chat_rate_limiter.py` pattern — if a future phase moves to multiple uvicorn workers or processes behind one deployment mode, each would keep its own independent counters (a shared store like Redis would be needed for a real shared limit)

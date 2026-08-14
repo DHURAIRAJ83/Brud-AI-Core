@@ -9,11 +9,25 @@ from backend.core.config import Settings
 from backend.database.migrations import initialize_database
 from backend.main import create_app
 from backend.models.auth import AdminPublic, SessionPublic
+from backend.services.public_chat_rate_limiter import reset_rate_limits
 
 
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def _reset_global_rate_limiter():
+    """`check_rate_limit`'s counters are module-level globals, independent
+    of which FastAPI app instance is serving a request (Phase 6B-3 added
+    a global per-IP HTTP rate limit on top of the feature-specific ones
+    this already covered) -- without a reset, tests sharing one pytest
+    process would eventually trip each other's requests into 429s."""
+
+    reset_rate_limits()
+    yield
+    reset_rate_limits()
 
 
 @pytest.fixture

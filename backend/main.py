@@ -12,6 +12,8 @@ from backend.api.router import api_router
 from backend.core.config import Settings, get_settings
 from backend.core.exceptions import register_exception_handlers
 from backend.core.logging import configure_logging
+from backend.core.rate_limit_middleware import GlobalRateLimitMiddleware
+from backend.core.security_headers_middleware import SecurityHeadersMiddleware
 from backend.database.migrations import initialize_database
 from backend.database.repositories import AuditLogRepository
 from backend.models.domain import AuditEventCreate
@@ -63,6 +65,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return active_settings
 
     application.dependency_overrides[get_settings] = provide_active_settings
+    application.add_middleware(GlobalRateLimitMiddleware, settings=active_settings)
+    application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=active_settings.cors_origins,

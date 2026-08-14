@@ -7,6 +7,12 @@ cd "$ROOT"
 source venv/bin/activate
 export BRUD_DEPLOYMENT_MODE=admin
 
-exec uvicorn backend.main:app \
-  --host 0.0.0.0 \
-  --port 8001
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-8001}"
+
+UVICORN_ARGS=(backend.main:app --host "$HOST" --port "$PORT")
+if [ "${BRUD_TRUST_PROXY_HEADERS:-false}" = "true" ]; then
+  UVICORN_ARGS+=(--proxy-headers --forwarded-allow-ips "${BRUD_TRUSTED_PROXY_IPS:-127.0.0.1}")
+fi
+
+exec uvicorn "${UVICORN_ARGS[@]}"

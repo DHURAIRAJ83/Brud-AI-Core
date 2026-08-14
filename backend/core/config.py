@@ -749,6 +749,12 @@ class Settings(BaseSettings):
     tool_execution_rate_limit_window_seconds: int = Field(
         default=60, ge=1, validation_alias="BRUD_TOOL_EXECUTION_RATE_LIMIT_WINDOW_SECONDS"
     )
+    http_rate_limit_max_requests: int = Field(
+        default=120, ge=1, validation_alias="BRUD_HTTP_RATE_LIMIT_MAX_REQUESTS"
+    )
+    http_rate_limit_window_seconds: int = Field(
+        default=60, ge=1, validation_alias="BRUD_HTTP_RATE_LIMIT_WINDOW_SECONDS"
+    )
     trusted_web_search_cache_ttl_seconds: int = Field(
         default=300, ge=0, validation_alias="BRUD_TRUSTED_WEB_SEARCH_CACHE_TTL_SECONDS"
     )

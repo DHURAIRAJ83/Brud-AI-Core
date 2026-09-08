@@ -191,6 +191,13 @@ describe('ChatPage architecture (no duplicate pipeline)', () => {
     renderAt('/chat')
     expect(screen.getByText(/Public Chat/i)).toBeTruthy()
   })
+
+  it('renders native canonical chat components with ZERO iframes', () => {
+    const { container } = renderAt('/chat')
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(container.querySelector('textarea#message')).toBeInTheDocument()
+    expect(container.querySelector('#new-chat-button')).toBeInTheDocument()
+  })
 })
 
 // ── Desktop page tests ────────────────────────────────────────────

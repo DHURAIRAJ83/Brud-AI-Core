@@ -2,13 +2,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChatPage from './ChatPage.jsx'
-import { getHealth, sendChatFeedback, sendChatMessage } from '../services/api.js'
+import {
+  clearSession,
+  clearStoredSession,
+  getHealth,
+  getSessionMessages,
+  getStoredSession,
+  initSession,
+  sendChatFeedback,
+  sendChatMessage,
+} from '../services/api.js'
 
 vi.mock('../services/api.js', () => ({
   getHealth: vi.fn(),
   getChatCapabilities: vi.fn(),
   sendChatMessage: vi.fn(),
   sendChatFeedback: vi.fn(),
+  initSession: vi.fn(),
+  getSessionMessages: vi.fn(),
+  clearSession: vi.fn(),
+  getStoredSession: vi.fn(),
+  setStoredSession: vi.fn(),
+  clearStoredSession: vi.fn(),
 }))
 
 async function sendMessage(text) {
@@ -21,6 +36,10 @@ describe('ChatPage', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     getHealth.mockResolvedValue({ status: 'healthy' })
+    getStoredSession.mockReturnValue(null)
+    initSession.mockResolvedValue({ conversation_id: 'conv-123', session_token: 'token-123' })
+    getSessionMessages.mockResolvedValue({ messages: [] })
+    clearSession.mockResolvedValue({ cleared: true })
   })
 
   afterEach(() => {
@@ -141,5 +160,68 @@ describe('ChatPage', () => {
     const options = screen.getAllByRole('option').map((option) => option.textContent)
     expect(options).not.toContain('Tanglish')
     expect(options).toEqual(['Auto', 'தமிழ்', 'English'])
+  })
+
+  // ---------------------------------------------------------------------------
+  // P8-03: Anonymous Session Lifecycle, Hydration, and Actions Tests
+  // ---------------------------------------------------------------------------
+
+  it('hydrates historical turns when a valid stored session is found on mount', async () => {
+    getStoredSession.mockReturnValue({ conversationId: 'stored-conv-1', sessionToken: 'stored-token-1' })
+    getSessionMessages.mockResolvedValue({
+      conversation_id: 'stored-conv-1',
+      turn_count: 2,
+      messages: [
+        { id: 'turn-1', role: 'user', content: 'Previous Question' },
+        { id: 'turn-2', role: 'assistant', content: 'Previous Answer' },
+      ],
+    })
+
+    render(<ChatPage />)
+    expect(await screen.findByText('Previous Question')).toBeInTheDocument()
+    expect(screen.getByText('Previous Answer')).toBeInTheDocument()
+    expect(getSessionMessages).toHaveBeenCalledWith('stored-conv-1', 'stored-token-1')
+  })
+
+  it('starts a new chat when New Chat button is clicked', async () => {
+    render(<ChatPage />)
+    const newChatBtn = screen.getByRole('button', { name: /new chat/i })
+    expect(newChatBtn).toBeInTheDocument()
+
+    await userEvent.click(newChatBtn)
+    expect(clearStoredSession).toHaveBeenCalled()
+    expect(initSession).toHaveBeenCalled()
+  })
+
+  it('clears chat history and closes session when Clear button is clicked', async () => {
+    getStoredSession.mockReturnValue({ conversationId: 'conv-clear-1', sessionToken: 'token-clear-1' })
+    getSessionMessages.mockResolvedValue({
+      conversation_id: 'conv-clear-1',
+      turn_count: 1,
+      messages: [{ id: 'turn-1', role: 'user', content: 'Message to clear' }],
+    })
+
+    render(<ChatPage />)
+    expect(await screen.findByText('Message to clear')).toBeInTheDocument()
+
+    const clearBtn = await screen.findByRole('button', { name: /clear chat/i })
+    expect(clearBtn).toBeInTheDocument()
+
+    await userEvent.click(clearBtn)
+    expect(clearSession).toHaveBeenCalledWith('conv-clear-1', 'token-clear-1')
+    expect(screen.queryByText('Message to clear')).not.toBeInTheDocument()
+  })
+
+  it('handles expired session error gracefully and prompts for retry', async () => {
+    const expiredError = new Error('Conversation session has expired.')
+    expiredError.code = 'CHAT_SESSION_EXPIRED'
+    expiredError.status = 401
+    sendChatMessage.mockRejectedValue(expiredError)
+
+    render(<ChatPage />)
+    await sendMessage('Hello with expired session')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/session has expired/i)
+    expect(clearStoredSession).toHaveBeenCalled()
   })
 })

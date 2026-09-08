@@ -3,7 +3,12 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at top, #202141 0, #090b12 46%); }
 button, textarea, select { font: inherit; }
 .chat-shell { width: min(860px, calc(100% - 32px)); min-height: calc(100vh - 48px); margin: 24px auto; display: grid; grid-template-rows: auto 1fr auto auto; background: rgba(18, 20, 34, .92); border: 1px solid #30334b; border-radius: 24px; overflow: hidden; box-shadow: 0 24px 80px #0008; }
-.chat-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px; border-bottom: 1px solid #30334b; }
+.chat-header { display: flex; align-items: center; justify-content: space-between; padding: 22px 28px; border-bottom: 1px solid #30334b; gap: 12px; }
+.chat-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.session-action-button { color: #c7cad8; background: #23263a; border: 1px solid #3a3e58; border-radius: 8px; padding: 6px 12px; font-size: .8rem; font-weight: 500; cursor: pointer; transition: all .15s ease; }
+.session-action-button:hover { background: #2f344e; color: #ffffff; border-color: #5c6285; }
+.session-action-button:disabled { opacity: .5; cursor: not-allowed; }
+.clear-chat-button:hover:not(:disabled) { background: #4a252a; border-color: #8c3b45; color: #ffbaba; }
 .brand { color: #a9a8ff; font-weight: 800; letter-spacing: .18em; font-size: .7rem; }.chat-header h1 { margin: 4px 0 0; font-size: 1.45rem; }
 .health-badge { display: inline-flex; align-items: center; gap: 7px; color: #aeb1c2; font-size: .8rem; }.health-badge span { width: 8px; height: 8px; border-radius: 50%; background: #f4b35e; }.health-healthy span { background: #5cdb9b; }.health-offline span { background: #ff7070; }
 .empty-state { align-self: center; text-align: center; max-width: 430px; margin: auto; padding: 48px 24px; color: #aeb1c2; }.empty-state h2 { color: #f5f5f9; margin-bottom: 8px; }.empty-mark { margin: auto; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 20px; background: #6765e8; color: white; font-size: 2rem; }

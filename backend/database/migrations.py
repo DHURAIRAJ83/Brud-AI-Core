@@ -93,6 +93,7 @@ from backend.database.schema import (
     MIGRATION_076_NAME,
     MIGRATION_077_NAME,
     MIGRATION_078_NAME,
+    MIGRATION_079_NAME,
     PHASE2_COLUMNS,
     PHASE2_NEW_TABLES,
     PHASE3_SCHEMA,
@@ -175,6 +176,7 @@ from backend.database.schema import (
     PHASE76_SCHEMA,
     PHASE77_SCHEMA,
     PHASE78_SCHEMA,
+    PHASE79_SCHEMA,
     SCHEMA_VERSION,
 )
 
@@ -1176,6 +1178,53 @@ def _apply_v78(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA user_version = 78")
 
 
+def _apply_v79(connection: sqlite3.Connection) -> None:
+    if connection.execute("SELECT 1 FROM schema_migrations WHERE version = ?", (79,)).fetchone():
+        return
+    connection.executescript(PHASE79_SCHEMA)
+    # Ensure active default memory policy exists for public anonymous chat
+    active_row = connection.execute(
+        "SELECT id FROM conversation_memory_policies WHERE lifecycle_status = 'active' LIMIT 1"
+    ).fetchone()
+    if not active_row:
+        default_policy = connection.execute(
+            "SELECT id FROM conversation_memory_policies WHERE public_id = '00000000-0000-4000-8000-000000000001'"
+        ).fetchone()
+        if default_policy:
+            connection.execute(
+                "UPDATE conversation_memory_policies SET lifecycle_status = 'active' WHERE id = ?",
+                (default_policy["id"],),
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO conversation_memory_policies (
+                    public_id, name, description, default_session_mode,
+                    allow_short_term_context, allow_session_summary, allow_long_term_memory,
+                    require_explicit_consent, maximum_session_turns, maximum_session_age_seconds,
+                    maximum_short_term_tokens, maximum_summary_tokens, maximum_memory_items,
+                    default_memory_ttl_seconds, allowed_memory_categories_json,
+                    forbidden_content_categories_json, retrieval_configuration_json,
+                    lifecycle_status, created_by_admin_public_id
+                ) VALUES (
+                    '00000000-0000-4000-8000-000000000001',
+                    'Public Anonymous Chat Default Policy',
+                    'Standard policy for anonymous public chat session continuity',
+                    'session_memory',
+                    1, 0, 0, 0,
+                    50, 86400,
+                    4000, 1000, 20,
+                    86400, '[]', '[]', '{}',
+                    'active', 'admin_system'
+                )
+                """
+            )
+    connection.execute(
+        "INSERT INTO schema_migrations(version, name) VALUES (?, ?)", (79, MIGRATION_079_NAME)
+    )
+    connection.execute("PRAGMA user_version = 79")
+
+
 def _audit_migration(
     database_path: Path, action: str, outcome: str, metadata: dict[str, object]
 ) -> None:
@@ -1315,6 +1364,7 @@ def initialize_database(
             _apply_v76(connection)
             _apply_v77(connection)
             _apply_v78(connection)
+            _apply_v79(connection)
             connection.commit()
         except Exception:
             connection.rollback()

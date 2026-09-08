@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 78
+SCHEMA_VERSION = 79
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -14305,4 +14305,26 @@ CREATE INDEX IF NOT EXISTS idx_bar_rights_status ON book_acquisition_registry(ri
 CREATE INDEX IF NOT EXISTS idx_arq_review_id ON admin_review_queue(review_id);
 CREATE INDEX IF NOT EXISTS idx_arq_book_id ON admin_review_queue(book_id);
 CREATE INDEX IF NOT EXISTS idx_arq_admin_decision ON admin_review_queue(admin_decision);
+"""
+
+MIGRATION_079_NAME = "079_anonymous_public_chat_sessions"
+PHASE79_SCHEMA = """
+CREATE TABLE IF NOT EXISTS anonymous_chat_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    conversation_session_public_id TEXT NOT NULL UNIQUE,
+    session_token_hash TEXT NOT NULL,
+    client_ip_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'closed')),
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_session_public_id) REFERENCES conversation_sessions(public_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_anon_chat_sessions_token ON anonymous_chat_sessions(session_token_hash);
+CREATE INDEX IF NOT EXISTS idx_anon_chat_sessions_expires ON anonymous_chat_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_anon_chat_sessions_status ON anonymous_chat_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_anon_chat_sessions_conv_id ON anonymous_chat_sessions(conversation_session_public_id);
 """

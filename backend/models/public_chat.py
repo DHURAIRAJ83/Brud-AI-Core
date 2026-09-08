@@ -158,7 +158,47 @@ class PublicChatFeedbackRequest(DomainModel):
         return value
 
 
+class CreateAnonymousSessionRequest(DomainModel):
+    language_preference: Literal["auto", "ta", "en"] = "auto"
+
+
+class AnonymousSessionResponse(DomainModel):
+    conversation_id: str
+    session_token: str
+    expires_at: str
+    turn_count: int = 0
+    status: str = "active"
+
+
+class ConversationTurnItem(DomainModel):
+    id: str
+    sequence_number: int
+    role: str
+    content: str
+    language_category: str = "unknown"
+    created_at: str
+
+
+class ConversationHistoryResponse(DomainModel):
+    conversation_id: str
+    messages: list[ConversationTurnItem] = Field(default_factory=list)
+    turn_count: int
+    expires_at: str
+    status: str
+
+
+class ClearSessionResponse(DomainModel):
+    conversation_id: str
+    status: str
+    cleared: bool
+
+
 __all__ = [
+    "AnonymousSessionResponse",
+    "ClearSessionResponse",
+    "ConversationHistoryResponse",
+    "ConversationTurnItem",
+    "CreateAnonymousSessionRequest",
     "MAX_MESSAGE_LENGTH",
     "PublicChatCapabilities",
     "PublicChatFeedbackRequest",

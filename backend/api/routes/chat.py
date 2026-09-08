@@ -26,11 +26,21 @@ from backend.api.dependencies import SettingsDependency
 from backend.core.exceptions import BrudError
 from backend.database.repositories.public_chat import PublicChatRoutingRepository
 from backend.models.public_chat import (
+    AnonymousSessionResponse,
+    ClearSessionResponse,
+    ConversationHistoryResponse,
+    CreateAnonymousSessionRequest,
     MAX_MESSAGE_LENGTH,
     PublicChatCapabilities,
     PublicChatFeedbackRequest,
     PublicChatRequest,
     PublicChatResponse,
+    PublicCitation,
+)
+from backend.services.anonymous_chat_session_service import (
+    AnonymousChatSessionService,
+    ChatSessionForbiddenError,
+    ChatSessionUnauthorizedError,
 )
 from backend.services.deterministic_tool_registry import get_tool_descriptor
 from backend.services.public_chat_rate_limiter import check_rate_limit
@@ -98,6 +108,22 @@ async def chat(request: Request, settings: SettingsDependency) -> PublicChatResp
         if any(error.get("loc") == ("message",) for error in exc.errors()):
             raise ChatInputTooLarge() from exc
         raise ChatInvalidRequest("request body failed validation.") from exc
+
+    # Phase 8: Anonymous public session ownership verification (IDOR protection)
+    session_token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token")
+    if payload.conversation_id:
+        anon_service = AnonymousChatSessionService(settings)
+        with anon_service.repository.transaction() as connection:
+            is_anon = anon_service.repository.get_by_conversation_id(connection, payload.conversation_id) is not None
+
+        if is_anon:
+            if not session_token:
+                raise ChatSessionUnauthorizedError("X-Session-Token required for this conversation session.")
+            anon_service.validate_session(payload.conversation_id, session_token)
+            # Authenticated anonymous session turn: ensure turns are persisted in session_memory mode
+            payload = payload.model_copy(update={"memory_consent": True})
+        elif session_token:
+            raise ChatSessionForbiddenError("Invalid conversation session token.")
 
     service = PublicChatRoutingService(settings)
 
@@ -213,6 +239,74 @@ async def chat_help() -> dict[str, Any]:
     `core_model/public_chat/help_faq.py` for why."""
 
     return {"entries": list(HELP_FAQ_ENTRIES), "count": len(HELP_FAQ_ENTRIES)}
+
+
+# ---------------------------------------------------------------------------
+# Phase 8: Anonymous Public-Chat Session Endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.post("/chat/session", response_model=AnonymousSessionResponse)
+async def create_chat_session(
+    request: Request,
+    settings: SettingsDependency,
+    payload: CreateAnonymousSessionRequest | None = None,
+) -> AnonymousSessionResponse:
+    """Create a new anonymous conversation session and receive a one-time token."""
+    allowed = check_rate_limit(
+        _client_key(request),
+        max_requests=settings.public_chat_rate_limit_max_requests,
+        window_seconds=settings.public_chat_rate_limit_window_seconds,
+    )
+    if not allowed:
+        raise ChatRateLimited()
+
+    lang = payload.language_preference if payload else "auto"
+    service = AnonymousChatSessionService(settings)
+    session_data = service.create_session(client_ip=_client_key(request), language_preference=lang)
+    return AnonymousSessionResponse.model_validate(session_data)
+
+
+@router.get("/chat/session/{conversation_id}/messages", response_model=ConversationHistoryResponse)
+async def get_chat_session_messages(
+    conversation_id: str,
+    request: Request,
+    settings: SettingsDependency,
+) -> ConversationHistoryResponse:
+    """Retrieve historical conversation turns for an active authenticated anonymous session."""
+    allowed = check_rate_limit(
+        _client_key(request),
+        max_requests=settings.public_chat_rate_limit_max_requests,
+        window_seconds=settings.public_chat_rate_limit_window_seconds,
+    )
+    if not allowed:
+        raise ChatRateLimited()
+
+    token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token")
+    service = AnonymousChatSessionService(settings)
+    history = service.get_messages(conversation_id, token)
+    return ConversationHistoryResponse.model_validate(history)
+
+
+@router.post("/chat/session/{conversation_id}/clear", response_model=ClearSessionResponse)
+async def clear_chat_session(
+    conversation_id: str,
+    request: Request,
+    settings: SettingsDependency,
+) -> ClearSessionResponse:
+    """Privacy zeroing: clears stored turns and closes the anonymous conversation session."""
+    allowed = check_rate_limit(
+        _client_key(request),
+        max_requests=settings.public_chat_rate_limit_max_requests,
+        window_seconds=settings.public_chat_rate_limit_window_seconds,
+    )
+    if not allowed:
+        raise ChatRateLimited()
+
+    token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token")
+    service = AnonymousChatSessionService(settings)
+    result = service.clear_session(conversation_id, token)
+    return ClearSessionResponse.model_validate(result)
 
 
 __all__ = ["router"]

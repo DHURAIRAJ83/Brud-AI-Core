@@ -24,6 +24,7 @@ from backend.api.dependencies import SettingsDependency
 from backend.models.mini_brain_training_engine import (
     AuthorizeRequest,
     CreateJobRequest,
+    ReserveRuntimeRequest,
     SaveCheckpointRequest,
     StreamMetricRequest,
 )
@@ -79,6 +80,27 @@ async def diagnostics():
     }
 
 
+@router.get("/training-readiness/contract")
+async def training_readiness_contract(
+    settings: SettingsDependency,
+    dataset_version_public_id: str = Query(...),
+    core_model_version_public_id: str = Query(...),
+    execution_mode: str = Query("gpu"),
+):
+    """Phase 2.8A: the real, read-only Training Readiness Gate. Reports
+    whether this (Dataset Version, Core Model Version, execution_mode)
+    combination is qualified to START a controlled training run --
+    "READY TO TRAIN", never "ready to release" and never a model-quality
+    verdict. No training, checkpoint, activation, release, or Public Chat
+    mutation is possible through this route."""
+
+    return service(settings).training_readiness_contract(
+        dataset_version_public_id=dataset_version_public_id,
+        core_model_version_public_id=core_model_version_public_id,
+        execution_mode=execution_mode,
+    )
+
+
 # -- jobs --------------------------------------------------------------------
 
 
@@ -88,6 +110,8 @@ async def create_job(payload: CreateJobRequest, settings: SettingsDependency, ad
         topic=payload.topic, training_package_session_public_id=payload.training_package_session_public_id,
         release_governance_session_public_id=payload.release_governance_session_public_id,
         execution_mode=payload.execution_mode, admin_id=admin.admin.public_id,
+        core_model_version_public_id=payload.core_model_version_public_id,
+        dataset_version_public_id=payload.dataset_version_public_id,
     )
 
 
@@ -175,8 +199,18 @@ async def build_manifest(job_id: str, settings: SettingsDependency, admin: CsrfD
 
 
 @router.post("/jobs/{job_id}/reserve-runtime")
-async def reserve_runtime(job_id: str, settings: SettingsDependency, admin: CsrfDependency):
-    return service(settings).run_reserve_runtime_stage(job_id, admin_id=admin.admin.public_id)
+async def reserve_runtime(
+    job_id: str, settings: SettingsDependency, admin: CsrfDependency,
+    # Optional body: simulation/cpu-mode jobs (the overwhelming majority of
+    # existing callers, including every pre-Phase-2.7E test) never send one
+    # at all -- only a real (execution_mode='gpu') job needs to supply
+    # train_blocks/validation_blocks/configuration_label here.
+    payload: ReserveRuntimeRequest = ReserveRuntimeRequest(),
+):
+    return service(settings).run_reserve_runtime_stage(
+        job_id, admin_id=admin.admin.public_id, train_blocks=payload.train_blocks,
+        validation_blocks=payload.validation_blocks, configuration_label=payload.configuration_label,
+    )
 
 
 @router.post("/jobs/{job_id}/start")

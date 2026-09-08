@@ -21,6 +21,10 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
+import os
+import random
+import re
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -32,6 +36,31 @@ DEFAULT_MAX_TOKENS = 512
 DEFAULT_CONTEXT_LENGTH = 2048
 DEFAULT_THREADS = 4
 
+MAX_RETRIES = 2
+INITIAL_RETRY_BACKOFF = 0.2
+RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
+
+
+def sanitize_error_message(err: Any) -> str:
+    """Sanitize error messages by redacting query params, API keys, and bearer tokens."""
+    raw = str(err)
+    sanitized = re.sub(r"([?&](?:key|api_key|token|auth)=)[^& \t\r\n\'\"]+", r"\1[REDACTED]", raw)
+    sanitized = re.sub(r"(Bearer\s+)[A-Za-z0-9_\-\.]{8,}", r"\1[REDACTED]", sanitized)
+    return sanitized
+
+
+def categorize_http_error(status_code: int) -> str:
+    """Return truth-first normalized category string for HTTP status codes."""
+    if status_code == 429:
+        return "RATE_LIMIT_429"
+    if status_code == 502:
+        return "BAD_GATEWAY_502"
+    if status_code == 503:
+        return "SERVICE_UNAVAILABLE_503"
+    if status_code == 504:
+        return "GATEWAY_TIMEOUT_504"
+    return f"HTTP_{status_code}"
+
 
 class MiniBrainLlmAdapterProtocol(Protocol):
     backend_type: str
@@ -41,6 +70,10 @@ class MiniBrainLlmAdapterProtocol(Protocol):
     def generate(
         self, *, messages: list[dict[str, Any]], max_tokens: int, temperature: float
     ) -> dict[str, Any]: ...
+
+    def stream_generate(
+        self, *, messages: list[dict[str, Any]], max_tokens: int, temperature: float
+    ) -> Any: ...
 
 
 def _result(
@@ -114,6 +147,10 @@ class LlamaCppMiniBrainAdapter:
     def resolved_model_path(self) -> Path | None:
         return resolve_confined_model_path(settings=self._settings, model_path=self._model_path)
 
+    def is_configured(self) -> bool:
+        """Returns True if model_path is configured in settings, regardless of whether weights file exists on disk."""
+        return bool(self._model_path)
+
     def is_available(self) -> bool:
         return self._library_available() and self.resolved_model_path() is not None
 
@@ -159,8 +196,33 @@ class LlamaCppMiniBrainAdapter:
         except Exception as exc:  # noqa: BLE001 -- honest failure, never a crash
             return _result(
                 text="", backend_type=self.backend_type, tokens_generated=0,
-                latency_ms=round((time.perf_counter() - started) * 1000, 3), error_message=str(exc),
+                latency_ms=round((time.perf_counter() - started) * 1000, 3), error_message=sanitize_error_message(exc),
             )
+
+    def stream_generate(
+        self, *, messages: list[dict[str, Any]], max_tokens: int = DEFAULT_MAX_TOKENS, temperature: float | None = None
+    ):
+        """Native token streaming for llama-cpp-python."""
+        if not self.is_available():
+            yield {"type": "error", "error": "local model is not available (llama-cpp-python missing or no configured model file)"}
+            return
+
+        try:
+            model = self._load_model()
+            stream = model.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=self._temperature if temperature is None else temperature,
+                stream=True,
+            )
+            for chunk in stream:
+                delta = chunk["choices"][0].get("delta", {})
+                token_text = delta.get("content")
+                if token_text:
+                    yield {"type": "token", "text": token_text}
+            yield {"type": "done"}
+        except Exception as exc:  # noqa: BLE001
+            yield {"type": "error", "error": sanitize_error_message(exc)}
 
 
 class MockMiniBrainAdapter:
@@ -193,6 +255,16 @@ class MockMiniBrainAdapter:
         text = self._TAMIL_REPLIES[index] if is_tamil else self._ENGLISH_REPLIES[index]
         return _result(text=text, backend_type=self.backend_type, tokens_generated=len(text.split()), latency_ms=1.0)
 
+    def stream_generate(
+        self, *, messages: list[dict[str, Any]], max_tokens: int = DEFAULT_MAX_TOKENS, temperature: float = DEFAULT_TEMPERATURE
+    ):
+        """Test-only mock streaming generator. Emits truthful full mock reply without fake token slicing."""
+        del max_tokens, temperature
+        res = self.generate(messages=messages)
+        if res["text"]:
+            yield {"type": "token", "text": res["text"]}
+        yield {"type": "done"}
+
 
 class ExternalProviderMiniBrainAdapter:
     """Disabled by default -- reachable only when the service's
@@ -211,15 +283,49 @@ class ExternalProviderMiniBrainAdapter:
         "openai": "https://api.openai.com/v1/chat/completions",
         "anthropic": "https://api.anthropic.com/v1/messages",
         "gemini": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "ollama": "http://localhost:11434/v1/chat/completions",
     }
 
-    def __init__(self, *, provider_key: str, api_key: str, model: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        provider_key: str,
+        api_key: str = "",
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
         self._provider_key = provider_key
-        self._api_key = api_key
+        self._api_key = api_key or ""
         self._model = model
+        resolved_base = base_url or os.environ.get("BRUD_OLLAMA_URL") or "http://localhost:11434"
+        self._base_url = resolved_base.rstrip("/")
+
+    def _get_endpoint(self) -> str:
+        if self._provider_key == "ollama":
+            return f"{self._base_url}/v1/chat/completions"
+        return self._ENDPOINTS.get(self._provider_key, "")
+
+    def is_configured(self) -> bool:
+        """Returns True if provider has endpoint and requisite configuration."""
+        if self._provider_key == "ollama":
+            return True
+        return bool(self._api_key) and self._provider_key in self._ENDPOINTS
 
     def is_available(self) -> bool:
+        """Returns True only if provider is genuinely reachable/available."""
+        if self._provider_key == "ollama":
+            return self._probe_ollama_reachable()
         return bool(self._api_key) and self._provider_key in self._ENDPOINTS
+
+    def _probe_ollama_reachable(self, timeout: float = 0.5) -> bool:
+        httpx = self._import_httpx()
+        if httpx is None:
+            return False
+        try:
+            resp = httpx.get(f"{self._base_url}/api/tags", timeout=timeout)
+            return resp.status_code == 200
+        except Exception:
+            return False
 
     @staticmethod
     def _import_httpx():
@@ -234,11 +340,17 @@ class ExternalProviderMiniBrainAdapter:
         self, *, messages: list[dict[str, Any]], max_tokens: int = DEFAULT_MAX_TOKENS, temperature: float = DEFAULT_TEMPERATURE
     ) -> dict[str, Any]:
         started = time.perf_counter()
-        if not self.is_available():
+        if not self.is_configured():
             return _result(
                 text="", backend_type=self.backend_type, tokens_generated=0,
                 latency_ms=round((time.perf_counter() - started) * 1000, 3),
                 error_message=f"external provider '{self._provider_key}' is not configured",
+            )
+        if not self.is_available():
+            return _result(
+                text="", backend_type=self.backend_type, tokens_generated=0,
+                latency_ms=round((time.perf_counter() - started) * 1000, 3),
+                error_message=f"external provider '{self._provider_key}' is configured but not available (probe failed)",
             )
         httpx = self._import_httpx()
         if httpx is None:
@@ -247,51 +359,189 @@ class ExternalProviderMiniBrainAdapter:
                 latency_ms=round((time.perf_counter() - started) * 1000, 3), error_message="httpx is not installed",
             )
 
-        try:
-            if self._provider_key == "anthropic":
-                response = httpx.post(
-                    self._ENDPOINTS["anthropic"],
-                    headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
-                    json={
-                        "model": self._model or "claude-3-5-haiku-latest", "max_tokens": max_tokens,
-                        "temperature": temperature,
-                        "messages": [message for message in messages if message.get("role") != "system"],
-                        "system": next((m["content"] for m in messages if m.get("role") == "system"), None),
-                    },
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                payload = response.json()
-                text = "".join(block.get("text", "") for block in payload.get("content", []))
-                tokens_generated = payload.get("usage", {}).get("output_tokens", 0)
-            elif self._provider_key == "gemini":
-                response = httpx.post(
-                    self._ENDPOINTS["gemini"], params={"key": self._api_key},
-                    json={"contents": [{"parts": [{"text": m["content"]}]} for m in messages if m.get("role") != "system"]},
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                payload = response.json()
-                text = payload["candidates"][0]["content"]["parts"][0]["text"]
-                tokens_generated = payload.get("usageMetadata", {}).get("candidatesTokenCount", 0)
-            else:
-                response = httpx.post(
-                    self._ENDPOINTS[self._provider_key],
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={"model": self._model or "gpt-4o-mini", "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                payload = response.json()
-                text = payload["choices"][0]["message"]["content"]
-                tokens_generated = payload.get("usage", {}).get("completion_tokens", 0)
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                if self._provider_key == "anthropic":
+                    response = httpx.post(
+                        self._ENDPOINTS["anthropic"],
+                        headers={"x-api-key": self._api_key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"},
+                        json={
+                            "model": self._model or "claude-3-5-haiku-latest", "max_tokens": max_tokens,
+                            "temperature": temperature,
+                            "messages": [message for message in messages if message.get("role") != "system"],
+                            "system": next((m["content"] for m in messages if m.get("role") == "system"), None),
+                        },
+                        timeout=30.0,
+                    )
+                elif self._provider_key == "gemini":
+                    response = httpx.post(
+                        self._ENDPOINTS["gemini"], params={"key": self._api_key},
+                        json={"contents": [{"parts": [{"text": m["content"]}]} for m in messages if m.get("role") != "system"]},
+                        timeout=30.0,
+                    )
+                else:
+                    headers = {"Content-Type": "application/json"}
+                    if self._api_key:
+                        headers["Authorization"] = f"Bearer {self._api_key}"
+                    model_name = self._model or ("llama3" if self._provider_key == "ollama" else "gpt-4o-mini")
+                    response = httpx.post(
+                        self._get_endpoint(),
+                        headers=headers,
+                        json={"model": model_name, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
+                        timeout=30.0,
+                    )
 
-            return _result(
-                text=text, backend_type=self.backend_type, tokens_generated=tokens_generated,
-                latency_ms=round((time.perf_counter() - started) * 1000, 3),
-            )
-        except Exception as exc:  # noqa: BLE001 -- honest failure, never a crash
-            return _result(
-                text="", backend_type=self.backend_type, tokens_generated=0,
-                latency_ms=round((time.perf_counter() - started) * 1000, 3), error_message=str(exc),
-            )
+                if response.status_code in RETRYABLE_STATUS_CODES:
+                    if attempt < MAX_RETRIES:
+                        # Bounded exponential backoff with jitter:
+                        # Permitted ONLY for retry backoff jitter.
+                        # Never used for model response generation, routing truth, synthetic streaming, or benchmark fabrication.
+                        # random.choice() = 0 production occurrences.
+                        jitter = random.uniform(0.05, 0.15)
+                        backoff = (INITIAL_RETRY_BACKOFF * (2 ** attempt)) + jitter
+                        time.sleep(backoff)
+                        continue
+                    cat = categorize_http_error(response.status_code)
+                    sanitized_body = sanitize_error_message(response.text[:200])
+                    return _result(
+                        text="", backend_type=self.backend_type, tokens_generated=0,
+                        latency_ms=round((time.perf_counter() - started) * 1000, 3),
+                        error_message=f"{cat}: {sanitized_body}",
+                    )
+
+                if response.status_code >= 400:
+                    # Non-retryable error (e.g. 400 Bad Request, 401 Unauthorized, 403 Forbidden)
+                    sanitized_body = sanitize_error_message(response.text[:200])
+                    return _result(
+                        text="", backend_type=self.backend_type, tokens_generated=0,
+                        latency_ms=round((time.perf_counter() - started) * 1000, 3),
+                        error_message=f"HTTP_{response.status_code}: {sanitized_body}",
+                    )
+
+                response.raise_for_status()
+                payload = response.json()
+                if self._provider_key == "anthropic":
+                    text = "".join(block.get("text", "") for block in payload.get("content", []))
+                    tokens_generated = payload.get("usage", {}).get("output_tokens", 0)
+                elif self._provider_key == "gemini":
+                    text = payload["candidates"][0]["content"]["parts"][0]["text"]
+                    tokens_generated = payload.get("usageMetadata", {}).get("candidatesTokenCount", 0)
+                else:
+                    text = payload["choices"][0]["message"]["content"]
+                    tokens_generated = payload.get("usage", {}).get("completion_tokens", 0)
+
+                return _result(
+                    text=text, backend_type=self.backend_type, tokens_generated=tokens_generated,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 3),
+                )
+            except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError, httpx.NetworkError) as exc:
+                if attempt < MAX_RETRIES:
+                    jitter = random.uniform(0.05, 0.15)
+                    backoff = (INITIAL_RETRY_BACKOFF * (2 ** attempt)) + jitter
+                    time.sleep(backoff)
+                    continue
+                err_type = "CONNECT_TIMEOUT" if isinstance(exc, (httpx.ConnectTimeout, httpx.ConnectError)) else ("READ_TIMEOUT" if isinstance(exc, httpx.ReadTimeout) else "NETWORK_ERROR")
+                return _result(
+                    text="", backend_type=self.backend_type, tokens_generated=0,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 3),
+                    error_message=f"{err_type}: {sanitize_error_message(exc)}",
+                )
+            except Exception as exc:  # noqa: BLE001 -- honest failure, never a crash
+                return _result(
+                    text="", backend_type=self.backend_type, tokens_generated=0,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 3),
+                    error_message=sanitize_error_message(exc),
+                )
+
+        return _result(
+            text="", backend_type=self.backend_type, tokens_generated=0,
+            latency_ms=round((time.perf_counter() - started) * 1000, 3),
+            error_message="UNKNOWN_ERROR: retry limit reached",
+        )
+
+    def stream_generate(
+        self, *, messages: list[dict[str, Any]], max_tokens: int = DEFAULT_MAX_TOKENS, temperature: float = DEFAULT_TEMPERATURE
+    ):
+        """Streaming adapter for external providers via SSE lines or single truthful chunk with retry on connection."""
+        if not self.is_configured():
+            yield {"type": "error", "error": f"external provider '{self._provider_key}' is not configured"}
+            return
+        if not self.is_available():
+            yield {"type": "error", "error": f"external provider '{self._provider_key}' is configured but not available (probe failed)"}
+            return
+
+        httpx = self._import_httpx()
+        if httpx is None:
+            yield {"type": "error", "error": "httpx is not installed"}
+            return
+
+        if self._provider_key in {"openrouter", "openai", "ollama"}:
+            headers = {"Content-Type": "application/json"}
+            if self._api_key:
+                headers["Authorization"] = f"Bearer {self._api_key}"
+            model_name = self._model or ("llama3" if self._provider_key == "ollama" else "gpt-4o-mini")
+            payload = {
+                "model": model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "stream": True,
+            }
+            stream_started = False
+            for attempt in range(MAX_RETRIES + 1):
+                try:
+                    with httpx.stream(
+                        "POST",
+                        self._get_endpoint(),
+                        headers=headers,
+                        json=payload,
+                        timeout=60.0,
+                    ) as response:
+                        if response.status_code in RETRYABLE_STATUS_CODES and not stream_started:
+                            if attempt < MAX_RETRIES:
+                                jitter = random.uniform(0.05, 0.15)
+                                time.sleep((INITIAL_RETRY_BACKOFF * (2 ** attempt)) + jitter)
+                                continue
+                            cat = categorize_http_error(response.status_code)
+                            yield {"type": "error", "error": f"{cat}: {response.status_code}"}
+                            return
+                        response.raise_for_status()
+                        stream_started = True
+                        for line in response.iter_lines():
+                            if not line:
+                                continue
+                            line_str = line.decode("utf-8") if isinstance(line, bytes) else str(line)
+                            if line_str.startswith("data: "):
+                                raw_data = line_str[6:].strip()
+                                if raw_data == "[DONE]":
+                                    break
+                                try:
+                                    chunk = json.loads(raw_data)
+                                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                    token_text = delta.get("content")
+                                    if token_text:
+                                        yield {"type": "token", "text": token_text}
+                                except Exception:
+                                    continue
+                    yield {"type": "done"}
+                    return
+                except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError, httpx.RemoteProtocolError, httpx.NetworkError) as exc:
+                    if attempt < MAX_RETRIES and not stream_started:
+                        jitter = random.uniform(0.05, 0.15)
+                        time.sleep((INITIAL_RETRY_BACKOFF * (2 ** attempt)) + jitter)
+                        continue
+                    err_type = "CONNECT_TIMEOUT" if isinstance(exc, (httpx.ConnectTimeout, httpx.ConnectError)) else ("READ_TIMEOUT" if isinstance(exc, httpx.ReadTimeout) else "NETWORK_ERROR")
+                    yield {"type": "error", "error": f"{err_type}: {sanitize_error_message(exc)}"}
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    yield {"type": "error", "error": sanitize_error_message(exc)}
+                    return
+        else:
+            # Anthropic / Gemini fallback to truthful complete single response (no artificial token splitting)
+            res = self.generate(messages=messages, max_tokens=max_tokens, temperature=temperature)
+            if res.get("error_message"):
+                yield {"type": "error", "error": res["error_message"]}
+            else:
+                if res.get("text"):
+                    yield {"type": "token", "text": res["text"]}
+                yield {"type": "done"}

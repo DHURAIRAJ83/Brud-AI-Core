@@ -2048,6 +2048,46 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
             "ta": "இது document {target_public_id}-க்கான security finding {finding_public_id}-ஐ reviewed என குறிக்கும்.",
         },
     ),
+    # Phase 10: Admin Automation & Control Plane. Defining an automation is
+    # itself the only governed action this phase introduces -- there is no
+    # execution engine yet (see docs of this phase's report), so this
+    # action's executor only validates the definition and durably records
+    # it as this approval row; it never invokes `target_action_type`.
+    ActionDefinition(
+        action_type="admin_automation_define",
+        target_type="admin_automation",
+        risk_level="moderate",
+        mode="governance",
+        permission="admin",
+        requires_reason=True,
+        reversible=True,
+        payload_fields=(
+            "name",
+            "description",
+            "target_action_type",
+            "target_type",
+            "target_public_id",
+            "target_action_parameters",
+            "schedule_description",
+        ),
+        summary={
+            "en": "Define a governed automation: a named intent to eventually take one existing "
+            "governed action, kept pending future execution infrastructure. Never executes "
+            "target_action_type -- only records and validates the definition.",
+            "ta": "ஒரு governed automation-ஐ வரையறுக்கவும்: ஏற்கனவே உள்ள ஒரு governed action-ஐ "
+            "எதிர்காலத்தில் மேற்கொள்ளும் நோக்கம், எதிர்கால execution infrastructure-க்காக "
+            "காத்திருக்கும். target_action_type-ஐ ஒருபோதும் இயக்காது -- வரையறையை மட்டுமே "
+            "பதிவு செய்து சரிபார்க்கும்.",
+        },
+        confirmation_text={
+            "en": "This will define automation {target_public_id}, intended to eventually take "
+            "the '{target_action_type}' action -- it will NOT execute that action now or "
+            "automatically in the future.",
+            "ta": "இது automation {target_public_id}-ஐ வரையறுக்கும், '{target_action_type}' "
+            "action-ஐ எதிர்காலத்தில் மேற்கொள்ள நோக்கம் -- அது இப்போது அல்லது எதிர்காலத்தில் "
+            "தானாகவே இயங்காது.",
+        },
+    ),
 )
 
 ACTION_BY_TYPE: dict[str, ActionDefinition] = {

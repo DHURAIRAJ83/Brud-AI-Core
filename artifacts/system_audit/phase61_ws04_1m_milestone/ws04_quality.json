@@ -1,0 +1,8 @@
+{
+  "quality_summary": {
+    "quarantined_records": 3991,
+    "exact_duplicate_records": 1139,
+    "passed_records": 2894,
+    "average_quality_score": 93.1
+  }
+}

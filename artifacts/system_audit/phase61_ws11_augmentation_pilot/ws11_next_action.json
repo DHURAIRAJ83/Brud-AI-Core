@@ -1,0 +1,9 @@
+{
+  "single_next_action": "AWAIT EXPLICIT HUMAN DIRECTION BEFORE MERGING CANDIDATE PILOT AUGMENTATION DATASET OR AUTHORIZING STAGED EXPANSION",
+  "rationale": "The Controlled Multilingual Augmentation Pilot is 100% QUALIFIED and isolated. Pretraining remains BLOCKED until explicit human authorization is granted.",
+  "what_not_to_do": [
+    "Do NOT authorize pretraining without explicit human instruction.",
+    "Do NOT scale model parameters to E6.",
+    "Do NOT enable Public Chat candidate traffic."
+  ]
+}

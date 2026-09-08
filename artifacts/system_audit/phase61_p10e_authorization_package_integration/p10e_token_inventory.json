@@ -1,0 +1,7 @@
+{
+  "training_token_schema": "VERIFIED",
+  "promotion_token_schema": "VERIFIED",
+  "public_chat_token_schema": "VERIFIED",
+  "compliance_token_schema": "VERIFIED",
+  "recovery_token_schema": "VERIFIED"
+}

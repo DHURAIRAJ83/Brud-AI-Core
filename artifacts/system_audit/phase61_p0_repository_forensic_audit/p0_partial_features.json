@@ -1,0 +1,7 @@
+{
+  "partial": [
+    "llm_intent_classifier",
+    "ml_domain_classifier",
+    "ocr_engine_integration"
+  ]
+}

@@ -120,3 +120,55 @@ def generate_coverage(
         "coverage_ratio": coverage_ratio,
         "stream_checksum_sha256": stream_fingerprint.hexdigest(),
     }
+
+
+def token_length_statistics(sequences: list[list[int]]) -> dict[str, Any]:
+    """Phase 2.7H: min/max/average token length per real tokenized
+    sequence -- one sequence per extracted text field (`record_text_fields()`),
+    which is 1:1 with records for `record_type='pretrain'`. Purely
+    read-only arithmetic over sequences already produced by
+    `token_sequences()`; never re-tokenizes and never invents a count."""
+
+    lengths = [len(sequence) for sequence in sequences]
+    if not lengths:
+        return {
+            "sequence_count": 0, "min_tokens": 0, "max_tokens": 0,
+            "average_tokens": 0.0, "total_tokens": 0,
+        }
+    total = sum(lengths)
+    return {
+        "sequence_count": len(lengths),
+        "min_tokens": min(lengths),
+        "max_tokens": max(lengths),
+        "average_tokens": total / len(lengths),
+        "total_tokens": total,
+    }
+
+
+def vocabulary_coverage(
+    sequences: list[list[int]], *, vocabulary_size: int, unk_token_id: int,
+) -> dict[str, Any]:
+    """Phase 2.7H: how much of the tokenizer's real vocabulary this real
+    dataset split actually exercises, and how often it falls back to the
+    unknown-token id -- a training-data-readiness signal, never a claim
+    about model quality (mission Part 5)."""
+
+    used_token_ids: set[int] = set()
+    total_tokens = 0
+    unknown_tokens = 0
+    for sequence in sequences:
+        for token_id in sequence:
+            used_token_ids.add(token_id)
+            total_tokens += 1
+            if token_id == unk_token_id:
+                unknown_tokens += 1
+    return {
+        "vocabulary_size": vocabulary_size,
+        "distinct_token_ids_used": len(used_token_ids),
+        "vocabulary_utilization_ratio": (
+            len(used_token_ids) / vocabulary_size if vocabulary_size else 0.0
+        ),
+        "total_tokens": total_tokens,
+        "unknown_token_count": unknown_tokens,
+        "unknown_token_rate": (unknown_tokens / total_tokens) if total_tokens else 0.0,
+    }

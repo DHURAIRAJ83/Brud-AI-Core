@@ -1,0 +1,19 @@
+{
+  "checkpoint_id": "checkpoint_step_60",
+  "step": 60,
+  "cumulative_tokens": 480,
+  "parent_checkpoint_hash": "94b3ca556402db7109c1133c1406de41d11d8c4363f9d643096171b7dd1eb7d1",
+  "checkpoint_hash": "634282620891127e9a101fd2f9bd98dfea5bcb0495f683d9a057fb118c2fed64",
+  "val_loss": null,
+  "dataset_manifest_hash": "",
+  "tokenizer_hash": "sovereign_sp_32k",
+  "files": {
+    "model_state.pt": "1d1083c7d28cc41ca6bb18af668ec8d1672af6e664ef38590ec9a78444e79fa3",
+    "optimizer_state.pt": "52604b0a3b40c8634366c099ec7b808c6218a1591dcc1199e321e549ce99ba56",
+    "scheduler_state.pt": "a7fe1c8b3feb31b1618c6e15c6113de9bd7ec9e5812cca373094191755a70da1",
+    "rng_state.pt": "2e8c4ae1ff7f46d694cd896662ac949fe5ecf088e659338e5e68053a806bb7df",
+    "trainer_state.json": "76f1fb370dbddca7639ccf2bfb4d84981c1f5b112b6fe1f4c2b1adf26f5e1a1f",
+    "config.json": "eab0ddbc62a81d21f7361323b14366e9e7683c00d36bf0511ac4c02602a255f8",
+    "references.json": "d43f052ab8c7d9ad0508cf3b132f7826821010c0ab901f73f7c088178c1d51e3"
+  }
+}

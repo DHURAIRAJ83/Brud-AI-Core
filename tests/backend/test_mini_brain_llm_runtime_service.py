@@ -17,6 +17,7 @@ from cryptography.fernet import Fernet
 from backend.core.config import Settings
 from backend.database.migrations import initialize_database
 from backend.database.repositories.base import NotFoundError, ValidationError
+from backend.services.admin_assistant_service import AdminAssistantError
 from backend.services.mini_brain_llm_adapter import MockMiniBrainAdapter
 from backend.services.mini_brain_llm_runtime_service import MiniBrainLlmRuntimeService
 from backend.services.mini_brain_plugin_governance_service import MiniBrainPluginGovernanceService
@@ -241,6 +242,269 @@ def test_chat_never_bypasses_admin_identity_requirement(settings: Settings) -> N
     service = MiniBrainLlmRuntimeService(settings, adapter_factory=lambda: MockMiniBrainAdapter())
     with pytest.raises(ValidationError):
         service._dispatch_tool_call(scope_key="chat.read.current", admin_id="", session_id="s1")
+
+
+# -- Phase 16.5: MB-28 -> Phase-8 governance proposal bridge ----------------------------------
+
+
+def test_chat_actionable_message_creates_a_real_pending_proposal(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    assert result["backend_type"] == "proposal_bridge"
+    tool_call = result["reply"]["tool_call"]
+    assert tool_call["action_type"] == "register_external_data_provider"
+    assert tool_call["status"] == "pending"
+    assert "proposal" in result["reply"]["sanitized_text"].lower()
+
+    # Real proof this only created a proposal -- MB-28 never calls
+    # review()/execute(), and this is the same AdminAssistantService
+    # instance/table Phase-8's own chat proposes into.
+    stored = service.assistant_service.get_proposal(tool_call["public_id"])
+    assert stored.status == "pending"
+    assert stored.execution_status != "succeeded"
+    assert stored.executed_at is None
+
+
+def test_chat_actionable_message_does_not_reach_the_llm(service: MiniBrainLlmRuntimeService) -> None:
+    # The proposal-bridge branch returns before tool-intent classification
+    # or LLM generation runs at all: tool_call has the proposal shape
+    # (public_id/action_type/status), never the plugin-dispatch shape
+    # (tool_name/plugin_public_id) _dispatch_tool_call() would produce.
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    tool_call = result["reply"]["tool_call"]
+    assert set(tool_call.keys()) == {"public_id", "action_type", "status"}
+    # capability is DB CHECK-constrained to a closed set that predates
+    # this bridge -- "chat" is the correct persisted value (see the
+    # comment in chat()); "proposal_bridge" is the API-response-only
+    # marker, asserted via backend_type above.
+    assert result["reply"]["capability"] == "chat"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "approve this dataset",
+        "freeze this dataset",
+        "promote this dataset",
+        "start training the model",
+        "release this model",
+        "activate this assignment",
+        "assign this model",
+    ],
+)
+def test_chat_governance_sensitive_phrases_never_execute_or_propose(
+    service: MiniBrainLlmRuntimeService, message: str,
+) -> None:
+    # None of these phrases match any of the four already-registered
+    # MB-39 scopes, so the bridge declines and this falls through to
+    # ordinary chat -- proving these phrases cannot reach proposal
+    # creation, let alone execution, through MB-28.
+    result = service.chat(session_id=None, message=message, admin_id="admin-1")
+    assert result["backend_type"] != "proposal_bridge"
+    assert result["reply"]["tool_call"] is None
+
+
+def test_chat_ambiguous_query_never_creates_a_proposal(service: MiniBrainLlmRuntimeService) -> None:
+    result = service.chat(session_id=None, message="What's the weather like today?", admin_id="admin-1")
+    assert result["backend_type"] != "proposal_bridge"
+
+
+def test_chat_blocked_training_substring_beats_actionable_keyword(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    # "clean dataset" alone would match the dataset.clean scope -- the
+    # presence of "training" anywhere in the message must still block
+    # the match entirely (mirrors Phase-8's own equivalent test).
+    result = service.chat(
+        session_id=None, message="clean dataset and then start training the model",
+        admin_id="admin-1",
+    )
+    assert result["backend_type"] != "proposal_bridge"
+
+
+def test_chat_scope_needing_entity_context_declines_via_mb28(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    # run_sample_quality_checks needs entity_type/entity_public_id, which
+    # MB-28's chat() has no way to supply -- it must decline rather than
+    # invent a target, unlike Phase-8's own chat which can receive real
+    # page/entity context from the dashboard.
+    result = service.chat(session_id=None, message="Please clean dataset records now", admin_id="admin-1")
+    assert result["backend_type"] != "proposal_bridge"
+
+
+def test_chat_actionable_message_requires_real_admin_id(service: MiniBrainLlmRuntimeService) -> None:
+    with pytest.raises(ValidationError):
+        service.chat(
+            session_id=None, message="Please import dataset content from an external provider",
+            admin_id="",
+        )
+
+
+def test_chat_proposal_repeated_message_creates_independent_proposals(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    # register_external_data_provider needs no pre-existing target, so
+    # each call proposes a fresh provider_code -- this is the existing
+    # AdminAssistantService.propose() behavior, unchanged by this bridge;
+    # documented here rather than silently assumed idempotent.
+    first = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    second = service.chat(
+        session_id=first["session"]["public_id"],
+        message="Please import dataset content from an external provider", admin_id="admin-1",
+    )
+    assert first["reply"]["tool_call"]["public_id"] != second["reply"]["tool_call"]["public_id"]
+
+
+# -- Phase 16.6: MB-28-created proposal reaches the existing human-review lifecycle -----------
+#
+# No new API, service, or UI is introduced here -- these tests prove that a
+# proposal created via MB-28's chat() is stored in the exact same
+# admin_approvals row shape (same AdminApprovalRepository, same
+# AdminAssistantService) that Phase-8's own chat and the manual
+# "Propose an Action" form already use, so the existing list/get/review/
+# execute surface (AdminAssistantPage.jsx, GET/POST /api/admin/assistant/
+# proposals*) requires zero MB-28-specific handling.
+
+
+def test_mb28_proposal_is_visible_through_the_existing_list_proposals_call(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    proposal_id = result["reply"]["tool_call"]["public_id"]
+
+    # The exact same call AdminAssistantPage.jsx's "Proposals & Admin
+    # Review" tab makes (assistantProposals('pending') -> GET /proposals).
+    pending = service.assistant_service.list_proposals(status="pending")
+    assert any(item.public_id == proposal_id for item in pending)
+
+    fetched = service.assistant_service.get_proposal(proposal_id)
+    assert fetched.action_type == "register_external_data_provider"
+    assert fetched.status == "pending"
+    assert fetched.requested_by == "admin-1"
+
+
+def test_mb28_proposal_stays_pending_until_explicit_human_review_and_execute(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    proposal_id = result["reply"]["tool_call"]["public_id"]
+
+    # Layer 2: still pending immediately after MB-28's chat() returns --
+    # no automatic review/approve/execute occurred.
+    assert service.assistant_service.get_proposal(proposal_id).status == "pending"
+
+    # Layer 3: explicit human review, through the exact same
+    # AdminAssistantService.review() the AdminAssistantPage.jsx "Review"
+    # button calls -- MB-28 never calls this itself.
+    reviewed = service.assistant_service.review(
+        proposal_id, decision="approved", reviewed_by="human-reviewer-1", comment="looks fine",
+    )
+    assert reviewed.status == "approved"
+    assert reviewed.execution_status == "pending"
+
+    # Layer 4: explicit execute, through the same AdminAssistantService
+    # .execute() the "Execute" button calls -- never triggered by chat.
+    executed = service.assistant_service.execute(proposal_id, executor_public_id="human-reviewer-1")
+    assert executed.execution_status == "succeeded"
+    assert executed.executed_at is not None
+
+    # Real mutation actually happened, through the existing allowlisted
+    # executor -- not faked.
+    from backend.services.external_data_provider_service import ExternalDataProviderService
+
+    providers = ExternalDataProviderService(service.settings).list_providers()
+    assert any(p["provider_code"] == executed.target_public_id for p in providers)
+
+    # Negative matrix: a duplicate/repeated execute() request on an
+    # already-succeeded proposal is rejected -- the existing
+    # ACTION_EXECUTORS entry itself refuses to re-register the same
+    # provider_code a second time (a real, pre-existing safety property
+    # of the underlying service, not a rule added for MB-28), and the
+    # repository-layer execution_status guard would separately refuse it
+    # even if the executor allowed a retry.
+    from backend.services.external_data_provider_service import ExternalDataProviderError
+
+    with pytest.raises(ExternalDataProviderError):
+        service.assistant_service.execute(proposal_id, executor_public_id="human-reviewer-1")
+    assert service.assistant_service.get_proposal(proposal_id).execution_status == "succeeded"
+
+
+def test_mb28_proposal_execution_requires_prior_approval(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    # Governance boundary: execute() on a still-pending (not yet reviewed)
+    # MB-28-created proposal must be refused by the same existing check
+    # every other proposal execution path is subject to.
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    proposal_id = result["reply"]["tool_call"]["public_id"]
+    with pytest.raises(AdminAssistantError):
+        service.assistant_service.execute(proposal_id, executor_public_id="human-reviewer-1")
+    assert service.assistant_service.get_proposal(proposal_id).status == "pending"
+
+
+def test_mb28_proposal_rejected_by_human_review_can_never_execute(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    proposal_id = result["reply"]["tool_call"]["public_id"]
+    rejected = service.assistant_service.review(
+        proposal_id, decision="rejected", reviewed_by="human-reviewer-1", comment="not needed",
+    )
+    assert rejected.status == "rejected"
+    with pytest.raises(AdminAssistantError):
+        service.assistant_service.execute(proposal_id, executor_public_id="human-reviewer-1")
+
+
+def test_mb28_proposal_audit_trail_covers_the_full_lifecycle(
+    service: MiniBrainLlmRuntimeService,
+) -> None:
+    result = service.chat(
+        session_id=None, message="Please import dataset content from an external provider",
+        admin_id="admin-1",
+    )
+    proposal_id = result["reply"]["tool_call"]["public_id"]
+    service.assistant_service.review(
+        proposal_id, decision="approved", reviewed_by="human-reviewer-1", comment=None,
+    )
+    service.assistant_service.execute(proposal_id, executor_public_id="human-reviewer-1")
+
+    from backend.database.repositories import AuditLogRepository
+
+    audit = AuditLogRepository(service.settings.resolved_database_path)
+    with audit.transaction() as connection:
+        rows = connection.execute(
+            "SELECT event_type FROM audit_logs WHERE resource_public_id = ? ORDER BY id",
+            (proposal_id,),
+        ).fetchall()
+    event_types = [row["event_type"] for row in rows]
+    assert event_types == [
+        "admin_assistant_proposal_created",
+        "admin_review_approved",
+        "admin_assistant_proposal_executed",
+    ]
 
 
 # -- explain_dashboard_page -----------------------------------------------------------------------

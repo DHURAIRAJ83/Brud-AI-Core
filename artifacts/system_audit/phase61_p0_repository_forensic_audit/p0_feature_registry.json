@@ -1,0 +1,11 @@
+{
+  "features": [
+    "admin_assistant",
+    "mini_brain",
+    "corpus_ingestion",
+    "deduplication",
+    "rights_engine",
+    "sovereign_trainer",
+    "model_router"
+  ]
+}

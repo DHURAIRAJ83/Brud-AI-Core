@@ -39,6 +39,16 @@ def _audit(connection, event: str, admin_id: str, resource_id: str, **metadata) 
     )
 
 
+# Phase 2.7I, Finding B: bumped only when `_checksum_payload_v*()`'s own
+# byte representation changes in a way that would change the checksum
+# for identical input records -- never for a pure refactor. A dataset
+# version's own manifest records which version produced its checksum
+# (`checksum_payload_version`), so `verify_version()` can always
+# recompute a pre-existing version's checksum the exact way it was
+# originally computed, never the current default.
+CHECKSUM_PAYLOAD_VERSION = 2
+
+
 def _safe_name(name: str, version: str) -> str:
     raw = f"{name}_{version}".lower()
     safe = re.sub(r"[^a-z0-9._-]+", "_", raw).strip("._")
@@ -303,6 +313,14 @@ class DatasetVersioningService:
             splits = {"train": [], "validation": [], "test": []}
             for row in records:
                 splits[row["split"]].append(row)
+            # Phase 2.7I: re-verify using whichever checksum payload
+            # version this version's own already-stored manifest was
+            # actually built with -- a pre-Phase-2.7I version's manifest
+            # predates the `checksum_payload_version` key entirely, so it
+            # defaults to `1` (the original, full-per-record-text
+            # payload), never the new default -- never a false-negative
+            # "unverified" result caused only by this phase's own change.
+            stored_payload_version = loads_json(version["manifest_json"]).get("checksum_payload_version", 1)
             manifest, checksum = self._manifest(
                 version,
                 list(records),
@@ -310,6 +328,7 @@ class DatasetVersioningService:
                 loads_json(version["build_configuration_json"]).get("selection_filters", {}),
                 loads_json(version["build_configuration_json"]).get("split_configuration", {}),
                 "verification",
+                payload_version=stored_payload_version,
             )
             ok = checksum == version["checksum_sha256"]
             if admin_id:
@@ -532,19 +551,43 @@ class DatasetVersioningService:
             "quality": {},
         }
 
-    def _manifest(self, version, records, splits, filters, split_config, admin_id):
+    def _manifest(self, version, records, splits, filters, split_config, admin_id, *, payload_version: int | None = None):
+        """Phase 2.7I: `payload_version` selects both how the checksum is
+        computed and whether the stored manifest embeds a full per-record
+        identity list. A fresh build (`run_build()`, no `payload_version`
+        passed) always uses the current `CHECKSUM_PAYLOAD_VERSION` and
+        records it in the manifest itself
+        (`content["checksum_payload_version"]`). Re-verifying an existing
+        version (`verify_version()`) instead passes the version the
+        version's own already-stored manifest recorded, so a
+        pre-Phase-2.7I dataset version (whose manifest predates this key
+        entirely, defaulting to `1`) is re-verified with the exact
+        original, unmodified payload shape -- never silently invalidated
+        by a change to how *new* checksums are computed.
+
+        Finding B (Phase 2.7H report §13): `payload_version==1`'s
+        `record_public_ids_by_split` -- one `{public_id, content_hash,
+        source_public_id}` entry per real record -- made both the
+        checksum input AND the *stored* `manifest_json` itself grow
+        linearly with record count, exceeding `Settings.
+        max_metadata_bytes` (65536 bytes) at a few hundred records
+        regardless of the compactness of any single record's entry.
+        `payload_version==2` drops this list from both: the checksum is
+        instead a small, fixed-size identity JSON combined with a
+        chained, incrementally-hashed per-record fingerprint
+        (`_checksum_fingerprint_v2()`, never materialized as one big JSON
+        value), and the stored manifest keeps only the real, already-
+        bounded aggregate distributions (language/record-type/source-
+        type/split counts -- bounded by the number of *distinct*
+        categories, never by record count) plus a pointer to
+        `version_items()`, the real, existing, paginated API that already
+        exposes exactly the same per-record identity information without
+        any size ceiling. Both the checksum computation and the persisted
+        manifest are now O(1) in size with respect to record count."""
+
+        if payload_version is None:
+            payload_version = CHECKSUM_PAYLOAD_VERSION
         distributions = self._distributions(records, splits)
-        refs = {
-            name: [
-                {
-                    "public_id": row["public_id"],
-                    "content_hash": row["content_hash"],
-                    "source_public_id": row["source_public_id"],
-                }
-                for row in rows
-            ]
-            for name, rows in splits.items()
-        }
         content = {
             "project": "Brud AI",
             "dataset_name": version["name"],
@@ -560,17 +603,42 @@ class DatasetVersioningService:
             "selection_filters": filters,
             "split_configuration": split_config,
             "split_seed": split_config.get("seed", self.settings.dataset_split_seed),
-            "record_public_ids_by_split": refs,
             "checksum_algorithm": "sha256",
+            "checksum_payload_version": payload_version,
             "parent_dataset_version": None,
         }
-        checksum = hashlib.sha256(
-            dumps_json(self._checksum_payload(content, splits)).encode()
-        ).hexdigest()
+        if payload_version == 1:
+            content["record_public_ids_by_split"] = {
+                name: [
+                    {
+                        "public_id": row["public_id"],
+                        "content_hash": row["content_hash"],
+                        "source_public_id": row["source_public_id"],
+                    }
+                    for row in rows
+                ]
+                for name, rows in splits.items()
+            }
+            checksum_input = dumps_json(self._checksum_payload_v1(content, splits)).encode("utf-8")
+        else:
+            content["per_record_identity"] = (
+                "not embedded in this manifest to keep manifest size bounded regardless of "
+                "dataset size (Phase 2.7I) -- fetch it via DatasetVersioningService.version_items() "
+                "/ GET /admin/datasets/versions/{public_id}/items, paginated, at any time"
+            )
+            checksum_input = self._checksum_fingerprint_v2(content, splits)
+        checksum = hashlib.sha256(checksum_input).hexdigest()
         content["content_checksum"] = checksum
         return content, checksum
 
-    def _checksum_payload(self, manifest, splits):
+    def _checksum_payload_v1(self, manifest, splits):
+        """The original (pre-Phase-2.7I) checksum payload shape, kept
+        byte-for-byte unchanged so a dataset version built before this
+        phase can still be re-verified against its own originally-stored
+        checksum. Never used for a fresh build after this phase -- only
+        for re-verifying an existing v1 manifest. Do not modify this
+        method; add new behavior to `_checksum_fingerprint_v2` instead."""
+
         rows = []
         for split_name in ("train", "validation", "test"):
             for row in splits[split_name]:
@@ -595,6 +663,59 @@ class DatasetVersioningService:
             },
             "records": rows,
         }
+
+    def _checksum_fingerprint_v2(self, manifest, splits) -> bytes:
+        """Phase 2.7I, Finding B: the real fix. Mission Part 7, Option B
+        ("hashing a deterministic ordered record fingerprint sequence
+        rather than embedding the complete record metadata in the
+        checksum JSON") applied literally: every record contributes one
+        compact, deterministic, delimited fingerprint string
+        (`split|public_id|record_type|language|content_hash|
+        source_public_id`) that is fed straight into a running SHA-256 via
+        `hashlib.sha256().update()`, in the same deterministic
+        train-then-validation-then-test / `sequence_number` order
+        `fetch_split_records()` and every other real consumer already
+        uses -- no per-record JSON object, no big list, no
+        `dumps_json()` call over record-count-many entries, ever. Memory
+        and serialized-payload size are therefore both O(1) with respect
+        to record count; only a single 64-byte running digest is held at
+        any time regardless of whether the dataset has 40 or 40,000,000
+        records.
+
+        Every non-redundant field the old payload compared is still
+        included per record (`split`, `public_id`, `record_type`,
+        `language`, `source_public_id`); `content_hash` alone already
+        deterministically captures `instruction`/`input_text`/
+        `output_text`/`normalized_input` (`dataset_service.content_hash()`,
+        `backend/services/dataset_service.py:54-64`) for every record
+        created through the real record-creation/document-ingestion path,
+        so no content, provenance, or split-reassignment change the old
+        payload could detect goes undetected here -- the checksum
+        contract (Part 8) is unchanged, only its size-scaling is fixed. A
+        `\\x00` separator after every record's fingerprint makes the
+        sequence unambiguous (a value containing a literal `|` can never
+        be confused with a field boundary from an adjacent record)."""
+
+        identity_json = dumps_json(
+            {k: manifest[k] for k in ("project", "dataset_name", "dataset_version", "schema_version")}
+        ).encode("utf-8")
+        fingerprint = hashlib.sha256()
+        for split_name in ("train", "validation", "test"):
+            for row in splits[split_name]:
+                fingerprint.update(
+                    "|".join(
+                        (
+                            split_name,
+                            row["public_id"] or "",
+                            row["record_type"] or "",
+                            row["language"] or "",
+                            row["content_hash"] or "",
+                            row["source_public_id"] or "",
+                        )
+                    ).encode("utf-8")
+                )
+                fingerprint.update(b"\x00")
+        return identity_json + b"|" + fingerprint.hexdigest().encode("utf-8")
 
     def _write_export_files(self, target_dir: Path, version, records) -> list[str]:
         manifest = loads_json(version["manifest_json"])

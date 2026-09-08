@@ -486,6 +486,15 @@ class PublicChatRoutingService:
                 reason = "rag_insufficient_evidence"
             elif resolved_route == "memory":
                 reason = "memory_unavailable"
+            elif answer_status == "completed":
+                # The model loaded and generation genuinely ran (status is
+                # "completed", not a failure status) but produced no usable
+                # text -- e.g. an immediate end-of-sequence token from a
+                # tiny/undertrained model (see ChatOrchestrationService's
+                # `answer_text=generation["generated_text"] or None`).
+                # This is architecturally distinct from no model being
+                # available at all and must not share that reason code.
+                reason = "model_generated_no_output"
             else:
                 reason = "model_assignment_unavailable"
             return self._build_insufficient_response(
@@ -682,9 +691,19 @@ class PublicChatRoutingService:
             raise ValidationError("no active memory policy available for public chat sessions")
 
         participant_scope_key = payload.conversation_id or str(uuid4())
+        # `memory_consent=False` must mean short-term conversational
+        # context from this session is never persisted or carried into a
+        # later turn's context, not merely that the "memory" intent-route's
+        # long-term retrieval is skipped. `private_no_persist` structurally
+        # forbids `persist_turns` regardless of the active policy's own
+        # flags (see core_model/conversation/session_policy.py); the
+        # current request is still answered normally either way, since the
+        # message being answered is always passed as `query` directly, not
+        # read back from stored turn history.
+        session_mode = "session_memory" if payload.memory_consent else "private_no_persist"
         session = self.session_service.create_session(
             SessionCreate(
-                session_mode="session_memory",
+                session_mode=session_mode,
                 memory_policy_public_id=memory_policy_public_id,
                 participant_type="future_user_reference",
                 participant_scope_key=participant_scope_key,

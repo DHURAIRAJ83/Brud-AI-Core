@@ -1,0 +1,10 @@
+{
+  "nodes": [
+    "backend/api",
+    "backend/services",
+    "core_model/mini_brain",
+    "core_model/admin_assistant",
+    "core_model/corpus",
+    "core_model/training"
+  ]
+}

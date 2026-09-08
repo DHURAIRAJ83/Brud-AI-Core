@@ -1,0 +1,28 @@
+{
+  "audit_date": "2026-09-01",
+  "readiness_verdict": "READY_FOR_HUMAN_AUTHORIZATION",
+  "p0_objectives": {
+    "p0_01_canonical_model": {
+      "status": "COMPLETED",
+      "canonical_file": "core_model/architecture/brud_small_v2.py",
+      "brud_small_v2_params": 528128,
+      "brud_small_scaled_params": 3159040
+    },
+    "p0_02_canonical_training_engine": {
+      "status": "COMPLETED",
+      "canonical_file": "core_model/training/brud_training_engine.py",
+      "refusal_path_tested": true
+    },
+    "p0_03_checkpoint_compatibility": {
+      "status": "COMPLETED",
+      "routine": "load_checkpoint_safely",
+      "ws05_pe_handling": "FILTERED_DYNAMICALLY",
+      "fail_closed_shape_mismatch": true
+    }
+  },
+  "dry_runs": {
+    "e4_context_scaling": "PASSED_NON_MUTATING",
+    "e5_architecture_scaling": "PASSED_NON_MUTATING"
+  },
+  "frozen_artifact_integrity": "100_PERCENT_BIT_FOR_BIT_MATCH"
+}

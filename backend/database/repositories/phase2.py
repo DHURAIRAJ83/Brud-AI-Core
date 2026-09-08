@@ -85,70 +85,7 @@ def _source_public(row: sqlite3.Row) -> DatasetSourcePublic:
     )
 
 
-class SettingsRepository(BaseRepository):
-    VALID_TYPES = {"string", "boolean", "integer", "float", "json"}
-
-    def set(
-        self,
-        key: str,
-        value: Any,
-        *,
-        value_type: str = "string",
-        is_secret: bool = False,
-        description: str | None = None,
-    ) -> None:
-        if value_type not in self.VALID_TYPES:
-            raise ValidationError("unsupported setting value type")
-        serialized = self._serialize(value, value_type)
-        with self.transaction() as connection:
-            connection.execute(
-                """INSERT INTO app_settings(key,value,value_type,is_secret,description,updated_at)
-                VALUES (?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,
-                value_type=excluded.value_type,is_secret=excluded.is_secret,
-                description=excluded.description,updated_at=excluded.updated_at""",
-                (key, serialized, value_type, int(is_secret), description, _now()),
-            )
-
-    @staticmethod
-    def _serialize(value: Any, value_type: str) -> str:
-        try:
-            if value_type == "boolean":
-                if not isinstance(value, bool):
-                    raise ValueError
-                return "true" if value else "false"
-            if value_type == "integer":
-                if isinstance(value, bool) or not isinstance(value, int):
-                    raise ValueError
-                return str(value)
-            if value_type == "float":
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    raise ValueError
-                return str(float(value))
-            if value_type == "json":
-                return dumps_json(value)
-            if not isinstance(value, str):
-                raise ValueError
-            return value
-        except ValueError as exc:
-            raise ValidationError(f"value does not match setting type {value_type}") from exc
-
-    def get_safe(self, key: str) -> dict[str, Any]:
-        with self.transaction() as connection:
-            row = connection.execute(
-                "SELECT key,value,value_type,is_secret,description,updated_at "
-                "FROM app_settings WHERE key=?",
-                (key,),
-            ).fetchone()
-        if not row:
-            raise NotFoundError("setting not found")
-        return {
-            "key": row["key"],
-            "value": "[REDACTED]" if row["is_secret"] else row["value"],
-            "value_type": row["value_type"],
-            "is_secret": bool(row["is_secret"]),
-            "description": row["description"],
-            "updated_at": row["updated_at"],
-        }
+from .app_settings import SettingsRepository
 
 
 class DatasetSourceRepository(BaseRepository):
@@ -708,54 +645,7 @@ class ModelAssignmentRepository(BaseRepository):
         )
 
 
-class FeedbackRepository(BaseRepository):
-    def create(self, item: UserFeedbackCreate) -> UserFeedbackPublic:
-        public_id = str(uuid4())
-        with self.transaction() as connection:
-            chat_message_id = None
-            if item.chat_message_public_id:
-                row = connection.execute(
-                    "SELECT id FROM chat_messages WHERE public_id=?",
-                    (item.chat_message_public_id,),
-                ).fetchone()
-                if not row:
-                    raise NotFoundError("chat message not found")
-                chat_message_id = row[0]
-            connection.execute(
-                """INSERT INTO user_feedback(public_id,chat_message_id,feedback_type,rating,
-                comment,suggested_answer,status) VALUES (?,?,?,?,?,?,?)""",
-                (
-                    public_id,
-                    chat_message_id,
-                    item.feedback_type.value,
-                    item.rating,
-                    item.comment,
-                    item.suggested_answer,
-                    item.status.value,
-                ),
-            )
-        return self.get_by_public_id(public_id)
-
-    def get_by_public_id(self, public_id: str) -> UserFeedbackPublic:
-        with self.transaction() as connection:
-            row = connection.execute(
-                """SELECT f.*, m.public_id AS chat_message_public_id FROM user_feedback f
-                LEFT JOIN chat_messages m ON m.id=f.chat_message_id WHERE f.public_id=?""",
-                (public_id,),
-            ).fetchone()
-        if not row:
-            raise NotFoundError("feedback not found")
-        return UserFeedbackPublic(
-            public_id=row["public_id"],
-            chat_message_public_id=row["chat_message_public_id"],
-            feedback_type=row["feedback_type"],
-            rating=row["rating"],
-            comment=row["comment"],
-            suggested_answer=row["suggested_answer"],
-            status=row["status"],
-            created_at=row["created_at"],
-            reviewed_at=row["reviewed_at"],
-        )
+from .user_feedback import FeedbackRepository
 
 
 class AdminApprovalRepository(BaseRepository):
@@ -810,6 +700,33 @@ class AdminApprovalRepository(BaseRepository):
                 raise NotFoundError("admin approval not found")
             row = self._expire_if_due(connection, row)
         return _approval_public(row)
+
+    def list_by_target_type(
+        self, target_type: str, *, limit: int = 50, offset: int = 0
+    ) -> list[AdminApprovalPublic]:
+        """Phase 10: the read side of representing automation definitions
+        as `admin_approvals` rows (`target_type='admin_automation'`) --
+        reuses this same table, no new persistence model. A plain
+        additional `WHERE` clause on the existing table; no schema
+        change.
+
+        Defined *before* `list()` below deliberately: this class's own
+        `list()` method shadows the builtin `list` name for every
+        statement after it in this class body (Python evaluates a
+        method's return annotation before binding its name, but only
+        the *first* such definition sees the unshadowed builtin) --
+        placing this method after `list()` would raise `TypeError:
+        'function' object is not subscriptable` on `list[AdminApprovalPublic]`."""
+
+        limit, offset = self.pagination(limit, offset)
+        with self.transaction() as connection:
+            rows = connection.execute(
+                """SELECT * FROM admin_approvals WHERE target_type=?
+                ORDER BY id DESC LIMIT ? OFFSET ?""",
+                (target_type, limit, offset),
+            ).fetchall()
+            rows = [self._expire_if_due(connection, row) for row in rows]
+        return [_approval_public(row) for row in rows]
 
     def list(
         self, *, status: str | None = None, limit: int = 50, offset: int = 0

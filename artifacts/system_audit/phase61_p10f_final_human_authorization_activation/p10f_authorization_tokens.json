@@ -1,0 +1,7 @@
+{
+  "training_token_present": false,
+  "promotion_token_present": false,
+  "public_chat_token_present": false,
+  "compliance_token_present": false,
+  "recovery_token_present": false
+}

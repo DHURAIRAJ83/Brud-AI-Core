@@ -1,0 +1,8 @@
+{
+  "quality_summary": {
+    "generated_candidates": 300,
+    "quality_passed": 300,
+    "quality_quarantined": 0,
+    "quality_pass_rate": 100.0
+  }
+}

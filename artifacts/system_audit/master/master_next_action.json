@@ -1,0 +1,21 @@
+{
+  "audit_date": "2026-09-01",
+  "recommendation": {
+    "action": "PHASE_60_WS07_STAGE_C",
+    "title": "Architecture & Context Scaling (E4 Context Scaling & E5 Architecture Scaling)",
+    "why_next": "WS07 Stage B proved that repetition is eliminated via inference decoding controls and that EOS termination reaches 100% in E3-E. The remaining failure modes (context forgetting and low functional pass rate) are architectural bottlenecks that cannot be solved by data alone. The context window must expand to T=512 and parameter capacity must scale from 528k to ~3.2M parameters.",
+    "what_to_avoid": [
+      "DO NOT promote any candidate to production",
+      "DO NOT enable candidate traffic (keep 0.0%)",
+      "DO NOT attempt uncurated web scraping",
+      "DO NOT proceed to WS08 until Stage C produces a qualified scaled candidate"
+    ],
+    "success_criteria": [
+      "Context window scaled to T=512 tokens with verified attention mask",
+      "Architecture scaled to ~3.2M parameters (L=4, d=256, h=8)",
+      "Peak RAM remains under 1.5 GB on dual-core CPU with zero swap",
+      "Pass rate on 24 CAP probes improves to >= 25.0%",
+      "Multi-turn context retention (CAP-08 Kumar probe) passes cleanly"
+    ]
+  }
+}

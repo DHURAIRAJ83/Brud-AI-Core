@@ -357,4 +357,149 @@ async def execute_deletion(
     return service.execute(case_public_id, admin_public_id=admin.admin.public_id)
 
 
+# -- Phase 20 Admin Inbox & Governance Endpoints ------------------------------------------------
+
+from backend.database.repositories.knowledge_gap_governance_repository import (
+    KnowledgeGapGovernanceRepository,
+)
+from core_model.capabilities.knowledge_gap_governance_service import (
+    KnowledgeGapGovernanceService,
+)
+
+
+def governance_repository(settings: SettingsDependency) -> KnowledgeGapGovernanceRepository:
+    return KnowledgeGapGovernanceRepository(settings.resolved_database_path)
+
+
+@router.get("/inbox")
+async def get_inbox(
+    settings: SettingsDependency,
+    status: str | None = None,
+    severity: str | None = None,
+    gap_type: str | None = None,
+    candidate_type: str | None = None,
+    approval_state: str | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    records = repo.list_records(
+        status=status,
+        severity=severity,
+        gap_type=gap_type,
+        candidate_type=candidate_type,
+        approval_state=approval_state,
+        limit=limit,
+        offset=offset,
+    )
+    metrics = repo.aggregate_inbox_metrics()
+    return {
+        "records": [r.to_dict() for r in records],
+        "count": len(records),
+        "metrics": metrics,
+    }
+
+
+@router.get("/inbox/{gap_id}")
+async def get_inbox_record(gap_id: str, settings: SettingsDependency) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    record = repo.get_record_by_gap_id(gap_id) or repo.get_record_by_id(gap_id)
+    if not record:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Knowledge gap record not found: {gap_id}")
+    return record.to_dict()
+
+
+@router.post("/inbox/{gap_id}/review")
+async def review_inbox_record(
+    gap_id: str,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    record = repo.get_record_by_gap_id(gap_id) or repo.get_record_by_id(gap_id)
+    if not record:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Knowledge gap record not found: {gap_id}")
+
+    service = KnowledgeGapGovernanceService()
+    updated = service.start_review(record, reviewer_id=admin.admin.public_id)
+    return repo.update_governance_state(updated).to_dict()
+
+
+@router.post("/inbox/{gap_id}/classify")
+async def classify_inbox_record(
+    gap_id: str,
+    candidate_type: str,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    record = repo.get_record_by_gap_id(gap_id) or repo.get_record_by_id(gap_id)
+    if not record:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Knowledge gap record not found: {gap_id}")
+
+    service = KnowledgeGapGovernanceService()
+    updated = service.classify_candidate(
+        record, candidate_type=candidate_type, reviewer_id=admin.admin.public_id, reviewer_notes=notes
+    )
+    return repo.update_governance_state(updated).to_dict()
+
+
+@router.post("/inbox/{gap_id}/approve")
+async def approve_inbox_record(
+    gap_id: str,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    record = repo.get_record_by_gap_id(gap_id) or repo.get_record_by_id(gap_id)
+    if not record:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Knowledge gap record not found: {gap_id}")
+
+    service = KnowledgeGapGovernanceService()
+    updated = service.approve_candidate(record, approver_id=admin.admin.public_id, approval_notes=notes)
+    return repo.update_governance_state(updated).to_dict()
+
+
+@router.post("/inbox/{gap_id}/reject")
+async def reject_inbox_record(
+    gap_id: str,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    record = repo.get_record_by_gap_id(gap_id) or repo.get_record_by_id(gap_id)
+    if not record:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Knowledge gap record not found: {gap_id}")
+
+    service = KnowledgeGapGovernanceService()
+    updated = service.reject_candidate(record, reviewer_id=admin.admin.public_id, rejection_reason=reason)
+    return repo.update_governance_state(updated).to_dict()
+
+
+@router.post("/inbox/{gap_id}/defer")
+async def defer_inbox_record(
+    gap_id: str,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    repo = governance_repository(settings)
+    record = repo.get_record_by_gap_id(gap_id) or repo.get_record_by_id(gap_id)
+    if not record:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Knowledge gap record not found: {gap_id}")
+
+    service = KnowledgeGapGovernanceService()
+    updated = service.defer_candidate(record, reviewer_id=admin.admin.public_id, deferral_reason=reason)
+    return repo.update_governance_state(updated).to_dict()
+
+
 __all__ = ["router"]

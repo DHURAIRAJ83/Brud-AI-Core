@@ -199,3 +199,29 @@ async def admin_review(
     session_id: str, payload: AdminReviewRequest, settings: SettingsDependency, admin: CsrfDependency,
 ):
     return service(settings).admin_review(session_id, decision=payload.decision, admin_id=admin.admin.public_id)
+
+
+@router.post("/auto-evaluate")
+async def auto_evaluate_candidate(
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    run_id: str = "run-default",
+    model_version: str = "candidate-v1",
+    dataset_version: str = "dataset-v1",
+):
+    """Executes automated 17-category post-training evaluation suite and regression analysis."""
+    from backend.services.automated_model_evaluation_service import (
+        AutomatedModelEvaluationService,
+    )
+
+    eval_service = AutomatedModelEvaluationService(settings)
+    report = eval_service.run_post_training_evaluation(
+        run_id=run_id,
+        model_version=model_version,
+        dataset_version=dataset_version,
+        admin_id=admin.admin.public_id,
+    )
+    from dataclasses import asdict
+
+    return asdict(report)
+

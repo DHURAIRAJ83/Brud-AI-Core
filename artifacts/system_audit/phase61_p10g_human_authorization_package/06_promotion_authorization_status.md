@@ -1,0 +1,3 @@
+# 06 PROMOTION AUTHORIZATION STATUS REPORT
+
+- Status: `PRODUCTION_PROMOTION = BLOCKED`, `PRODUCTION_MERGE = BLOCKED`. Real human promotion authorization token absent.

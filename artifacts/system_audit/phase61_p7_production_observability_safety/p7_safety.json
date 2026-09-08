@@ -1,0 +1,8 @@
+{
+  "continuous_monitoring": true,
+  "escalations": [
+    "TRAFFIC_FREEZE",
+    "ROLLBACK_REQUIRED",
+    "PUBLIC_CHAT_SUSPENDED"
+  ]
+}

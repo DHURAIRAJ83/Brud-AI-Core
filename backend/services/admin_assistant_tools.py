@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.core.config import Settings
 from backend.core.exceptions import BrudError
@@ -34,10 +34,20 @@ from backend.database.repositories.pretraining_readiness import (
     PretrainingReadinessRepository,
 )
 from backend.database.repositories.rag import RagRepository
+from backend.services.admin_assistant_tool_governance import (
+    ToolAuthorizationError,
+    ToolCapability,
+    authorize_tool_invocation,
+    permissions_for_role,
+    resolve_admin_role,
+)
 from core_model.admin_assistant.dashboard_registry import (
     get_page_by_id,
     get_page_by_nav_key,
 )
+
+if TYPE_CHECKING:
+    from backend.database.connection_pool import ConnectionPool
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +109,80 @@ def _tool_pending_admin_proposals(settings: Settings, params: dict[str, Any]) ->
     return {"available": True, "items": [proposal.model_dump() for proposal in proposals]}
 
 
+def _tool_list_automations(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 10: lists every `admin_automation_define` proposal
+    (`target_type='admin_automation'` `admin_approvals` rows) -- pure
+    read, reuses `AdminAssistantService.list_automations()` verbatim.
+    An automation's `status` (pending/approved/rejected/expired/
+    cancelled) and `execution_status` are the same governed-proposal
+    lifecycle fields every other proposal already has; there is no
+    separate "automation state machine". `mode="json"` avoids the
+    known datetime-serialization hazard `ask_knowledge_base` (Phase 5)
+    already had to work around for this exact `dumps_json(redact_secrets(...))`
+    audit-write boundary."""
+
+    from backend.services.admin_assistant_service import AdminAssistantService
+
+    service = AdminAssistantService(settings)
+    automations = service.list_automations(
+        limit=int(params.get("limit", 20)), offset=int(params.get("offset", 0))
+    )
+    return {
+        "available": True,
+        "items": [automation.model_dump(mode="json") for automation in automations],
+    }
+
+
+def _tool_get_automation(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 10: one automation definition by its own approval public_id
+    -- reuses `AdminAssistantService.get_automation()` verbatim, which
+    already rejects a public_id belonging to a non-automation proposal."""
+
+    from backend.services.admin_assistant_service import AdminAssistantService
+
+    _require(params, "public_id")
+    service = AdminAssistantService(settings)
+    try:
+        automation = service.get_automation(params["public_id"])
+    except NotFoundError:
+        return {"available": False, "reason": "automation not found"}
+    return {"available": True, **automation.model_dump(mode="json")}
+
+
+def _tool_get_automation_execution_readiness(
+    settings: Settings, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Phase 11: evaluates -- never executes -- whether one automation
+    would be allowed to dispatch right now, via
+    `core_model.admin_assistant.automation_policy.
+    evaluate_automation_execution_readiness()`. Pure read: consults the
+    automation's own persisted `admin_approvals` row, the current
+    (empty-by-default) allowlist, and the defining admin's *current*
+    resolved RBAC permission -- never mutates anything, never calls
+    execute()."""
+
+    from backend.services.admin_assistant_service import AdminAssistantService
+    from core_model.admin_assistant.automation_policy import (
+        evaluate_automation_execution_readiness,
+    )
+
+    _require(params, "public_id")
+    service = AdminAssistantService(settings)
+    try:
+        automation = service.get_automation(params["public_id"])
+    except NotFoundError:
+        return {"available": False, "reason": "automation not found"}
+    decision = evaluate_automation_execution_readiness(
+        automation, admin_role_overrides=settings.admin_role_overrides_map
+    )
+    return {
+        "available": True,
+        "automation_public_id": automation.public_id,
+        "ready": decision.ready,
+        "blocking_reasons": list(decision.blocking_reasons),
+    }
+
+
 def _tool_governance_review_queue(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
     from backend.services.governance_service import GovernanceReviewService
 
@@ -124,6 +208,66 @@ def _tool_governance_entity_status(settings: Settings, params: dict[str, Any]) -
     # & Approval page's Approvals tab relies on.
     status = service.status(params["entity_type"], params["entity_public_id"])
     return {"available": True, **status}
+
+
+def _tool_get_governance_duplicate_conflict_summary(
+    settings: Settings, params: dict[str, Any]
+) -> dict[str, Any]:
+    """Phase 7 (Data Studio governance layer): pure counts, never the
+    full member listing -- reuses `GovernanceDuplicateService.list_groups()`/
+    `GovernanceConflictService.list_groups()` verbatim (both pure `SELECT`,
+    no side effect), matching the existing summary-shaped tool convention
+    (e.g. `get_sample_duplicate_summary`) rather than a raw dump."""
+
+    del params
+    from backend.services.governance_service import (
+        GovernanceConflictService,
+        GovernanceDuplicateService,
+    )
+
+    duplicates = GovernanceDuplicateService(settings).list_groups()["items"]
+    conflicts = GovernanceConflictService(settings).list_groups()["items"]
+
+    def _counts_by_status(groups: list[dict[str, Any]]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for group in groups:
+            counts[group["status"]] = counts.get(group["status"], 0) + 1
+        return counts
+
+    return {
+        "available": True,
+        "duplicate_group_count": len(duplicates),
+        "duplicate_groups_by_status": _counts_by_status(duplicates),
+        "conflict_group_count": len(conflicts),
+        "conflict_groups_by_status": _counts_by_status(conflicts),
+    }
+
+
+def _tool_list_dataset_versions(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    from backend.database.repositories.dataset_quality import DatasetQualityRepository
+    from backend.services.dataset_versioning import DatasetVersioningService
+
+    repository = DatasetQualityRepository(settings.resolved_database_path)
+    service = DatasetVersioningService(repository, settings)
+    return {
+        "available": True,
+        **service.list_versions(
+            page=int(params.get("page", 1)), page_size=int(params.get("page_size", 20))
+        ),
+    }
+
+
+def _tool_get_dataset_version(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    from backend.database.repositories.dataset_quality import DatasetQualityRepository
+    from backend.services.dataset_versioning import DatasetVersioningService
+
+    _require(params, "public_id")
+    repository = DatasetQualityRepository(settings.resolved_database_path)
+    service = DatasetVersioningService(repository, settings)
+    try:
+        return {"available": True, **service.get_version(params["public_id"])}
+    except NotFoundError:
+        return {"available": False, "reason": "dataset version not found"}
 
 
 def _tool_governed_build_status(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
@@ -182,6 +326,102 @@ def _tool_list_rag_knowledge_spaces(settings: Settings, params: dict[str, Any]) 
     return RagIngestionService(repository, settings).list_spaces()
 
 
+def _tool_list_rag_retrieval_profiles(
+    settings: Settings, params: dict[str, Any]
+) -> dict[str, Any]:
+    del params
+    from backend.services.rag_retrieval_service import RagRetrievalService
+
+    repository = RagRepository(settings.resolved_database_path)
+    return {"available": True, **RagRetrievalService(repository, settings).list_profiles()}
+
+
+def _tool_ask_knowledge_base(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 5: grounded Q&A over approved Admin Assistant knowledge,
+    reusing the existing (Phase 16) `RagGenerationService` end to end --
+    retrieval, hybrid scoring, access filtering, context budgeting,
+    citation building, and citation validation are all untouched,
+    exactly the same code path `backend/api/routes/rag.py`'s
+    `/grounded-answer` route already uses. This tool adds nothing new
+    to the RAG engine itself; it only exposes that existing
+    `admin_rag_lab`-scoped capability through the Admin Assistant's own
+    governed dispatch seam (`run_tool()` -> RBAC `tool.read`),
+    auto-resolving the same active `admin_diagnostic` assignment
+    `AdminAssistantChatService.llm_status()` already reports on --
+    the caller only chooses which retrieval profile (knowledge space)
+    to query and what to ask.
+
+    `_admin_id` is injected by `run_tool()` only because
+    `ToolDefinition.needs_admin_id=True` for this one tool (see
+    `run_tool()`'s docstring): `grounded_answer()` requires a real actor
+    identity for its own audit trail and for `ensure_instance_loaded()`,
+    unlike every other READ_ONLY tool, which never needs to know who is
+    asking."""
+
+    from backend.database.repositories.inference_runtime import InferenceRuntimeRepository
+    from backend.database.repositories.model_release import ModelReleaseRepository
+    from backend.models.rag import GroundedAnswerRequest
+    from backend.services.inference_runtime_service import InferenceRuntimeService
+    from backend.services.model_assignment_service import ModelAssignmentService
+    from backend.services.rag_generation_service import RAG_SCOPE, RagGenerationService
+    from backend.services.rag_retrieval_service import RagRetrievalService
+
+    _require(params, "query", "retrieval_profile_public_id")
+    admin_id = params.pop("_admin_id", None)
+    if not admin_id:
+        raise ReadOnlyToolError("ask_knowledge_base requires an authenticated admin identity")
+
+    inference_repository = InferenceRuntimeRepository(settings.resolved_database_path)
+    with inference_repository.transaction() as connection:
+        # Phase 6: `list_assignments()` is a plain `SELECT * FROM
+        # inference_model_assignments` -- it has no `scope_key` column
+        # (that only exists on the separate, joined single-row
+        # `.assignment()` lookup, via `inference_assignment_scopes`).
+        # Resolve the scope's id once via the existing, correct
+        # `scope_by_key()` API, then filter on the real
+        # `model_assignment_scope_id` column `list_assignments()` rows
+        # already carry -- same fix as
+        # AdminAssistantChatService._resolve_admin_diagnostic_assignment().
+        try:
+            scope = inference_repository.scope_by_key(connection, RAG_SCOPE)
+        except NotFoundError:
+            active_assignments: list[dict[str, Any]] = []
+        else:
+            active_assignments = [
+                dict(row)
+                for row in inference_repository.list_assignments(connection)
+                if row["model_assignment_scope_id"] == scope["id"] and row["status"] == "active"
+            ]
+    if not active_assignments:
+        return {
+            "available": False,
+            "reason": f"no active {RAG_SCOPE!r} RAG assignment configured",
+        }
+    assignment = max(active_assignments, key=lambda row: row["id"])
+
+    release_repository = ModelReleaseRepository(settings.resolved_database_path)
+    runtime_service = InferenceRuntimeService(inference_repository, release_repository, settings)
+    assignment_service = ModelAssignmentService(
+        inference_repository, release_repository, runtime_service, settings
+    )
+    repository = RagRepository(settings.resolved_database_path)
+    generation_service = RagGenerationService(
+        repository,
+        inference_repository,
+        runtime_service,
+        assignment_service,
+        RagRetrievalService(repository, settings),
+        settings,
+    )
+    request = GroundedAnswerRequest(
+        retrieval_profile_public_id=params["retrieval_profile_public_id"],
+        assignment_public_id=assignment["public_id"],
+        query=params["query"],
+    )
+    result = generation_service.grounded_answer(request, admin_id)
+    return {"available": True, **result}
+
+
 def _tool_model_evaluation_run(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
     from backend.services.model_evaluation_service import ModelEvaluationService
 
@@ -222,11 +462,257 @@ def _tool_pretraining_readiness_evaluations(
     return service.list_evaluations()
 
 
+def _tool_list_training_jobs(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 8: `PretrainingService` is the shared job engine reused
+    verbatim by pretraining, base training, and instruction tuning
+    (base/instruction call the same `create_job()`/`queue_job()` --
+    see docs/pretraining_architecture.md) -- one tool here covers all
+    three without a second training-status system."""
+
+    from backend.services.pretraining_service import PretrainingService
+
+    service = PretrainingService(PretrainingRepository(settings.resolved_database_path), settings)
+    return {
+        "available": True,
+        **service.list_jobs(
+            page=int(params.get("page", 1)), page_size=int(params.get("page_size", 20))
+        ),
+    }
+
+
+def _tool_get_training_job(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    from backend.services.pretraining_service import PretrainingService
+
+    _require(params, "public_id")
+    service = PretrainingService(PretrainingRepository(settings.resolved_database_path), settings)
+    try:
+        return {"available": True, **service.get_job(params["public_id"])}
+    except NotFoundError:
+        return {"available": False, "reason": "training job not found"}
+
+
+def _tool_get_training_checkpoints(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    from backend.services.pretraining_service import PretrainingService
+
+    _require(params, "public_id")
+    service = PretrainingService(PretrainingRepository(settings.resolved_database_path), settings)
+    try:
+        return {"available": True, **service.checkpoints(params["public_id"])}
+    except NotFoundError:
+        return {"available": False, "reason": "training job not found"}
+
+
+def _tool_get_training_evaluations(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    from backend.services.pretraining_service import PretrainingService
+
+    _require(params, "public_id")
+    service = PretrainingService(PretrainingRepository(settings.resolved_database_path), settings)
+    try:
+        return {"available": True, **service.evaluations(params["public_id"])}
+    except NotFoundError:
+        return {"available": False, "reason": "training job not found"}
+
+
+def _tool_get_training_quality_gate(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 8: the Phase 10 promotion-readiness signal
+    (`core_model.training.quality_gates`) -- `quality()`/`quality_issues()`
+    read the *latest already-generated* assessment; neither one computes
+    or persists a new one (that is `assess_quality()`, which takes an
+    `admin_id` and is intentionally not wrapped here -- READ_ONLY must
+    never trigger a new governance-relevant assessment as a side
+    effect of an admin's question)."""
+
+    from backend.database.repositories.training_reliability import TrainingReliabilityRepository
+    from backend.services.training_evaluation_service import TrainingEvaluationService
+
+    _require(params, "public_id")
+    service = TrainingEvaluationService(
+        PretrainingRepository(settings.resolved_database_path),
+        TrainingReliabilityRepository(settings.resolved_database_path),
+        settings,
+    )
+    try:
+        assessment = service.quality(params["public_id"])
+    except NotFoundError as exc:
+        return {"available": False, "reason": str(exc)}
+    issues = service.quality_issues(params["public_id"])
+    return {"available": True, "assessment": assessment, "issues": issues["items"]}
+
+
+def _tool_get_model_release_lineage(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 8, Objective 3 ("which dataset trained this model?"):
+    wraps `LineageGraphService.for_model_release()` verbatim -- reads
+    the *existing* direct FKs already on `model_release_candidates`
+    (dataset_version, tokenizer_version, checkpoint, instruction_tuning
+    candidate, model_evaluation_run), never re-derives or duplicates
+    them, then appends any Data-Studio-side lineage edges feeding the
+    dataset version. No new lineage table, no new tracing logic."""
+
+    from backend.services.lineage_graph_service import LineageGraphService
+
+    _require(params, "release_public_id")
+    service = LineageGraphService(settings)
+    # for_model_release() never raises for an unknown release -- it
+    # returns "complete": False with empty lineage, which the caller
+    # can already interpret honestly; no NotFoundError translation needed.
+    return {"available": True, **service.for_model_release(params["release_public_id"])}
+
+
+def _tool_get_system_health(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 9: reuses the exact diagnostic primitives the existing
+    `/health` and `/api/admin/system/database` routes already use
+    (`database_is_connected()`, `PRAGMA integrity_check`,
+    `migration_status()`) -- no new health-check mechanism, no
+    fabricated status. `status` is a direct, undeniable derivation:
+    'unavailable' if the database cannot be reached at all, 'degraded'
+    if reachable but `integrity_check` reports anything other than
+    'ok', 'healthy' otherwise -- never inferred from an unrelated
+    signal."""
+
+    del params
+    from backend.database.connection import database_connection, database_is_connected
+    from backend.database.migrations import migration_status
+
+    database_path = settings.resolved_database_path
+    connected = database_is_connected(database_path)
+    if not connected:
+        return {
+            "available": True,
+            "status": "unavailable",
+            "database_connected": False,
+            "reason": "database is not reachable",
+        }
+    with database_connection(database_path) as connection:
+        integrity_rows = connection.execute("PRAGMA integrity_check").fetchall()
+    integrity = (
+        "ok"
+        if [row[0] for row in integrity_rows] == ["ok"]
+        else "; ".join(str(row[0]) for row in integrity_rows)
+    )
+    schema = migration_status(database_path)
+    return {
+        "available": True,
+        "status": "healthy" if integrity == "ok" else "degraded",
+        "database_connected": True,
+        "database_integrity": integrity,
+        "schema_version": schema["current_version"],
+    }
+
+
+def _tool_get_connection_pool_health(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 9: reuses `ConnectionPool`'s own existing, thread-safe
+    counters verbatim -- `outstanding`/`connection_reused_count`/
+    `connection_recreated_count` are already computed by the pool
+    itself (Phase 7C-27); this tool adds no new accounting. Honestly
+    'unknown' (never a fabricated 'healthy'/'unavailable') when no pool
+    was supplied to this call -- e.g. a direct `run_tool()` call
+    outside the one app-wired `/admin/assistant/chat` route. `pool` is
+    injected by `run_tool()` only because `ToolDefinition.pool_aware=True`
+    for this tool -- the same single-reserved-key discipline established
+    for `get_recent_audit_events` in Phase 7C-60; only the counters
+    below (never the raw pool object) ever leave this function."""
+
+    del settings
+    pool = params.pop("_pool", None)
+    if pool is None:
+        return {
+            "available": True,
+            "status": "unknown",
+            "reason": "no connection pool available in this context",
+        }
+    return {
+        "available": True,
+        "status": "healthy",
+        "outstanding": pool.outstanding,
+        "connection_reused_count": pool.connection_reused_count,
+        "connection_recreated_count": pool.connection_recreated_count,
+    }
+
+
+def _tool_get_llm_runtime_health(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 9: wraps `AdminAssistantChatService.llm_status()` verbatim
+    -- the exact same method the existing `/api/admin/assistant/health`
+    route already calls. No new LLM/provider probing logic."""
+
+    del params
+    from backend.services.admin_assistant_chat_service import AdminAssistantChatService
+
+    status = AdminAssistantChatService(settings).llm_status()
+    return {
+        "available": True,
+        "status": "healthy" if status["llm_available"] else "unavailable",
+        **status,
+    }
+
+
+def _tool_get_worker_health(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 9: wraps `PretrainingReliabilityService.workers()` verbatim
+    -- "Read-only worker heartbeat views for the admin dashboard"
+    (Phase 10's own module docstring), already the authoritative source
+    for training-worker liveness. Counts by each worker's own real,
+    persisted `status` (see `worker_heartbeats` CHECK constraint) --
+    never an invented rollup verdict. Zero registered workers is
+    reported as 'unknown' (no evidence a worker has ever run), never
+    'unavailable' (which would claim a worker is known to be down)."""
+
+    del params
+    from backend.database.repositories.training_reliability import TrainingReliabilityRepository
+    from backend.services.pretraining_reliability_service import PretrainingReliabilityService
+
+    repository = TrainingReliabilityRepository(settings.resolved_database_path)
+    service = PretrainingReliabilityService(repository)
+    workers = service.workers()["items"]
+    if not workers:
+        return {
+            "available": True,
+            "status": "unknown",
+            "reason": "no training worker has ever registered a heartbeat",
+            "worker_count": 0,
+        }
+    counts: dict[str, int] = {}
+    for worker in workers:
+        counts[worker["status"]] = counts.get(worker["status"], 0) + 1
+    return {
+        "available": True,
+        "worker_count": len(workers),
+        "workers_by_status": counts,
+        "items": workers,
+    }
+
+
 def _tool_recent_audit_events(settings: Settings, params: dict[str, Any]) -> dict[str, Any]:
+    """Phase 7C-60: the first pool-aware tool. `run_tool()` only ever
+    places a `_pool` entry in `params` when this tool's own
+    `ToolDefinition.pool_aware` is `True` and a real pool was supplied
+    by the caller -- every other tool's `params` is untouched. Popping
+    it (rather than leaving it in `params`) keeps `limit`/`offset`
+    parsing above identical to every unpooled call, and keeps the
+    dict handed to `AuditLogRepository` free of an internal-only key.
+    `AuditLogRepository(BaseRepository)` never overrides `__init__`, so
+    it already accepts `pool=` (Phase 7C-28); `recent()` is a single
+    `SELECT`-only transaction with no preceding read to invalidate and
+    no nested `transaction()` call, structurally identical to the
+    dozens of pure-read routes already wired safely in Phases 7C-33
+    through 7C-56 -- see INVARIANT-10: only this repository object
+    (never the raw pool) ever reaches a handler."""
+
     limit = int(params.get("limit", 20))
     offset = int(params.get("offset", 0))
-    events = AuditLogRepository(settings.resolved_database_path).recent(limit=limit, offset=offset)
-    return {"available": True, "items": [event.model_dump() for event in events]}
+    pool = params.pop("_pool", None)
+    repository = AuditLogRepository(settings.resolved_database_path, pool=pool)
+    events = repository.recent(limit=limit, offset=offset)
+    # Phase 2: `mode="json"` renders `created_at` (and any future
+    # datetime/UUID/Decimal field) as a JSON-safe value up front, so
+    # `_run_tool_logged()`'s `dumps_json(redact_secrets(result))` audit
+    # write downstream never sees a raw `datetime` -- the same
+    # convention already used by the sibling `/system/audit/recent`
+    # route (backend/api/routes/system.py) for this same model. Fixes
+    # the pool-independent `JsonValidationError` Phase 7C-60 identified
+    # and left unfixed by design (see tests/database/test_admin_assistant_pool_wiring.py).
+    return {
+        "available": True,
+        "items": [event.model_dump(mode="json") for event in events],
+    }
 
 
 def _tool_list_external_data_providers(
@@ -1551,7 +2037,16 @@ def _tool_get_document_dataset_version_status(
 
 
 class ToolDefinition:
-    __slots__ = ("name", "mode", "description", "required_params", "handler")
+    __slots__ = (
+        "name",
+        "mode",
+        "description",
+        "required_params",
+        "handler",
+        "pool_aware",
+        "capability",
+        "needs_admin_id",
+    )
 
     def __init__(
         self,
@@ -1560,12 +2055,41 @@ class ToolDefinition:
         description: str,
         required_params: tuple[str, ...],
         handler: ToolFunction,
+        pool_aware: bool = False,
+        capability: ToolCapability = ToolCapability.READ_ONLY,
+        needs_admin_id: bool = False,
     ) -> None:
+        """Phase 7C-60: `pool_aware` (default `False`, matching every one of
+        the 90 existing positional `ToolDefinition(...)` construction sites
+        unchanged) marks a tool as able to accept a pool-backed repository
+        via `run_tool(..., pool=...)`. Only `run_tool()` reads this field;
+        it never reaches a handler directly, and a `False` tool's `params`
+        is never touched regardless of whether a pool was supplied to
+        `run_tool()` -- see INVARIANT-10 in the Phase 7C-59 design report.
+
+        Phase 2: `capability` (default `ToolCapability.READ_ONLY`, matching
+        the classification -- by direct and one-level-deep call-graph
+        inspection -- of every one of the 90 pre-Phase-2 tools) declares
+        what the tool CAN do. It never by itself grants authorization to
+        run; see `authorize_tool_invocation()` in
+        `admin_assistant_tool_governance.py` for the actual decision
+        point, which `run_tool()` below consults on every call.
+
+        Phase 5: `needs_admin_id` (default `False`, matching every
+        pre-Phase-5 tool unchanged) mirrors `pool_aware` exactly, but for
+        the caller's own admin identity instead of a pool: only a `True`
+        tool ever has `_admin_id` placed in its `params` by `run_tool()`,
+        under the same single-reserved-key/pop-before-use discipline
+        established for `_pool` in Phase 7C-60 -- see `run_tool()`."""
+
         self.name = name
         self.mode = mode
         self.description = description
         self.required_params = required_params
         self.handler = handler
+        self.pool_aware = pool_aware
+        self.capability = capability
+        self.needs_admin_id = needs_admin_id
 
 
 READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
@@ -1575,6 +2099,7 @@ READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
         "Counts and guidance across every governed area of the dashboard.",
         (),
         _tool_dashboard_overview,
+        capability=ToolCapability.READ_ONLY,  # Phase 2 batch 1
     ),
     ToolDefinition(
         "get_page_help",
@@ -1582,6 +2107,7 @@ READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
         "Purpose, tabs, prerequisites, and safety notes for one dashboard page.",
         (),  # accepts either page_id or nav_key -- enforced inside the handler
         _tool_page_help,
+        capability=ToolCapability.READ_ONLY,  # Phase 2 batch 1
     ),
     ToolDefinition(
         "get_pending_admin_proposals",
@@ -1589,6 +2115,33 @@ READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
         "Admin Assistant proposals currently awaiting Admin Review.",
         (),
         _tool_pending_admin_proposals,
+    ),
+    ToolDefinition(
+        "list_automations",
+        "governance",
+        "Every defined admin automation and its governed proposal status -- automations "
+        "are validated and recorded but never autonomously executed in this phase.",
+        (),
+        _tool_list_automations,
+        capability=ToolCapability.READ_ONLY,  # Phase 10 batch 1
+    ),
+    ToolDefinition(
+        "get_automation",
+        "governance",
+        "One automation definition's full governed proposal record (status, review, "
+        "execution) by its public_id.",
+        ("public_id",),
+        _tool_get_automation,
+        capability=ToolCapability.READ_ONLY,  # Phase 10 batch 1
+    ),
+    ToolDefinition(
+        "get_automation_execution_readiness",
+        "governance",
+        "Whether one automation would be allowed to dispatch right now -- evaluates "
+        "allowlist/approval/RBAC gates without ever executing anything.",
+        ("public_id",),
+        _tool_get_automation_execution_readiness,
+        capability=ToolCapability.READ_ONLY,  # Phase 11 batch 1
     ),
     ToolDefinition(
         "get_governance_review_queue",
@@ -1603,6 +2156,31 @@ READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
         "Per-target-use governance approval status for one entity.",
         ("entity_type", "entity_public_id"),
         _tool_governance_entity_status,
+    ),
+    ToolDefinition(
+        "get_governance_duplicate_conflict_summary",
+        "governance",
+        "Data Studio governance duplicate/conflict group counts, by status -- never the full "
+        "member listing.",
+        (),
+        _tool_get_governance_duplicate_conflict_summary,
+        capability=ToolCapability.READ_ONLY,  # Phase 7 batch 1
+    ),
+    ToolDefinition(
+        "list_dataset_versions",
+        "data",
+        "Every dataset version and its status, most recent first.",
+        (),
+        _tool_list_dataset_versions,
+        capability=ToolCapability.READ_ONLY,  # Phase 7 batch 1
+    ),
+    ToolDefinition(
+        "get_dataset_version",
+        "data",
+        "One dataset version's status, record count, splits, and manifest checksum.",
+        ("public_id",),
+        _tool_get_dataset_version,
+        capability=ToolCapability.READ_ONLY,  # Phase 7 batch 1
     ),
     ToolDefinition(
         "get_governed_build_status",
@@ -1640,6 +2218,26 @@ READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
         _tool_list_rag_knowledge_spaces,
     ),
     ToolDefinition(
+        "list_rag_retrieval_profiles",
+        "rag",
+        "Every configured RAG retrieval profile and its status -- use its public_id "
+        "with ask_knowledge_base to choose which knowledge space to query.",
+        (),
+        _tool_list_rag_retrieval_profiles,
+        capability=ToolCapability.READ_ONLY,  # Phase 5 batch 1
+    ),
+    ToolDefinition(
+        "ask_knowledge_base",
+        "rag",
+        "Ask a question and get a grounded, cited answer from approved Admin Assistant "
+        "knowledge (never the LLM's own unverified knowledge) -- returns "
+        "insufficient_evidence rather than a guess when no supporting evidence is found.",
+        ("query", "retrieval_profile_public_id"),
+        _tool_ask_knowledge_base,
+        capability=ToolCapability.READ_ONLY,  # Phase 5 batch 1
+        needs_admin_id=True,
+    ),
+    ToolDefinition(
         "get_model_evaluation_run",
         "model",
         "Status, metrics, and issues for one Evaluation run.",
@@ -1661,11 +2259,102 @@ READ_ONLY_TOOLS: tuple[ToolDefinition, ...] = (
         _tool_pretraining_readiness_evaluations,
     ),
     ToolDefinition(
+        "list_training_jobs",
+        "model",
+        "Every training job (pretraining, base training, or instruction tuning -- they "
+        "share one job engine) and its status, most recent first.",
+        (),
+        _tool_list_training_jobs,
+        capability=ToolCapability.READ_ONLY,  # Phase 8 batch 1
+    ),
+    ToolDefinition(
+        "get_training_job",
+        "model",
+        "One training job's status, configuration, and dataset/tokenizer references.",
+        ("public_id",),
+        _tool_get_training_job,
+        capability=ToolCapability.READ_ONLY,  # Phase 8 batch 1
+    ),
+    ToolDefinition(
+        "get_training_checkpoints",
+        "model",
+        "Every checkpoint saved by one training job, most recent step first, with "
+        "verification/best/latest status.",
+        ("public_id",),
+        _tool_get_training_checkpoints,
+        capability=ToolCapability.READ_ONLY,  # Phase 8 batch 1
+    ),
+    ToolDefinition(
+        "get_training_evaluations",
+        "model",
+        "Every evaluation recorded against one training job and its metric results.",
+        ("public_id",),
+        _tool_get_training_evaluations,
+        capability=ToolCapability.READ_ONLY,  # Phase 8 batch 1
+    ),
+    ToolDefinition(
+        "get_training_quality_gate",
+        "model",
+        "The latest already-generated promotion-readiness quality assessment and its "
+        "issues for one training job -- never triggers a new assessment.",
+        ("public_id",),
+        _tool_get_training_quality_gate,
+        capability=ToolCapability.READ_ONLY,  # Phase 8 batch 1
+    ),
+    ToolDefinition(
+        "get_model_release_lineage",
+        "model",
+        "Which dataset version, tokenizer version, checkpoint, instruction-tuning "
+        "candidate, and evaluation run trained and produced one model release candidate.",
+        ("release_public_id",),
+        _tool_get_model_release_lineage,
+        capability=ToolCapability.READ_ONLY,  # Phase 8 batch 1
+    ),
+    ToolDefinition(
         "get_recent_audit_events",
         "system",
         "The most recent audit log entries.",
         (),
         _tool_recent_audit_events,
+        pool_aware=True,
+        capability=ToolCapability.READ_ONLY,  # Phase 2 batch 1
+    ),
+    ToolDefinition(
+        "get_system_health",
+        "system",
+        "Database connectivity, integrity, and schema version -- the same checks the "
+        "existing /health and /api/admin/system/database routes already report.",
+        (),
+        _tool_get_system_health,
+        capability=ToolCapability.READ_ONLY,  # Phase 9 batch 1
+    ),
+    ToolDefinition(
+        "get_connection_pool_health",
+        "system",
+        "The app's shared database connection pool's checkout/reuse/recreate counters -- "
+        "'unknown' when no pool is available in the calling context.",
+        (),
+        _tool_get_connection_pool_health,
+        pool_aware=True,
+        capability=ToolCapability.READ_ONLY,  # Phase 9 batch 1
+    ),
+    ToolDefinition(
+        "get_llm_runtime_health",
+        "system",
+        "Whether an LLM-backed Admin Assistant reply is currently possible, and which "
+        "assignment backs it -- the same check /api/admin/assistant/health already reports.",
+        (),
+        _tool_get_llm_runtime_health,
+        capability=ToolCapability.READ_ONLY,  # Phase 9 batch 1
+    ),
+    ToolDefinition(
+        "get_worker_health",
+        "system",
+        "Every registered training worker's real, persisted heartbeat status -- counts by "
+        "status, never an invented rollup verdict.",
+        (),
+        _tool_get_worker_health,
+        capability=ToolCapability.READ_ONLY,  # Phase 9 batch 1
     ),
     ToolDefinition(
         "list_external_data_providers",
@@ -2258,23 +2947,86 @@ def tools_for_mode(mode: str) -> tuple[ToolDefinition, ...]:
     return tuple(tool for tool in READ_ONLY_TOOLS if tool.mode == mode)
 
 
-def run_tool(name: str, settings: Settings, params: dict[str, Any] | None = None) -> dict[str, Any]:
+def run_tool(
+    name: str,
+    settings: Settings,
+    params: dict[str, Any] | None = None,
+    *,
+    pool: "ConnectionPool | None" = None,
+    admin_id: str | None = None,
+    system_authorized: bool = False,
+) -> dict[str, Any]:
     """Look up and execute a read-only tool by name, returning a
     sanitized result. Never raises anything except `ReadOnlyToolError`
-    (unknown tool/bad params) or `NotFoundError`/`ValidationError` from
-    the wrapped service -- callers are expected to catch those and
+    (unknown tool/bad params), `ToolAuthorizationError` (capability not
+    authorized to execute here), or `NotFoundError`/`ValidationError`
+    from the wrapped service -- callers are expected to catch those and
     record a `failed`/`denied` tool-invocation row rather than leak a
-    stack trace to the admin."""
+    stack trace to the admin.
+
+    Phase 7C-60: `pool` is optional and defaults to `None`, so every
+    pre-existing call site (both real callers in
+    `admin_assistant_chat_service.py`, and every test that calls
+    `run_tool(name, settings, params)` positionally) is byte-for-byte
+    unchanged. It is only ever consulted for a tool whose own
+    `ToolDefinition.pool_aware` is `True` -- for the other 89 tools this
+    parameter is accepted but never read, and `params` is passed to
+    `tool.handler(settings, params)` exactly as before, unmodified. For
+    a `pool_aware` tool with a real `pool` supplied, a *shallow copy* of
+    `params` (never the caller's own dict) carries the pool under a
+    single reserved key so the handler can build its own pool-backed
+    repository -- the handler still receives exactly the same
+    `(settings, params)` two-argument call every other tool receives;
+    only that one handler knows to look for and pop the reserved key.
+    The raw `ConnectionPool` itself is never exposed to a handler in any
+    other form (INVARIANT-10, Phase 7C-59).
+
+    Phase 2: `admin_id`/`system_authorized` are optional and default to
+    values that reproduce pre-Phase-2 behavior exactly for every
+    non-`READ_ONLY` capability. Every tool's `ToolDefinition.capability`
+    is checked here, once, before dispatch; this is the single
+    authorization decision point -- a tool's `capability` field is
+    never itself treated as authorization by any other code path.
+
+    Phase 3: `admin_id` now also resolves an `AdminRole` (via
+    `resolve_admin_role()`, using `settings.admin_role_overrides_map`)
+    and that role's `Permission` set (via `permissions_for_role()`),
+    both computed fresh on every call -- never cached, never mutated
+    onto `settings`. `admin_id=None` resolves to the same default role
+    (`AdminRole.ADMIN`) Phase 2 effectively granted every caller, so
+    every pre-Phase-3 call site (including every test that calls
+    `run_tool(name, settings, params)` positionally) keeps working
+    unchanged."""
 
     params = params or {}
     tool = get_tool(name)
     if tool is None:
         raise ReadOnlyToolError(f"unknown read-only tool: {name}")
+    role = resolve_admin_role(admin_id, settings.admin_role_overrides_map)
+    permissions = permissions_for_role(role)
+    decision = authorize_tool_invocation(
+        tool.name,
+        tool.capability,
+        admin_id=admin_id,
+        permissions=permissions,
+        system_authorized=system_authorized,
+    )
+    if not decision.allowed:
+        raise ToolAuthorizationError(decision.reason)
     for required in tool.required_params:
         if not params.get(required):
             raise ReadOnlyToolError(f"missing required parameter: {required}")
+    call_params = params
+    extra: dict[str, Any] = {}
+    if tool.pool_aware and pool is not None:
+        extra["_pool"] = pool
+    if tool.needs_admin_id:
+        extra["_admin_id"] = admin_id
+    if extra:
+        call_params = dict(params)
+        call_params.update(extra)
     try:
-        result = tool.handler(settings, params)
+        result = tool.handler(settings, call_params)
     except ValidationError as exc:
         raise ReadOnlyToolError(str(exc)) from exc
     return redact_secrets(result)

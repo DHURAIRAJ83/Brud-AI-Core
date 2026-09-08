@@ -1,0 +1,50 @@
+{
+  "WS05_checkpoint": {
+    "path": "artifacts/candidates/phase60/checkpoints/checkpoint_best.pt",
+    "exists": true,
+    "sha256": "30dbb8927c0c61c786683c06eebf8a2718054a4cf1df25ece47f97ca7c605421",
+    "size_bytes": 6442143
+  },
+  "Phase59_checkpoint": {
+    "path": "artifacts/candidates/phase59/checkpoints/checkpoint_best.pt",
+    "exists": true,
+    "sha256": "a5218b5bdb94d3b218896f3021d7f7d5298023036d350bf8a2d5e3b70423371a",
+    "size_bytes": 6376854
+  },
+  "Tokenizer_v2_model": {
+    "path": "data/tokenizers/versions/tok/v2/tokenizer.model",
+    "exists": true,
+    "sha256": "65342625ebb88eaab0996f0f6c5f3ef24ae9fd3203bc8377a0db353601e9ffd4",
+    "size_bytes": 256436
+  },
+  "Tokenizer_v2_vocab": {
+    "path": "data/tokenizers/versions/tok/v2/tokenizer.vocab",
+    "exists": true,
+    "sha256": "85edd38a52dcadab79e8141a5089b613e2e5523b8dfe71c3a9274f2d89f2a0ca",
+    "size_bytes": 11739
+  },
+  "Production_database": {
+    "path": "data/brud_ai.db",
+    "exists": true,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size_bytes": 0
+  },
+  "Production_database_alt": {
+    "path": "data/database/brud_ai.db",
+    "exists": true,
+    "sha256": "34376318d92febf1dbbea10f5106220d37cfe6f0a1ab7b1489f0e01767d4f729",
+    "size_bytes": 11096064
+  },
+  "E3_dataset_v001": {
+    "path": "artifacts/candidates/phase60/ws07/e3/data/phase60_ws07_e3_dataset_v001.jsonl",
+    "exists": true,
+    "sha256": "cb1387ebc92c6554fa0bd6a3b076728142b295c7e3b334670a2f5547da17c391",
+    "size_bytes": 99694
+  },
+  "Governance_module": {
+    "path": "core_model/release/phase44_runtime_governance.py",
+    "exists": true,
+    "sha256": "27b3fb717897464f60fa154396feb9fcdc23c96cdf80043011b486186be36392",
+    "size_bytes": 7349
+  }
+}

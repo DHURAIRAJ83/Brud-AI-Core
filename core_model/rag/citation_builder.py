@@ -29,6 +29,12 @@ def build_citation_map(selected_chunks: list[dict[str, Any]]) -> dict[str, dict[
             "location": chunk.get("location", ""),
             "rank": chunk.get("rank", index),
             "content_checksum_sha256": chunk.get("content_checksum_sha256", ""),
+            # required by rag_generation_service.py's evidence_blocks
+            # construction (`entry["normalized_text"]`) -- omitting this
+            # was the Phase 2.3 defect: `selected_chunks` entries always
+            # carry it, but this map silently dropped it before the only
+            # caller read it back out.
+            "normalized_text": chunk.get("normalized_text", ""),
         }
     return citation_map
 

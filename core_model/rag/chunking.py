@@ -3,9 +3,16 @@
 Never merges content across sources, never mixes dataset train/test
 splits (a dataset-backed source is chunked strictly from one already-
 resolved source-version's text), never inserts private metadata into
-chunk text. Token counts are bounded estimates (~4 characters per
+chunk text. Token counts are bounded estimates (~2 characters per
 token), never a claim of exact tokenizer output — a real tokenizer is
-only invoked later, at embedding/generation time.
+only invoked later, at embedding/generation time. The context-budget
+system this feeds (``core_model/rag/context_budget.py``) is explicitly
+fail-closed, so this estimate must never be more optimistic than real
+tokenizer output; measured against this project's actual multilingual
+(Tamil/English) sentencepiece tokenizers, ~4 chars/token is unsafely
+optimistic (real-world measurement here is closer to 1.5), so ~2 is
+used as a deliberately conservative, still-simple margin rather than
+matching the worst case exactly.
 """
 
 from __future__ import annotations
@@ -20,7 +27,7 @@ _TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$")
 
 
 def estimate_token_count(text: str) -> int:
-    return max(1, len(text) // 4) if text else 0
+    return max(1, len(text) // 2) if text else 0
 
 
 def _is_table_block(text: str) -> bool:

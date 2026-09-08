@@ -1,0 +1,41 @@
+{
+  "audit_date": "2026-09-01",
+  "audit_type": "PRE_FLIGHT_ONLY",
+  "governance_status": {
+    "repository_mutation": false,
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED"
+  },
+  "preflight_status": "READY_FOR_HUMAN_STAGE_C_AUTHORIZATION",
+  "next_recommended_actions": [
+    {
+      "step": 1,
+      "action": "HUMAN_STAGE_C_AUTHORIZATION",
+      "description": "Human operator authorizes Stage C training execution (training_execution_authorized = true)"
+    },
+    {
+      "step": 2,
+      "action": "EXECUTE_E4_CONTEXT_SCALING",
+      "description": "Execute E4 Context Scaling (T=128 -> T=512 tokens, 528k params) using E3-E sealed dataset"
+    },
+    {
+      "step": 3,
+      "action": "EVALUATE_E4_CANDIDATE",
+      "description": "Run 24 CAP probes on E4 candidate (raw vs controlled theta=1.25 + 3-gram)"
+    },
+    {
+      "step": 4,
+      "action": "EXECUTE_E5_ARCHITECTURE_SCALING",
+      "description": "Execute E5 Architecture Scaling (L=4, d=256, h=8, d_ff=768, 3.16M params, B=4) using E3-E dataset"
+    },
+    {
+      "step": 5,
+      "action": "EVALUATE_E5_CANDIDATE",
+      "description": "Run 24 CAP probes on E5 candidate (target: >35% pass rate)"
+    }
+  ]
+}

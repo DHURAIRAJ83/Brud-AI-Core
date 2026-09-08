@@ -311,12 +311,15 @@ class ModelAssignmentService:
                     context_policy.get("acknowledge_missing_human_review")
                 ),
             )
+            is_self_approval = admin_id == assignment["created_by_admin_public_id"]
             violations = validate_approval_submission(
                 decision=payload.decision,
                 comment=payload.comment,
                 candidate_status_is_blocked=not result.eligible,
-                is_self_approval=True,
-                policy=ApprovalPolicy(allow_self_approval=True),
+                is_self_approval=is_self_approval,
+                policy=ApprovalPolicy(
+                    allow_self_approval=self.settings.inference_assignment_allow_self_approval,
+                ),
             )
             if violations:
                 raise ValidationError("; ".join(violations))
@@ -358,17 +361,22 @@ class ModelAssignmentService:
                 )
                 return public_row(self.repository.assignment(connection, public_id))
 
-            required_roles = (
-                self.settings.inference_required_public_approval_roles_list
-                if assignment["scope_key"] == "public_chat"
-                else ("release",)
-            )
+            if assignment["scope_key"] == "public_chat":
+                required_roles = self.settings.inference_required_public_approval_roles_list
+                minimum_distinct_approvers = self.settings.inference_public_chat_minimum_distinct_approvers
+            else:
+                required_roles = ("release",)
+                minimum_distinct_approvers = self.settings.inference_default_minimum_distinct_approvers
             approvals = [
                 dict(row)
                 for row in self.repository.approvals_for_assignment(connection, assignment["id"])
             ]
             policy_result = is_policy_satisfied(
-                approvals, ApprovalPolicy(required_roles=required_roles)
+                approvals,
+                ApprovalPolicy(
+                    required_roles=required_roles,
+                    minimum_distinct_approvers=minimum_distinct_approvers,
+                ),
             )
             if policy_result["satisfied"]:
                 version_public_id = self.repository.create_version(
@@ -475,7 +483,10 @@ class ModelAssignmentService:
         ]
         policy_result = is_policy_satisfied(
             approvals,
-            ApprovalPolicy(required_roles=self.settings.inference_required_public_approval_roles_list),
+            ApprovalPolicy(
+                required_roles=self.settings.inference_required_public_approval_roles_list,
+                minimum_distinct_approvers=self.settings.inference_public_chat_minimum_distinct_approvers,
+            ),
         )
         release = facts["release"]
         rollback_target_available = self.repository.latest_version(
@@ -579,15 +590,27 @@ class ModelAssignmentService:
 
     def _ensure_loaded(self, connection, assignment, admin_id: str) -> Any:
         instance = self._resolve_instance_for_assignment(connection, assignment)
+        release_public_id = assignment["release_public_id"]
         if (
             instance["status"] == "ready"
-            and instance["loaded_release_public_id"] == assignment["release_public_id"]
+            and instance["loaded_release_public_id"] == release_public_id
+            and self.runtime_service.is_loaded_in_process(instance["public_id"], release_public_id)
         ):
             return instance
-        self.runtime_service.load_instance_using_connection(
-            connection, instance["public_id"], assignment["release_public_id"], admin_id
-        )
-        return self.repository.instance(connection, instance["public_id"])
+        # The database may say "ready" from a load performed by a
+        # different process (or a prior process, before a restart) --
+        # that status is necessary but not sufficient. Reconcile it
+        # against this process's own in-memory cache before trusting it,
+        # and always re-load for real when the two disagree.
+        with self.runtime_service.instance_load_lock(instance["public_id"]):
+            if self.runtime_service.is_loaded_in_process(instance["public_id"], release_public_id):
+                # Another thread already completed the load while this one
+                # was waiting for the lock.
+                return self.repository.instance(connection, instance["public_id"])
+            self.runtime_service.load_instance_using_connection(
+                connection, instance["public_id"], release_public_id, admin_id
+            )
+            return self.repository.instance(connection, instance["public_id"])
 
     def ensure_instance_loaded(self, assignment_public_id: str, admin_id: str) -> dict[str, Any]:
         """Public entrypoint for sibling services (e.g. RAG generation) that

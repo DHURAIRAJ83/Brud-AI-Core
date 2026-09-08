@@ -1,0 +1,9 @@
+{
+  "acquisition_metrics": {
+    "raw_records_scanned": 3106,
+    "quarantined_records": 396,
+    "exact_duplicates": 71,
+    "unique_accepted_records": 2639,
+    "total_subword_tokens": 221412
+  }
+}

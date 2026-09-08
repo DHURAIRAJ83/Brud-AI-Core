@@ -1,0 +1,8 @@
+{
+  "backend_coverage": "100%",
+  "api_coverage": "98%",
+  "dashboard_coverage": "90%",
+  "assistant_page_coverage": "100%",
+  "chat_coverage": "75%",
+  "final_classification": "PARTIALLY_INTEGRATED (BACKEND_COMPLETE_UI_GAP)"
+}

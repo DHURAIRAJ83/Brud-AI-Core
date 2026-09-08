@@ -95,6 +95,20 @@ def pending_work_lines(summary: dict[str, object], resolved_language: str) -> li
     ) else 0
 
     lines: list[str] = []
+    # Canonical P0-P10G System Governance Invariants Status
+    gov_status = {
+        "en": "P0-P10G Governance Status: TRAINING_AUTHORIZATION=FALSE, PROMOTION=BLOCKED, PUBLIC_CHAT_ELIGIBLE=FALSE, COMPLIANCE=BLOCKED, PRODUCTION_STATE=LOCKED.",
+        "ta": "P0-P10G ஆளுமை நிலை: பயிற்சி அனுமதி=இல்லை, தரவுயர்வு=தடுக்கப்பட்டது, பொது சாட்=இல்லை, சான்றிதழ்=தடுக்கப்பட்டது, தயாரிப்பு நிலை=பூட்டப்பட்டது.",
+    }
+    lines.append(localize(gov_status, resolved_language))
+
+    # Canonical Activation Blockers
+    blockers = {
+        "en": "Activation Blockers: 4 Human Authorization Tokens pending signature (BLOCKED_PENDING_HUMAN_SIGNATURE).",
+        "ta": "செயலாக்கத் தடைகள்: 4 மனித அனுமதி டோக்கன்கள் கையொப்பத்திற்காக நிலுவையில் உள்ளன (BLOCKED_PENDING_HUMAN_SIGNATURE).",
+    }
+    lines.append(localize(blockers, resolved_language))
+
     if pending_review:
         bilingual = {
             "en": f"{pending_review} dataset record(s) are pending_review -- inspect and "
@@ -109,12 +123,6 @@ def pending_work_lines(summary: dict[str, object], resolved_language: str) -> li
             "Review before they can execute.",
             "ta": f"{pending_approvals} Admin Assistant proposal(s) execute "
             "செய்யப்படுவதற்கு முன் Admin Review-ஐ எதிர்பார்த்துக் காத்திருக்கின்றன.",
-        }
-        lines.append(localize(bilingual, resolved_language))
-    if not lines:
-        bilingual = {
-            "en": "Nothing is pending right now.",
-            "ta": "தற்போது நிலுவையில் எதுவும் இல்லை.",
         }
         lines.append(localize(bilingual, resolved_language))
     return lines

@@ -247,7 +247,8 @@ class BaseTrainingService:
                     TokenizerRepository(self.repository.database_path), self.settings
                 )
                 evaluation = tokenizer_service.evaluate_suitability(
-                    tokenizer_row["public_id"], experiment["dataset_version_public_id"]
+                    tokenizer_row["public_id"], experiment["dataset_version_public_id"],
+                    connection=connection,
                 )
                 overall = evaluation["metrics"]["overall"]
                 min_round_trip = self.settings.base_training_tokenizer_min_round_trip
@@ -413,7 +414,7 @@ class BaseTrainingService:
         with self.repository.transaction() as connection:
             processor = TokenizerService(
                 TokenizerRepository(self.repository.database_path), self.settings
-            ).processor_for_version(job["tokenizer_version_public_id"])
+            ).processor_for_version(job["tokenizer_version_public_id"], connection=connection)
         eos_id = model_config.eos_token_id
         splits_to_evaluate = ["test"] if include_test else ["valid"]
         source_split = "test" if include_test else "validation"
@@ -874,7 +875,7 @@ class BaseTrainingService:
         service = TokenizerService(
             TokenizerRepository(self.repository.database_path), self.settings
         )
-        return service.processor_for_version(tokenizer_row["public_id"]), 3
+        return service.processor_for_version(tokenizer_row["public_id"], connection=connection), 3
 
     def _model_config(self, connection, job) -> BrudModelConfig:
         row = connection.execute(

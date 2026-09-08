@@ -1,0 +1,5 @@
+{
+  "safety_passed": true,
+  "verbatim_leakage": false,
+  "prompt_injection_vulnerable": false
+}

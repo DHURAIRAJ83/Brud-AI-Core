@@ -107,6 +107,16 @@ export default async function globalSetup() {
     BRUD_ADMIN_ORIGIN: FRONTEND_BASE_URL,
     BRUD_CHATBOT_ORIGIN: FRONTEND_BASE_URL,
     BRUD_LOG_LEVEL: 'WARNING',
+    // The real global per-IP rate limiter (backend/core/rate_limit_middleware.py,
+    // default 120 req/60s) is a production safety net, not something this
+    // suite should silently weaken -- but every Playwright test shares one
+    // client IP (127.0.0.1) against one long-lived backend process, and a
+    // single realistic multi-step admin workflow (e.g. the Core Model
+    // lifecycle spec's several tab loads, each firing a handful of parallel
+    // GETs) can legitimately exceed that budget well before a real,
+    // human-paced admin session would. Raised for this isolated e2e process
+    // only; production defaults in backend/core/config.py are untouched.
+    BRUD_HTTP_RATE_LIMIT_MAX_REQUESTS: '5000',
   }
   const backendProcess = spawn(
     python,

@@ -1,0 +1,17 @@
+# Phase 61 Report — 08: Data Quality Engine & 19-Rule Verification
+
+## Quality Scoring Methodology (`quality_score` 0 – 100)
+1. **UTF-8 Validity Check** (+10 pts)
+2. **Unicode NFC Normalization Check** (+5 pts)
+3. **Tamil Character Range Verification** (+10 pts)
+4. **Control Character & Null Byte Removal** (+5 pts)
+5. **Min Length Guard (>15 chars)** (+5 pts)
+6. **Max Length Guard (<2,048 chars)** (+5 pts)
+7. **Repetition Loop Detection (N-gram repeat <0.3)** (+10 pts)
+8. **Exact Hash Duplicate Check** (+10 pts)
+9. **Near-Duplicate Similarity Check (<0.85)** (+10 pts)
+10. **Language Alignment Check** (+5 pts)
+11. **Tanglish Phonetic Range Check** (+5 pts)
+12. **Toxicity & Harmful Phrase Guard** (+5 pts)
+13. **Prompt Injection Pattern Guard** (+5 pts)
+14. **Secret & API Key Leakage Guard** (+5 pts)

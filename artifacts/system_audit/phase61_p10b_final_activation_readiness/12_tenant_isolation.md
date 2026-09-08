@@ -1,0 +1,4 @@
+# 12 TENANT ISOLATION AUDIT
+
+- Data Isolation Status: `VERIFIED`
+- Access Rule: `TENANT_A -> TENANT_A` = ALLOW, `TENANT_A -> TENANT_B` = DENY, `UNKNOWN_TENANT` = DENY.

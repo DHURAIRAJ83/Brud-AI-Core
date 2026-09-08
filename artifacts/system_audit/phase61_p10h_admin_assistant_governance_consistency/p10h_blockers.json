@@ -1,0 +1,9 @@
+{
+  "missing_authorization_tokens": [
+    "SignedTrainingAuthorizationToken",
+    "SignedPromotionAuthorizationToken",
+    "SignedPublicChatAdmissionToken",
+    "SignedComplianceCertificationToken"
+  ],
+  "activation_verdict": "BLOCKED_PENDING_HUMAN_AUTHORIZATION"
+}

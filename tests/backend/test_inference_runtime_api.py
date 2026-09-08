@@ -7,9 +7,16 @@ from fastapi import FastAPI
 from backend.core.config import Settings
 from backend.database.connection import database_connection
 from backend.database.migrations import initialize_database
+from backend.database.repositories.admin import AdminRepository
+from backend.database.repositories.model_release import ModelReleaseRepository
 from backend.main import create_app
+from backend.models.auth import AdminCreate
+from backend.models.model_release import ApprovalCreate
+from backend.services.model_release_service import ModelReleaseService
 from tests.backend.test_dataset_api import authenticated_client
 from tests.backend.test_instruction_tuning_api import _fixture_refs
+
+_APPROVAL_PASSWORD = "reviewer-pass-123!"  # noqa: S105 -- test fixture only
 
 pytestmark = pytest.mark.anyio
 
@@ -173,10 +180,41 @@ async def _build_release(
     await client.post(
         f"/api/admin/model-releases/candidates/{candidate_id}/manifest", headers=headers
     )
-    await client.post(
-        f"/api/admin/model-releases/candidates/{candidate_id}/approvals",
-        headers=headers,
-        json={"role": "release", "decision": "approve", "comment": "ok"},
+    # GOV-26/GOV-26b: releases require `resolve_minimum_distinct_approvers`
+    # distinct admin_public_id approvers (currently 2, see
+    # core_model/release/approval_policy.py), and GOV-33 forbids the
+    # candidate's own creator (the `headers` admin above) from approving it.
+    # Submit two real, distinct, non-creator approvals via the service layer
+    # directly, matching the pattern used in
+    # test_production_model_release_validation_activation.py and
+    # test_mini_brain_release_pipeline_service.py.
+    admin_repository = AdminRepository(app.state.settings.resolved_database_path)
+    reviewer_1 = admin_repository.create_admin(
+        AdminCreate(
+            username=f"release-reviewer-1-{slug}",
+            display_name="Release Reviewer 1",
+            password=_APPROVAL_PASSWORD,
+        )
+    )
+    reviewer_2 = admin_repository.create_admin(
+        AdminCreate(
+            username=f"release-reviewer-2-{slug}",
+            display_name="Release Reviewer 2",
+            password=_APPROVAL_PASSWORD,
+        )
+    )
+    model_release_service = ModelReleaseService(
+        ModelReleaseRepository(app.state.settings.resolved_database_path), app.state.settings
+    )
+    model_release_service.submit_approval(
+        candidate_id,
+        ApprovalCreate(role="release", decision="approve", comment="first reviewer"),
+        reviewer_1.public_id,
+    )
+    model_release_service.submit_approval(
+        candidate_id,
+        ApprovalCreate(role="release", decision="approve", comment="second reviewer"),
+        reviewer_2.public_id,
     )
     release = await client.post(
         "/api/admin/model-releases/releases",

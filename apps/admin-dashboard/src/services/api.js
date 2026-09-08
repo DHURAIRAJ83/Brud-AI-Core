@@ -249,6 +249,7 @@ export const estimateCoreModelConfig = (body) => request('/api/admin/core-models
 export const createCoreModelConfig = (body) => request('/api/admin/core-models/configs', { method: 'POST', body: JSON.stringify(body) })
 export const validateCoreModelConfig = (id) => request(`/api/admin/core-models/configs/${id}/validate`, { method: 'POST' })
 export const coreModelVersions = (query = '') => request(`/api/admin/core-models/versions${query}`)
+export const coreModelVersion = (id) => request(`/api/admin/core-models/versions/${id}`)
 export const createCoreModelVersion = (body) => request('/api/admin/core-models/versions', { method: 'POST', body: JSON.stringify(body) })
 export const coreModelVersionAction = (id, action, body) => request(`/api/admin/core-models/versions/${id}/${action}`, { method: 'POST', body: body ? JSON.stringify(body) : undefined })
 export const coreModelChecks = (id) => request(`/api/admin/core-models/versions/${id}/checks`)
@@ -758,6 +759,7 @@ export const baseModelReadinessEvaluation = (id) => request(`${PR}/readiness-eva
 
 const AA = '/api/admin/assistant'
 export const assistantOverview = () => request(`${AA}/overview`)
+export const getGovernanceStatus = () => request(`${AA}/governance-status`)
 export const assistantActions = () => request(`${AA}/actions`)
 export const assistantProposals = (status) => request(`${AA}/proposals${status ? `?status=${status}` : ''}`)
 export const assistantProposal = (id) => request(`${AA}/proposals/${id}`)
@@ -772,15 +774,20 @@ export const assistantPages = () => request(`${AA}/pages`)
 export const assistantHealth = () => request(`${AA}/health`)
 export const sendAssistantChatMessage = (body) => request(`${AA}/chat`, { method: 'POST', body: JSON.stringify(body) })
 export const submitAssistantFeedback = (body) => request(`${AA}/feedback`, { method: 'POST', body: JSON.stringify(body) })
+export const assistantUpload = (file, sessionId = null, mode = 'guide') => {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (sessionId) formData.append('session_id', sessionId)
+  formData.append('mode', mode)
+  return request(`${AA}/upload`, { method: 'POST', body: formData })
+}
 
 // -- MB-31F/MB-34A: widget->Mini Brain backend switch (reversible; see AdminAssistantWidget.jsx) --
 // ChatRequest (backend/models/mini_brain_llm_runtime.py) accepts only
 // { session_id, message } -- page_id/mode are widget-local UI state, not
 // part of this backend's request schema.
-// MB-48: local CPU model generation can legitimately take 60-130+
-// seconds; 120s gives real headroom without leaving a hung request
-// spinning forever with no feedback.
-export const sendMiniBrainWidgetMessage = (sessionId, message) => request('/api/admin/mini-brain/llm-runtime/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message }), timeoutMs: 120_000 })
+export const sendMiniBrainWidgetMessage = (sessionId, message, options = {}) => request('/api/admin/mini-brain/llm-runtime/chat', { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message, execution_mode: options.execution_mode || 'auto', provider_key: options.provider_key || null, model_override: options.model_override || null }), timeoutMs: 120_000 })
+
 
 // --- Phase 10A: Admin Assistant response-language preference --------------
 
@@ -1367,6 +1374,8 @@ export const miniBrainRuntimeHealth = () => request(`${MB}/runtime-health`)
 export const miniBrainDiagnostics = () => request(`${MB}/diagnostics`)
 export const miniBrainVersion = () => request(`${MB}/version`)
 export const miniBrainLogs = (query = '') => request(`${MB}/logs${query}`)
+export const miniBrainContext = () => request(`${MB}/context`)
+
 
 const MBKC = '/api/admin/mini-brain/knowledge-core'
 export const seedKnowledgeCore = () => request(`${MBKC}/seed`, { method: 'POST', body: '{}' })
@@ -1712,10 +1721,80 @@ export const lrSessions = (status) => request(`${MBLR}/sessions${status ? `?stat
 export const lrSession = (id) => request(`${MBLR}/sessions/${id}`)
 export const lrMessages = (id) => request(`${MBLR}/sessions/${id}/messages`)
 export const lrDeleteSession = (id) => request(`${MBLR}/sessions/${id}`, { method: 'DELETE' })
-export const lrChat = (sessionId, message) => request(`${MBLR}/chat`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message }) })
+export const lrChat = (sessionId, message, options = {}) => request(`${MBLR}/chat`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message, execution_mode: options.execution_mode || 'auto', provider_key: options.provider_key || null, model_override: options.model_override || null }) })
+
+export async function lrChatStream(sessionId, message, options = {}, onEvent, signal) {
+  if (!csrfToken) await getCsrf()
+  const headers = {
+    'Content-Type': 'application/json',
+    [csrfHeaderName]: csrfToken,
+  }
+  const body = JSON.stringify({
+    session_id: sessionId || null,
+    message,
+    execution_mode: options.execution_mode || 'auto',
+    provider_key: options.provider_key || null,
+    model_override: options.model_override || null,
+    grounded: Boolean(options.grounded),
+    retrieval_profile_public_id: options.retrieval_profile_public_id || null,
+    top_k: options.top_k || 4,
+  })
+
+  const response = await fetch(`${API_BASE}${MBLR}/chat/stream`, {
+    method: 'POST',
+    credentials: 'include',
+    cache: 'no-store',
+    headers,
+    body,
+    signal,
+  })
+
+  if (!response.ok) {
+    let msg = 'Streaming request failed.'
+    try {
+      const err = await response.json()
+      msg = err.detail || err.message || msg
+    } catch {
+      // fallback
+    }
+    throw new Error(msg)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() || ''
+
+    for (const block of parts) {
+      if (!block.trim()) continue
+      const lines = block.split('\n')
+      let eventType = 'message'
+      let dataStr = ''
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.substring(7).trim()
+        } else if (line.startsWith('data: ')) {
+          dataStr = line.substring(6).trim()
+        }
+      }
+      try {
+        const parsed = dataStr ? JSON.parse(dataStr) : {}
+        if (onEvent) onEvent(eventType, parsed)
+      } catch {
+        // Safe skip corrupt chunk
+      }
+    }
+  }
+}
 // MB-37: grounded chat -- retrieves RAG evidence via an existing retrieval profile and
 // injects it into the same local Mini Brain runtime `/chat` already uses.
-export const sendMiniBrainGroundedMessage = (sessionId, message, retrievalProfilePublicId, topK = 4) => request(`${MBLR}/grounded-chat`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message, retrieval_profile_public_id: retrievalProfilePublicId || null, top_k: topK }), timeoutMs: 120_000 })
+export const sendMiniBrainGroundedMessage = (sessionId, message, retrievalProfilePublicId, topK = 4, options = {}) => request(`${MBLR}/grounded-chat`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, message, retrieval_profile_public_id: retrievalProfilePublicId || null, top_k: topK, execution_mode: options.execution_mode || 'auto', provider_key: options.provider_key || null, model_override: options.model_override || null }), timeoutMs: 120_000 })
 // MB-42: read-only lookup used by the floating widget's "Use knowledge base" toggle.
 // MB-48: cache-busting query param -- this is called from multiple
 // independently-mounted components (the widget, the RAG page) that can
@@ -1733,6 +1812,8 @@ export const lrSummarizeReport = (sessionId, report) => request(`${MBLR}/summari
 export const lrSummarizeRegression = (sessionId, regressionResult) => request(`${MBLR}/summarize-regression`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, regression_result: regressionResult || {} }) })
 export const lrExplainError = (sessionId, errorMessage) => request(`${MBLR}/explain-error`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, error_message: errorMessage }) })
 export const lrNextActions = (sessionId, statusSnapshot) => request(`${MBLR}/next-actions`, { method: 'POST', body: JSON.stringify({ session_id: sessionId || null, status_snapshot: statusSnapshot || {} }) })
+export const ecAutoEvaluate = (body = {}) => request(`${MBEC}/auto-evaluate`, { method: 'POST', body: JSON.stringify(body) })
+
 
 // MB-04A: Prompt & Context Optimization. MB-47: real, tested backend
 // with zero UI surface until now.
@@ -1864,7 +1945,7 @@ export const egdbExportToDataset = (sessionId, payload) => request(`${MBEGDB}/se
 const MBTE = '/api/admin/mini-brain/training-engine'
 export const teDiagnostics = () => request(`${MBTE}/diagnostics`)
 export const teJobs = () => request(`${MBTE}/jobs`)
-export const teCreateJob = (topic, trainingPackageSessionPublicId, releaseGovernanceSessionPublicId, executionMode) => request(`${MBTE}/jobs`, { method: 'POST', body: JSON.stringify({ topic, training_package_session_public_id: trainingPackageSessionPublicId, release_governance_session_public_id: releaseGovernanceSessionPublicId, execution_mode: executionMode || 'simulation' }) })
+export const teCreateJob = (topic, trainingPackageSessionPublicId, releaseGovernanceSessionPublicId, executionMode, coreModelVersionPublicId, datasetVersionPublicId) => request(`${MBTE}/jobs`, { method: 'POST', body: JSON.stringify({ topic, training_package_session_public_id: trainingPackageSessionPublicId, release_governance_session_public_id: releaseGovernanceSessionPublicId, execution_mode: executionMode || 'simulation', core_model_version_public_id: coreModelVersionPublicId || null, dataset_version_public_id: datasetVersionPublicId || null }) })
 export const teJob = (id) => request(`${MBTE}/jobs/${id}`)
 export const teEvents = (id) => request(`${MBTE}/jobs/${id}/events`)
 export const teCheckpoints = (id) => request(`${MBTE}/jobs/${id}/checkpoints`)
@@ -1886,6 +1967,12 @@ export const teCancel = (id) => request(`${MBTE}/jobs/${id}/cancel`, { method: '
 export const teFinalize = (id) => request(`${MBTE}/jobs/${id}/finalize`, { method: 'POST', body: '{}' })
 export const teGenerateReport = (id) => request(`${MBTE}/jobs/${id}/report`, { method: 'POST', body: '{}' })
 export const teArchive = (id) => request(`${MBTE}/jobs/${id}/archive`, { method: 'POST', body: '{}' })
+
+// Phase 2.7G: real, read-only dataset-version -> token-block training
+// readiness -- no mutating action lives behind this endpoint.
+export const teDatasetReadiness = (datasetVersionPublicId, coreModelVersionPublicId) => request(`/api/admin/mini-brain/dataset-pipeline/readiness?dataset_version_public_id=${encodeURIComponent(datasetVersionPublicId)}&core_model_version_public_id=${encodeURIComponent(coreModelVersionPublicId)}`)
+export const teDatasetReadinessContract = (datasetVersionPublicId, coreModelVersionPublicId) => request(`/api/admin/mini-brain/dataset-pipeline/readiness/contract?dataset_version_public_id=${encodeURIComponent(datasetVersionPublicId)}&core_model_version_public_id=${encodeURIComponent(coreModelVersionPublicId)}`)
+export const teTrainingReadinessContract = (datasetVersionPublicId, coreModelVersionPublicId) => request(`/api/admin/mini-brain/training-engine/training-readiness/contract?dataset_version_public_id=${encodeURIComponent(datasetVersionPublicId)}&core_model_version_public_id=${encodeURIComponent(coreModelVersionPublicId)}`)
 
 const MBPCR = '/api/admin/mini-brain/public-chat'
 export const pcrDiagnostics = () => request(`${MBPCR}/diagnostics`)

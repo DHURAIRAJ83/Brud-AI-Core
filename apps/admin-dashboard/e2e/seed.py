@@ -229,6 +229,107 @@ async def _seed_vision_required_document_fixtures(settings: Settings) -> dict[st
     return {"vision_required_document_public_id": document["public_id"]}
 
 
+def _seed_core_model_tokenizer_fixtures(settings: Settings) -> dict[str, str]:
+    """Phase 2.7D: one real, active tokenizer version for the Core Model
+    lifecycle Playwright spec (14-core-model-lifecycle.spec.js) -- a
+    Configuration cannot be created without a real
+    `tokenizer_version_public_id`, and building a tokenizer through the
+    real training pipeline is out of scope for a UI spec's fixture setup.
+    Uses the exact same raw-row shape `_registered_tokenizer()` in
+    tests/backend/test_core_model_api.py already relies on for the same
+    purpose -- a dataset_versions row, a tokenizer_families row, and the
+    tokenizer_versions row that references both."""
+
+    from uuid import uuid4
+
+    from backend.database.connection import database_connection
+
+    dataset_public_id = str(uuid4())
+    family_public_id = str(uuid4())
+    tokenizer_public_id = str(uuid4())
+    with database_connection(settings.resolved_database_path) as connection:
+        connection.execute(
+            """INSERT INTO dataset_versions(public_id,name,version,status,checksum_sha256)
+            VALUES (?,?,?,?,?)""",
+            (dataset_public_id, "e2e-core-model", "v1", "ready", "d" * 64),
+        )
+        connection.execute(
+            """INSERT INTO tokenizer_families(public_id,name,display_name,status)
+            VALUES (?,?,?,?)""",
+            (family_public_id, "e2e-core-model-tokenizer", "E2E Core Model Tokenizer", "active"),
+        )
+        family_id = connection.execute(
+            "SELECT id FROM tokenizer_families WHERE public_id=?", (family_public_id,)
+        ).fetchone()[0]
+        dataset_id = connection.execute(
+            "SELECT id FROM dataset_versions WHERE public_id=?", (dataset_public_id,)
+        ).fetchone()[0]
+        connection.execute(
+            """INSERT INTO tokenizer_versions(public_id,tokenizer_family_id,version,
+            lifecycle_status,algorithm,vocabulary_size,character_coverage,
+            normalization_rule_name,model_type,dataset_version_id,corpus_checksum_sha256,
+            model_checksum_sha256,vocabulary_checksum_sha256,special_tokens_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                # vocabulary_size=137 (not the 128 tests/backend/test_core_model_api.py's
+                # own fixture and this file's Phase 14 checkpoint fixture chain both use)
+                # -- `config_checksum()` hashes the config's full architecture dict
+                # including vocabulary_size, so reusing 128 with the same context/hidden/
+                # intermediate/layer/head shape those fixtures already use would collide
+                # on `core_model_configs.config_checksum_sha256`'s UNIQUE constraint.
+                tokenizer_public_id, family_id, "v1", "active", "bpe", 137, 0.9995,
+                "nmt_nfkc", "sentencepiece", dataset_id, "a" * 64, "b" * 64, "c" * 64, "[]",
+            ),
+        )
+        connection.commit()
+
+    # A second config, deliberately built with a parameter_count_estimate
+    # that cannot match its own real architecture -- proves the UI's
+    # "Validate" action surfaces a real `status == 'invalid'` result
+    # honestly (Phase 2.7D TEST C) rather than only ever exercising the
+    # golden "always matches" path a config created through the real
+    # Create Configuration form would take. Built through the same real
+    # `CoreModelService.create_config()` the UI itself calls, then the
+    # stored estimate is corrupted by direct SQL -- mirroring exactly how
+    # `test_core_model_api.py` and this file's own tokenizer fixture above
+    # already use direct SQL only for state a real service call cannot
+    # otherwise produce.
+    from backend.database.repositories.core_models import CoreModelRepository
+    from backend.models.core_models import CoreConfigCreate
+    from backend.services.core_model_service import CoreModelService
+
+    core_models = CoreModelService(CoreModelRepository(settings.resolved_database_path), settings)
+    invalid_config = core_models.create_config(
+        # Deliberately a different architecture shape from the canonical
+        # 32/32/64/2/4/4 minimal test config the Core Model lifecycle
+        # Playwright spec's own "Create Config" form uses -- `config_checksum()`
+        # hashes the full architecture dict, and `core_model_configs.
+        # config_checksum_sha256` is UNIQUE, so reusing the same shape (even
+        # with a different name) would collide with that spec-created row.
+        CoreConfigCreate(
+            name="e2e-invalid-config", config_version="v1",
+            tokenizer_version_public_id=tokenizer_public_id, preset="micro",
+            context_length=32, hidden_size=48, intermediate_size=96,
+            num_hidden_layers=2, num_attention_heads=6, num_key_value_heads=6,
+        ),
+        admin_id=ADMIN_ID,
+    )
+    with database_connection(settings.resolved_database_path) as connection:
+        # `parameter_count_estimate > 0` is a real CHECK constraint -- `1`
+        # is the smallest value that satisfies it while still landing far
+        # outside `validate_config()`'s 1% real-vs-estimate tolerance.
+        connection.execute(
+            "UPDATE core_model_configs SET parameter_count_estimate=1 WHERE public_id=?",
+            (invalid_config["public_id"],),
+        )
+        connection.commit()
+
+    return {
+        "core_model_tokenizer_version_public_id": tokenizer_public_id,
+        "core_model_invalid_config_public_id": invalid_config["public_id"],
+    }
+
+
 def _seed_data_workspace_wizard_fixtures(settings: Settings) -> dict[str, str]:
     """Phase 2: one real, empty knowledge space for the Data Workspace
     Wizard's Build RAG step to select from -- the wizard itself creates
@@ -548,6 +649,11 @@ def main() -> None:
     # dedicated space so the two specs never contend for the same data) --
     wizard_fixtures = _seed_data_workspace_wizard_fixtures(settings)
     result.update(wizard_fixtures)
+
+    # -- Phase 2.7D: one real active tokenizer version for the Core Model
+    # lifecycle spec (14-core-model-lifecycle.spec.js) --
+    core_model_fixtures = _seed_core_model_tokenizer_fixtures(settings)
+    result.update(core_model_fixtures)
 
     print(json.dumps(result))
 

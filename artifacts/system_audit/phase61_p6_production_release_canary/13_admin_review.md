@@ -1,0 +1,3 @@
+# 13 ADMIN REVIEW INTEGRATION AUDIT
+
+- Queue Integration: Extended `AdminReviewQueueManager` with P6 decisions (`RELEASE_APPROVED`, `CANARY_APPROVED`, `PUBLIC_CHAT_APPROVED`, `ROLLBACK_APPROVED`).

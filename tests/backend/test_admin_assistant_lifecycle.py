@@ -124,9 +124,12 @@ def test_review_rejects_stale_proposal_when_target_changed_between_propose_and_c
         admin_id=OTHER_ADMIN_ID,
     )
 
+    # governance_target_approval_override is risk_level="high" -- reviewed_by
+    # must differ from requested_by (ADMIN_ID) so this test actually
+    # exercises the staleness rejection, not the separate self-approval one.
     with pytest.raises(AdminAssistantError, match="changed since this proposal"):
         service.review(
-            proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None
+            proposal.public_id, decision="approved", reviewed_by=OTHER_ADMIN_ID, comment=None
         )
 
     # The proposal must remain pending -- rejected-for-staleness never
@@ -150,8 +153,9 @@ def test_review_succeeds_when_target_unchanged(service: AdminAssistantService) -
         requested_by=ADMIN_ID,
         summary="Override rag eligibility",
     )
+    # High-risk action: reviewed_by must differ from requested_by (ADMIN_ID).
     reviewed = service.review(
-        proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment="agreed"
+        proposal.public_id, decision="approved", reviewed_by=OTHER_ADMIN_ID, comment="agreed"
     )
     assert reviewed.status == "approved"
     assert reviewed.execution_status == "pending"
@@ -174,7 +178,13 @@ def test_execute_records_verified_post_execution_state_in_audit(
         requested_by=ADMIN_ID,
         summary="Override rag eligibility",
     )
-    service.review(proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None)
+    # High-risk action: reviewed_by must differ from requested_by (ADMIN_ID).
+    # executor_public_id is unaffected by this phase's policy (no
+    # requester/executor distinctness requirement was established -- see
+    # Phase 16.8C's executor-identity decision).
+    service.review(
+        proposal.public_id, decision="approved", reviewed_by=OTHER_ADMIN_ID, comment=None
+    )
     executed = service.execute(proposal.public_id, executor_public_id=ADMIN_ID)
     assert executed.execution_status == "succeeded"
     assert executed.execution_result["decision"] == "allowed"
@@ -190,6 +200,141 @@ def test_execute_records_verified_post_execution_state_in_audit(
     )
     assert executed_event.metadata["verified_state"]["decision"] == "allowed"
     assert bool(executed_event.metadata["verified_state"]["is_override"]) is True
+
+
+# -- Phase 16.8C: high-risk actions require a reviewer distinct from the
+# proposer (F-1 remediation). Unconditional, non-configurable, scoped only
+# to risk_level="high" -- moderate/low actions are unaffected (see the
+# regression tests below).
+
+
+def test_high_risk_same_admin_review_is_rejected(service: AdminAssistantService) -> None:
+    proposal = service.propose(
+        action_type="governance_target_approval_override",
+        target_type="governance_entity",
+        target_public_id="dataset-record-self-approval-1",
+        request_payload={
+            "entity_type": "dataset_record",
+            "target_use": "rag",
+            "decision": "allowed",
+            "reason": "verified",
+        },
+        requested_by=ADMIN_ID,
+        summary="Override rag eligibility",
+    )
+    with pytest.raises(AdminAssistantError, match="reviewer distinct from"):
+        service.review(
+            proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None
+        )
+    # Rejected-for-self-approval must never silently consume the pending state.
+    reloaded = service.get_proposal(proposal.public_id)
+    assert reloaded.status == "pending"
+
+
+def test_high_risk_distinct_admin_review_succeeds(service: AdminAssistantService) -> None:
+    proposal = service.propose(
+        action_type="governance_target_approval_override",
+        target_type="governance_entity",
+        target_public_id="dataset-record-self-approval-2",
+        request_payload={
+            "entity_type": "dataset_record",
+            "target_use": "rag",
+            "decision": "allowed",
+            "reason": "verified",
+        },
+        requested_by=ADMIN_ID,
+        summary="Override rag eligibility",
+    )
+    reviewed = service.review(
+        proposal.public_id, decision="approved", reviewed_by=OTHER_ADMIN_ID, comment=None
+    )
+    assert reviewed.status == "approved"
+    executed = service.execute(proposal.public_id, executor_public_id=OTHER_ADMIN_ID)
+    assert executed.execution_status == "succeeded"
+
+
+def test_high_risk_same_admin_rejection_cannot_be_bypassed_by_rejecting_then_reproposing(
+    service: AdminAssistantService,
+) -> None:
+    # Confirms there is no execute()-time bypass: a proposal that never
+    # reached "approved" (because review() rejected the self-approval
+    # attempt) can never be executed, since execute() independently
+    # requires status="approved".
+    proposal = service.propose(
+        action_type="governance_target_approval_override",
+        target_type="governance_entity",
+        target_public_id="dataset-record-self-approval-3",
+        request_payload={
+            "entity_type": "dataset_record",
+            "target_use": "rag",
+            "decision": "allowed",
+            "reason": "verified",
+        },
+        requested_by=ADMIN_ID,
+        summary="Override rag eligibility",
+    )
+    with pytest.raises(AdminAssistantError):
+        service.review(
+            proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None
+        )
+    with pytest.raises(AdminAssistantError):
+        service.execute(proposal.public_id, executor_public_id=ADMIN_ID)
+
+
+def test_moderate_risk_same_admin_review_is_unaffected(service: AdminAssistantService) -> None:
+    # Regression: dataset_source_update is risk_level="moderate" -- the new
+    # high-risk-only policy must not touch it.
+    proposal = service.propose(
+        action_type="dataset_source_update",
+        target_type="dataset_source",
+        target_public_id="src-moderate-self-approval",
+        request_payload={"name": "New Name"},
+        requested_by=ADMIN_ID,
+        summary="Rename source",
+    )
+    reviewed = service.review(
+        proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None
+    )
+    assert reviewed.status == "approved"
+
+
+def test_low_risk_same_admin_review_is_unaffected(service: AdminAssistantService) -> None:
+    # Regression: dataset_record_review is risk_level="low" -- unaffected.
+    # Its stale-check fingerprint tolerates a nonexistent target (returns
+    # {"exists": False} both at propose and review time rather than
+    # raising), so this mirrors the existing style used for
+    # dataset_source_update elsewhere in this file.
+    proposal = service.propose(
+        action_type="dataset_record_review",
+        target_type="dataset_record",
+        target_public_id="does-not-exist-low-risk-regression",
+        request_payload={"decision": "approve"},
+        requested_by=ADMIN_ID,
+        summary="Approve record",
+    )
+    assert proposal.risk_level == "low"
+    reviewed = service.review(
+        proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None
+    )
+    assert reviewed.status == "approved"
+
+
+def test_release_request_actions_risk_level_and_review_policy_unaffected(
+    service: AdminAssistantService,
+) -> None:
+    # create_production_model_release_request/submit_production_model_release_request
+    # remain risk_level="moderate" and are explicitly out of scope for this
+    # remediation -- their actual approval/activation protection is
+    # downstream in GOV-33 (core_model.release.approval_policy), not here.
+    from core_model.admin_assistant.action_registry import get_action_definition
+
+    for action_type in (
+        "create_production_model_release_request",
+        "submit_production_model_release_request",
+    ):
+        definition = get_action_definition(action_type)
+        assert definition is not None
+        assert definition.risk_level == "moderate"
 
 
 def test_cancel_withdraws_a_pending_proposal(service: AdminAssistantService) -> None:

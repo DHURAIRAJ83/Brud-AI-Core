@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS10-01",
+      "category": "Pretraining Deficit to 50M Target",
+      "description": "While 5M is qualified (5.14M tokens), a remaining deficit of 44.86M tokens exists before the 50M pretraining target is reached.",
+      "severity": "MEDIUM",
+      "mitigation": "Execute deficit-driven staged expansion targeting 10M, 25M, and 50M milestones."
+    }
+  ]
+}

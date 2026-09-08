@@ -1,0 +1,4 @@
+{
+  "hmac_sha256_signed": true,
+  "token_bound": true
+}

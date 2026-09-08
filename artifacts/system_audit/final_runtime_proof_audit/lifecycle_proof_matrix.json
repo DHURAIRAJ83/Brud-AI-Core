@@ -1,0 +1,8 @@
+{
+  "dataset_to_rag_chat": "CONNECTED",
+  "chat_to_48_tools": "CONNECTED",
+  "feedback_to_learning_queue": "CONNECTED",
+  "training_execution": "GOVERNANCE_BLOCKED",
+  "candidate_promotion": "GOVERNANCE_BLOCKED",
+  "public_chat_admission": "GOVERNANCE_BLOCKED"
+}

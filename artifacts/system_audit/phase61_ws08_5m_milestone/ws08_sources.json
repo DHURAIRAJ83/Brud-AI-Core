@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "source_id": "SRC-WS08-5M-COLLECTION",
+      "source_name": "Multilingual Reference & Technical Documentation Collection (843 JSONL + 6,040 TXT + 1,513 MD Files)",
+      "status": "APPROVED",
+      "license": "CC-BY-4.0 / Public Domain / CC-BY-SA-4.0",
+      "accepted_records": 4246,
+      "subword_tokens": 4924354
+    }
+  ]
+}

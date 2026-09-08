@@ -56,7 +56,7 @@ describe('ChatPanel', () => {
     await waitFor(() => expect(api.lrSessions).toHaveBeenCalled())
     await user.type(screen.getByLabelText('Message'), 'What is Brud AI?')
     await user.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith(null, 'What is Brud AI?'))
+    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith(null, 'What is Brud AI?', expect.anything()))
     expect(await screen.findByText('Here is the answer.')).toBeInTheDocument()
   })
 
@@ -73,7 +73,7 @@ describe('ChatPanel', () => {
     await user.click(screen.getByLabelText('Use knowledge base'))
     await user.type(screen.getByLabelText('Message'), 'Grounded question')
     await user.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(api.sendMiniBrainGroundedMessage).toHaveBeenCalledWith(null, 'Grounded question', 'profile-1'))
+    await waitFor(() => expect(api.sendMiniBrainGroundedMessage).toHaveBeenCalledWith(null, 'Grounded question', 'profile-1', expect.anything(), expect.anything()))
     expect(await screen.findByText('Source A')).toBeInTheDocument()
     expect(screen.getByText('preview text')).toBeInTheDocument()
   })
@@ -90,7 +90,7 @@ describe('ChatPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
     expect(await screen.findByText(/No active knowledge base profile/)).toBeInTheDocument()
     // Falls back to the real, unmodified plain-chat path.
-    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith(null, 'Question'))
+    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith(null, 'Question', expect.anything()))
   })
 
   it('Regenerate resends the last real user message', async () => {
@@ -105,7 +105,7 @@ describe('ChatPanel', () => {
 
     api.lrChat.mockResolvedValue({ session: { public_id: 'sess-1' }, reply: { sanitized_text: 'Second reply.' }, backend_type: 'local' })
     await user.click(screen.getByRole('button', { name: 'Regenerate' }))
-    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith('sess-1', 'Original question'))
+    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith('sess-1', 'Original question', expect.anything()))
     expect(await screen.findByText('Second reply.')).toBeInTheDocument()
   })
 
@@ -183,6 +183,29 @@ describe('ChatPanel', () => {
     await user.type(screen.getByLabelText('Message'), 'Question')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     expect(await screen.findByText('bold')).toBeInTheDocument()
-    expect(document.querySelector('.chat-message-assistant strong')).toHaveTextContent('bold')
+    expect(document.querySelector('.chat-msg-assistant strong')).toHaveTextContent('bold')
+
+  })
+
+  it('switches between Chat, Assistant Settings, and Dataset Generate tabs', async () => {
+    mockDefaults()
+    const user = userEvent.setup()
+    render(<ChatPanel toast={toast} />)
+
+    // Chat tab is active by default
+    expect(screen.getByPlaceholderText('Type a question or attach a PDF…')).toBeInTheDocument()
+
+    // Switch to Settings tab
+    await user.click(screen.getByRole('button', { name: 'Provider & AI Settings' }))
+    expect(await screen.findByText('Assistant & Provider Settings')).toBeInTheDocument()
+
+    // Switch to Generate tab
+    await user.click(screen.getByRole('button', { name: 'Dataset Generator' }))
+    expect(await screen.findByText('Provider Dataset Generator')).toBeInTheDocument()
+
+    // Switch back to Chat tab
+    await user.click(screen.getByRole('button', { name: 'Assistant Chat' }))
+    expect(screen.getByPlaceholderText('Type a question or attach a PDF…')).toBeInTheDocument()
   })
 })
+

@@ -1,0 +1,18 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS01-01",
+      "category": "Pretraining Token Deficit",
+      "description": "Current approved token volume is 173,329 subword tokens, leaving a 49.8M token deficit against the 50M foundation pretraining target.",
+      "severity": "CRITICAL",
+      "remediation": "Aggressively collect public-domain Tamil, English, and Tanglish reference prose before authorizing pretraining."
+    },
+    {
+      "id": "RISK-WS01-02",
+      "category": "Dataset Boundary Leakage",
+      "description": "Accidentally mixing SFT or Evaluation benchmark probes into the Foundation Pretraining Corpus.",
+      "severity": "HIGH",
+      "remediation": "Enforce canonical 4-way registry isolation in data/registry/."
+    }
+  ]
+}

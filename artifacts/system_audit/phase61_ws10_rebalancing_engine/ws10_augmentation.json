@@ -1,0 +1,9 @@
+{
+  "augmentation_summary": {
+    "pipeline_status": "OPERATIONAL_AND_GOVERNED",
+    "provenance_tracked": true,
+    "rights_inherited": true,
+    "synthetic_ratio_ceiling": 0.15,
+    "current_synthetic_ratio": 0.0
+  }
+}

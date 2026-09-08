@@ -1,0 +1,24 @@
+{
+  "engines_tested": [
+    {
+      "class": "DatasetExpansionEngine",
+      "module": "core_model.admin_assistant.dataset_expansion_engine",
+      "status": "OPERATIONAL"
+    },
+    {
+      "class": "TanglishTransliterationEngine",
+      "module": "core_model.admin_assistant.dataset_expansion_engine",
+      "status": "OPERATIONAL"
+    },
+    {
+      "class": "BilingualTranslationEngine",
+      "module": "core_model.admin_assistant.dataset_expansion_engine",
+      "status": "OPERATIONAL"
+    },
+    {
+      "function": "to_tanglish",
+      "module": "core_model.admin_assistant.localization.tanglish_renderer",
+      "status": "OPERATIONAL"
+    }
+  ]
+}

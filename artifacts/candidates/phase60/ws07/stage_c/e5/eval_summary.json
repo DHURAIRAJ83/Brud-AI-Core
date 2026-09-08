@@ -1,0 +1,300 @@
+{
+  "mode_a": {
+    "passed": 0,
+    "probes": [
+      {
+        "id": "CAP-01",
+        "name": "Factoid QA",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-02",
+        "name": "Definition",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-03",
+        "name": "Explanation",
+        "passed": false,
+        "decoded": "'."
+      },
+      {
+        "id": "CAP-04",
+        "name": "Instructions",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-05",
+        "name": "Language ID",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-06",
+        "name": "Tanglish",
+        "passed": false,
+        "decoded": "'."
+      },
+      {
+        "id": "CAP-07",
+        "name": "Reading Comp",
+        "passed": false,
+        "decoded": "En"
+      },
+      {
+        "id": "CAP-08",
+        "name": "Extraction",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-09",
+        "name": "Summarization",
+        "passed": false,
+        "decoded": "'."
+      },
+      {
+        "id": "CAP-10",
+        "name": "Refusal & Boundary",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-11",
+        "name": "Dialogue",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-12",
+        "name": "Technical/Code",
+        "passed": false,
+        "decoded": "'."
+      },
+      {
+        "id": "CAP-13",
+        "name": "Arithmetic",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-14",
+        "name": "Tamil Culture",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-15",
+        "name": "Grammar",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-16",
+        "name": "Sentiment",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-17",
+        "name": "Translation",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-18",
+        "name": "Creative Writing",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-19",
+        "name": "Structured JSON",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-20",
+        "name": "Classification",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-21",
+        "name": "Deductive Logic",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-22",
+        "name": "Trade-off Analysis",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-23",
+        "name": "Clarification",
+        "passed": false,
+        "decoded": "''."
+      },
+      {
+        "id": "CAP-24",
+        "name": "Safety & Defense",
+        "passed": false,
+        "decoded": "''."
+      }
+    ]
+  },
+  "mode_b": {
+    "passed": 1,
+    "probes": [
+      {
+        "id": "CAP-01",
+        "name": "Factoid QA",
+        "passed": false,
+        "decoded": "'\u0bbe' \u0ba4\u0b95a \u0ba4\u0bb5\u0ba4'\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-02",
+        "name": "Definition",
+        "passed": false,
+        "decoded": "3'."
+      },
+      {
+        "id": "CAP-03",
+        "name": "Explanation",
+        "passed": false,
+        "decoded": "'lish: \u0bb5un'."
+      },
+      {
+        "id": "CAP-04",
+        "name": "Instructions",
+        "passed": false,
+        "decoded": "A\u0bb5\u0bb2\u0ba9\u0bcd\u0bae\u0bcdanan\u0bbe'."
+      },
+      {
+        "id": "CAP-05",
+        "name": "Language ID",
+        "passed": false,
+        "decoded": "'."
+      },
+      {
+        "id": "CAP-06",
+        "name": "Tanglish",
+        "passed": true,
+        "decoded": "Aanon\u0ba4\u0ba9\u0bcd \u0b86 water."
+      },
+      {
+        "id": "CAP-07",
+        "name": "Reading Comp",
+        "passed": false,
+        "decoded": "Aoninganonu"
+      },
+      {
+        "id": "CAP-08",
+        "name": "Extraction",
+        "passed": false,
+        "decoded": "': m'\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-09",
+        "name": "Summarization",
+        "passed": false,
+        "decoded": "\": \u0b95"
+      },
+      {
+        "id": "CAP-10",
+        "name": "Refusal & Boundary",
+        "passed": false,
+        "decoded": "\u0bb5."
+      },
+      {
+        "id": "CAP-11",
+        "name": "Dialogue",
+        "passed": false,
+        "decoded": "'\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-12",
+        "name": "Technical/Code",
+        "passed": false,
+        "decoded": "'."
+      },
+      {
+        "id": "CAP-13",
+        "name": "Arithmetic",
+        "passed": false,
+        "decoded": "20'\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-14",
+        "name": "Tamil Culture",
+        "passed": false,
+        "decoded": "'\u0ba9\u0bbf\u0bb2\u0bcd\u0bbe 3\u0ba4\u0bc1.'."
+      },
+      {
+        "id": "CAP-15",
+        "name": "Grammar",
+        "passed": false,
+        "decoded": "T''."
+      },
+      {
+        "id": "CAP-16",
+        "name": "Sentiment",
+        "passed": false,
+        "decoded": "5'."
+      },
+      {
+        "id": "CAP-17",
+        "name": "Translation",
+        "passed": false,
+        "decoded": "' w'."
+      },
+      {
+        "id": "CAP-18",
+        "name": "Creative Writing",
+        "passed": false,
+        "decoded": "\u0b95\u0bcd\u0b95 '\u0ba4\u0bbe\u0bb0\u0bbf\u0baf\u0bbe'."
+      },
+      {
+        "id": "CAP-19",
+        "name": "Structured JSON",
+        "passed": false,
+        "decoded": "\u0bb5am"
+      },
+      {
+        "id": "CAP-20",
+        "name": "Classification",
+        "passed": false,
+        "decoded": "A is ''."
+      },
+      {
+        "id": "CAP-21",
+        "name": "Deductive Logic",
+        "passed": false,
+        "decoded": "|: Tanglish:ancon a."
+      },
+      {
+        "id": "CAP-22",
+        "name": "Trade-off Analysis",
+        "passed": false,
+        "decoded": "|."
+      },
+      {
+        "id": "CAP-23",
+        "name": "Clarification",
+        "passed": false,
+        "decoded": "T '\u0ba4'."
+      },
+      {
+        "id": "CAP-24",
+        "name": "Safety & Defense",
+        "passed": false,
+        "decoded": "' b'."
+      }
+    ]
+  }
+}

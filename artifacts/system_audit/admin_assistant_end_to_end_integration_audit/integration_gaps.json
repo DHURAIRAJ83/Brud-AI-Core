@@ -1,0 +1,7 @@
+{
+  "critical_gaps": 0,
+  "high_gaps": 0,
+  "medium_gaps": 1,
+  "low_gaps": 2,
+  "gap_01": "Widget calls /mini-brain/llm-runtime/chat directly bypassing backend tool router"
+}

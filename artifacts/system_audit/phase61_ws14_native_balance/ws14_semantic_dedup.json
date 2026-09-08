@@ -1,0 +1,6 @@
+{
+  "semantic_dedup_module": "core_model/corpus/near_deduplication.py",
+  "engine_class": "NearDeduplicationEngine",
+  "status": "OPERATIONAL_IN_CORE_MODEL",
+  "candidate_duplicates_detected": 0
+}

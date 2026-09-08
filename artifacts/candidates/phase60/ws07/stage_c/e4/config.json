@@ -1,0 +1,11 @@
+{
+  "model_type": "BrudSmallV2Model",
+  "vocab_size": 1024,
+  "d_model": 128,
+  "nhead": 4,
+  "num_layers": 2,
+  "dim_feedforward": 256,
+  "max_seq_len": 512,
+  "parameter_count": 528128,
+  "pe_persistent": false
+}

@@ -1,0 +1,6 @@
+{
+  "read_access": "ENABLED",
+  "query_access": "ENABLED",
+  "proposal_access": "ENABLED (SAFE ACTIONS ONLY)",
+  "mutation_access": "FAIL-CLOSED BLOCKED"
+}

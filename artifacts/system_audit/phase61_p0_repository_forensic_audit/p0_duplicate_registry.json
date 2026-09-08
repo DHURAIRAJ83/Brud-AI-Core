@@ -1,0 +1,8 @@
+{
+  "duplicate_groups": [
+    "memorization_guards",
+    "diversity_analyzers",
+    "corpus_expanders",
+    "token_ledgers"
+  ]
+}

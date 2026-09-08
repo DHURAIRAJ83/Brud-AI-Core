@@ -1,0 +1,31 @@
+{
+  "workstream_name": "Phase 61 WS04 1M Token Milestone Closure & Multilingual Corpus Expansion",
+  "audit_date": "2026-09-01",
+  "governance_state": {
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED"
+  },
+  "token_accounting": {
+    "ws03_accepted_records": 2639,
+    "ws03_subword_tokens": 221412,
+    "ws04_accepted_records": 2894,
+    "ws04_subword_tokens": 232847,
+    "new_unique_records_added": 255,
+    "new_subword_tokens_added": 11435,
+    "milestone_1m_target": 1000000,
+    "target_50m_tokens": 50000000,
+    "milestone_1m_token_deficit": 767153,
+    "milestone_1m_completion_pct": 23.2847,
+    "milestone_1m_status": "NOT_READY_DEFICIT_EXISTS",
+    "synthetic_ratio": 0.0,
+    "reproducibility": {
+      "token_delta": 0,
+      "hash_delta": 0,
+      "status": "REPRODUCIBLE"
+    }
+  }
+}

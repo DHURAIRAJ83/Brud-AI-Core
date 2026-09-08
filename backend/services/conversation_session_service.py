@@ -283,8 +283,20 @@ class ConversationSessionService:
         content: str,
         admin_id: str,
         language_category: str = "unknown",
+        connection=None,
     ) -> dict[str, Any]:
-        with self.repository.transaction() as connection:
+        """``connection``: when supplied, the turn is recorded on the
+        caller's own already-open transaction instead of opening a second,
+        independent one -- required for callers (e.g.
+        `ChatOrchestrationService._persist_final`) that already hold a
+        write-locked transaction open, since a second, independent
+        transaction's own write would otherwise race that lock (SQLite
+        raises `database is locked` for the resulting lock-upgrade
+        conflict; see `BaseRepository.transaction()`'s docstring). Callers
+        that do not pass a connection keep today's exact behavior
+        unchanged: `create_turn` opens and owns its own transaction."""
+
+        if connection is not None:
             session = self.repository.session(connection, session_public_id)
             if session["status"] != "active":
                 raise ValidationError("session must be active to accept a new turn")
@@ -338,6 +350,16 @@ class ConversationSessionService:
                 {"turn_count": session["turn_count"] + 1, "last_activity_at": _now_sql()},
             )
             return public_row(self.repository.turn(connection, public_id))
+
+        with self.repository.transaction() as connection:
+            return self.create_turn(
+                session_public_id,
+                role=role,
+                content=content,
+                admin_id=admin_id,
+                language_category=language_category,
+                connection=connection,
+            )
 
     # --- summaries -----------------------------------------------------
 

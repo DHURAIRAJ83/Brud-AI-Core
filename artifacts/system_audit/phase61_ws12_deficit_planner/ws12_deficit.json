@@ -1,0 +1,39 @@
+{
+  "deficits_to_50m": {
+    "ta": {
+      "target": 17500000,
+      "current": 445469,
+      "deficit": 17054531,
+      "completion_pct": 2.55,
+      "priority": 1
+    },
+    "tgl": {
+      "target": 7500000,
+      "current": 20112,
+      "deficit": 7479888,
+      "completion_pct": 0.27,
+      "priority": 2
+    },
+    "structured": {
+      "target": 5000000,
+      "current": 97606,
+      "deficit": 4902394,
+      "completion_pct": 1.95,
+      "priority": 3
+    },
+    "mixed": {
+      "target": 5000000,
+      "current": 87746,
+      "deficit": 4912254,
+      "completion_pct": 1.75,
+      "priority": 4
+    },
+    "en": {
+      "target": 15000000,
+      "current": 4489543,
+      "deficit": 10510457,
+      "completion_pct": 29.93,
+      "priority": 5
+    }
+  }
+}

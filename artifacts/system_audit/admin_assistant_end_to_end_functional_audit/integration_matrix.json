@@ -1,0 +1,7 @@
+{
+  "governance": "END_TO_END_CONNECTED",
+  "rag": "END_TO_END_CONNECTED",
+  "datasets": "END_TO_END_CONNECTED",
+  "models": "END_TO_END_CONNECTED",
+  "training": "END_TO_END_CONNECTED"
+}

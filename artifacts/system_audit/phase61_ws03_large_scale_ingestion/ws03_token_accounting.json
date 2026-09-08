@@ -1,0 +1,32 @@
+{
+  "domain_tokens": {
+    "ta": {
+      "current_tokens": 75270,
+      "target_50m": 17500000,
+      "deficit_50m": 17424730
+    },
+    "en": {
+      "current_tokens": 64724,
+      "target_50m": 15000000,
+      "deficit_50m": 14935276
+    },
+    "tgl": {
+      "current_tokens": 20103,
+      "target_50m": 7500000,
+      "deficit_50m": 7479897
+    },
+    "mixed": {
+      "current_tokens": 61315,
+      "target_50m": 5000000,
+      "deficit_50m": 4938685
+    },
+    "structured": {
+      "current_tokens": 0,
+      "target_50m": 5000000,
+      "deficit_50m": 5000000
+    }
+  },
+  "total_tokens": 221412,
+  "milestone_1m_target": 1000000,
+  "milestone_1m_deficit": 778588
+}

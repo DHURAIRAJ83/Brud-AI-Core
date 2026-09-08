@@ -15,6 +15,8 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 SERVICE_PATH = (
     Path(__file__).resolve().parents[2]
     / "backend" / "services" / "mini_brain_training_engine_service.py"
@@ -298,13 +300,32 @@ def test_llama_cpp_adapter_is_never_available_for_training() -> None:
             assert "return False" in class_body.split("def is_available")[1].split("def ")[0]
 
 
-def test_torch_adapter_real_methods_all_raise_backend_unavailable() -> None:
-    source = ADAPTER_PATH.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    lines = source.splitlines()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef) and node.name == "TorchTrainingAdapter":
-            for item in node.body:
-                if isinstance(item, ast.FunctionDef) and item.name not in ("is_available", "_unavailable"):
-                    body = "\n".join(lines[item.lineno - 1 : item.end_lineno])
-                    assert "raise self._unavailable()" in body, f"TorchTrainingAdapter.{item.name}() must raise BackendUnavailableError"
+def test_torch_adapter_is_real_but_still_honestly_refuses_when_unconfigured() -> None:
+    """Phase 2.7C made `TorchTrainingAdapter` real (it now genuinely drives
+    `core_model.training.trainer.run_pretraining()` -- see
+    `tests/backend/test_torch_training_adapter_integration.py` for the full
+    real-training/real-checkpoint proof). This test's job changed with it:
+    it no longer asserts every method is an unconditional stub (that was
+    the pre-2.7C safety property); it asserts the equivalent safety
+    property for the real adapter -- every method that needs real training
+    inputs still refuses cleanly, with an actionable `BackendUnavailableError`,
+    rather than silently fabricating a result, whenever the adapter has not
+    been given real inputs. A runtime behavioral check, not a source-string
+    match, so it can't go stale the way the old literal-string assertion did."""
+
+    from backend.services.training_runtime_adapter import BackendUnavailableError, TorchTrainingAdapter
+
+    unconfigured = TorchTrainingAdapter()
+    with pytest.raises(BackendUnavailableError, match="no model/dataset configured"):
+        unconfigured.reserve(resource_plan={})
+    with pytest.raises(BackendUnavailableError, match="must be reserved"):
+        unconfigured.start()
+    with pytest.raises(BackendUnavailableError, match="has not been started"):
+        unconfigured.step(step=1, epoch=0)
+    with pytest.raises(BackendUnavailableError, match="has not been started"):
+        unconfigured.save_checkpoint(path=Path("/tmp/does-not-matter.json"), step=1, epoch=0)
+
+    # is_available() is decoupled from configuration on purpose -- it only
+    # reports whether the underlying library is importable, exactly like
+    # every other adapter in this module.
+    assert unconfigured.is_available() is True

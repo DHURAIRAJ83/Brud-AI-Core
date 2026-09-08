@@ -1,0 +1,8 @@
+{
+  "step": 45,
+  "cumulative_tokens": 480,
+  "best_val_loss": 4.1558403968811035,
+  "current_val_loss": 4.170809090137482,
+  "worker_id": "worker_1787999211502",
+  "saved_at": 1787999218.3556404
+}

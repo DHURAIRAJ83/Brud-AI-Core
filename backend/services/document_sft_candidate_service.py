@@ -20,6 +20,7 @@ from typing import Any
 from uuid import uuid4
 
 from backend.core.config import Settings
+from backend.core.json_utils import dumps_json
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.data_sources import DataSourceRepository
 from backend.database.repositories.documents import DocumentRepository, decode
@@ -28,9 +29,20 @@ from backend.models.documents import (
     SftCandidateGenerationRequest,
     SftCandidateReviewAction,
 )
+from backend.services.document_security_review_service import assess_text_safety
 from backend.services.document_service import audit, now
 from core_model.tool_gateway.calculator import CalculatorError
 from core_model.tool_gateway.calculator import evaluate as calculator_evaluate
+
+# Deliberately does NOT include "duplicate": a candidate can be flagged
+# duplicate against a match anywhere in the database (content_hash is
+# global, not scoped per-document), including a genuinely different,
+# independently rights-cleared document that happens to share identical
+# text -- existing, intentional behavior (see
+# TestHandoffIngestion.test_second_document_with_identical_content_is_counted_as_duplicate)
+# that Phase 2.7B's content-safety gate does not change. Only "approved"
+# and "rejected" are true terminal states for this check.
+_FINAL_QUALITY_STATUSES = ("approved", "rejected")
 
 _CANDIDATE_JSON: set[str] = set()
 
@@ -472,12 +484,21 @@ class DocumentSftCandidateGenerationService:
         payload: SftCandidateReviewAction,
         admin_id: str,
     ) -> dict[str, Any]:
+        # Phase 2.7B: content-safety screening runs on the FINAL (possibly
+        # admin-edited) instruction/context/response, since an edit could
+        # introduce unsafe content that the original generated candidate
+        # never had. A blocked result is persisted and audited durably
+        # (inside this same transaction, which still commits normally) --
+        # rejection is only raised *after* the transaction commits, so the
+        # decision is never lost to the rollback that a raised
+        # ValidationError would otherwise trigger.
+        blocked_reason: str | None = None
         with self.repository.transaction() as connection:
             document = self.repository.document(connection, document_public_id)
             candidate = self.repository.sft_candidate(
                 connection, document["id"], candidate_public_id
             )
-            if candidate["quality_status"] in ("approved", "rejected"):
+            if candidate["quality_status"] in _FINAL_QUALITY_STATUSES:
                 raise ValidationError(
                     "this SFT candidate has already reached a final review decision"
                 )
@@ -485,12 +506,6 @@ class DocumentSftCandidateGenerationService:
                 raise ValidationError(
                     "a candidate without verified rights status cannot be approved"
                 )
-            status_by_action = {
-                "approve": "approved",
-                "reject": "rejected",
-                "edit": "pending_review",
-                "needs_correction": "needs_correction",
-            }
             instruction = payload.edited_instruction or candidate["instruction"]
             context = (
                 candidate["context"]
@@ -498,23 +513,55 @@ class DocumentSftCandidateGenerationService:
                 else payload.edited_context
             )
             response = payload.edited_response or candidate["response"]
-            connection.execute(
-                "UPDATE document_sft_candidates SET instruction=?,context=?,response=?,"
-                "quality_status=?,updated_at=? WHERE id=?",
-                (
-                    instruction, context, response, status_by_action[payload.action], now(),
-                    candidate["id"],
-                ),
-            )
-            connection.execute(
-                """INSERT INTO document_sft_candidate_reviews(
-                    public_id,candidate_id,action,actor_reference,notes
-                ) VALUES (?,?,?,?,?)""",
-                (str(uuid4()), candidate["id"], payload.action, admin_id, payload.notes),
-            )
-            audit(
-                connection, "document_sft_candidate_reviewed", admin_id, document_public_id,
-                candidate_public_id=candidate_public_id, action=payload.action,
+
+            if payload.action == "approve":
+                safety = assess_text_safety(f"{instruction}\n{context}\n{response}")
+                connection.execute(
+                    "UPDATE document_sft_candidates SET content_safety_status=?,"
+                    "content_safety_findings_json=?,content_safety_checked_at=? WHERE id=?",
+                    (
+                        safety["status"], dumps_json(safety["categories"]), now(),
+                        candidate["id"],
+                    ),
+                )
+                if safety["status"] == "blocked":
+                    audit(
+                        connection, "document_sft_candidate_approval_blocked", admin_id,
+                        document_public_id, candidate_public_id=candidate_public_id,
+                        reason_code=safety["reason_code"], categories=safety["categories"],
+                    )
+                    blocked_reason = safety["reason_code"]
+
+            if blocked_reason is None:
+                status_by_action = {
+                    "approve": "approved",
+                    "reject": "rejected",
+                    "edit": "pending_review",
+                    "needs_correction": "needs_correction",
+                }
+                connection.execute(
+                    "UPDATE document_sft_candidates SET instruction=?,context=?,response=?,"
+                    "quality_status=?,updated_at=? WHERE id=?",
+                    (
+                        instruction, context, response, status_by_action[payload.action], now(),
+                        candidate["id"],
+                    ),
+                )
+                connection.execute(
+                    """INSERT INTO document_sft_candidate_reviews(
+                        public_id,candidate_id,action,actor_reference,notes
+                    ) VALUES (?,?,?,?,?)""",
+                    (str(uuid4()), candidate["id"], payload.action, admin_id, payload.notes),
+                )
+                audit(
+                    connection, "document_sft_candidate_reviewed", admin_id, document_public_id,
+                    candidate_public_id=candidate_public_id, action=payload.action,
+                )
+        if blocked_reason:
+            raise ValidationError(
+                f"this SFT candidate failed content-safety screening ({blocked_reason}) "
+                "and cannot be approved -- rights verification alone does not authorize "
+                "training-data approval"
             )
         return self.list_candidates(document_public_id)
 
@@ -557,10 +604,37 @@ class DocumentSftCandidateGenerationService:
                         }
                     )
                     continue
+                # Phase 2.7B: a "low risk" generation method only means the
+                # candidate wasn't produced by free-form generation -- both
+                # `template_heuristic_v1` and `chunk_pair_v1` copy source
+                # document text directly into instruction/context/response,
+                # so generation-method trust alone says nothing about
+                # whether that copied text is safe.
+                safety = assess_text_safety(
+                    f"{candidate['instruction']}\n{candidate['context']}\n{candidate['response']}"
+                )
+                if safety["status"] == "blocked":
+                    connection.execute(
+                        "UPDATE document_sft_candidates SET content_safety_status=?,"
+                        "content_safety_findings_json=?,content_safety_checked_at=? WHERE id=?",
+                        (
+                            safety["status"], dumps_json(safety["categories"]), now(),
+                            candidate["id"],
+                        ),
+                    )
+                    blocked.append(
+                        {
+                            "candidate_public_id": candidate_public_id,
+                            "reason": "content_safety_failed",
+                            "reason_code": safety["reason_code"],
+                        }
+                    )
+                    continue
                 connection.execute(
-                    "UPDATE document_sft_candidates SET quality_status='approved',updated_at=? "
-                    "WHERE id=?",
-                    (now(), candidate["id"]),
+                    "UPDATE document_sft_candidates SET quality_status='approved',"
+                    "content_safety_status=?,content_safety_findings_json=?,"
+                    "content_safety_checked_at=?,updated_at=? WHERE id=?",
+                    (safety["status"], dumps_json(safety["categories"]), now(), now(), candidate["id"]),
                 )
                 connection.execute(
                     """INSERT INTO document_sft_candidate_reviews(
@@ -572,5 +646,8 @@ class DocumentSftCandidateGenerationService:
             audit(
                 connection, "document_sft_candidates_bulk_approved", admin_id, document_public_id,
                 approved_count=len(approved), blocked_count=len(blocked),
+                content_safety_blocked_count=sum(
+                    1 for item in blocked if item["reason"] == "content_safety_failed"
+                ),
             )
         return {"approved": approved, "blocked": blocked}

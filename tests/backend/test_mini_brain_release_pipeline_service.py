@@ -19,7 +19,7 @@ from backend.database.repositories.admin import AdminRepository
 from backend.database.repositories.base import ValidationError
 from backend.database.repositories.model_release import ModelReleaseRepository
 from backend.models.auth import AdminCreate
-from backend.models.model_release import ModelReleaseFamilyCreate
+from backend.models.model_release import ApprovalCreate, ModelReleaseFamilyCreate
 from backend.services.mini_brain_release_pipeline_service import MiniBrainReleasePipelineService
 from backend.services.model_release_service import ModelReleaseService
 from tests.backend.test_instruction_tuning_api import _fixture_refs
@@ -56,8 +56,19 @@ def api_app(tmp_path: Path) -> FastAPI:
 
 
 def _seed(api_app: FastAPI) -> dict:
-    admin = AdminRepository(api_app.state.settings.resolved_database_path).create_admin(
+    admin_repository = AdminRepository(api_app.state.settings.resolved_database_path)
+    admin = admin_repository.create_admin(
         AdminCreate(username="mb07-admin", display_name="A", password="password12345")
+    )
+    # GOV-26/GOV-33 (P0-1 Phase 15.2): the release candidate's creator can
+    # never approve it, and 2 distinct approvers are required -- these two
+    # non-creator identities are pure test scaffolding for the approval
+    # step, unrelated to what this file's own tests otherwise verify.
+    reviewer_1 = admin_repository.create_admin(
+        AdminCreate(username="mb07-reviewer-1", display_name="R1", password="password12345")
+    )
+    reviewer_2 = admin_repository.create_admin(
+        AdminCreate(username="mb07-reviewer-2", display_name="R2", password="password12345")
     )
     refs = _fixture_refs(api_app)
     evaluation_run_id = _insert_evaluation_evidence(api_app, refs["base_model"], "evaluation_passed_with_limits")
@@ -67,11 +78,39 @@ def _seed(api_app: FastAPI) -> dict:
     family = model_release.create_family(
         ModelReleaseFamilyCreate(name="MB07 Test Family", slug="mb07-test-family"), admin.public_id,
     )
-    return {"admin_id": admin.public_id, "refs": refs, "evaluation_run_id": evaluation_run_id, "family_id": family["public_id"]}
+    return {
+        "admin_id": admin.public_id, "reviewer_1_id": reviewer_1.public_id,
+        "reviewer_2_id": reviewer_2.public_id, "refs": refs,
+        "evaluation_run_id": evaluation_run_id, "family_id": family["public_id"],
+    }
 
 
 def _svc(api_app: FastAPI) -> MiniBrainReleasePipelineService:
     return MiniBrainReleasePipelineService(api_app.state.settings)
+
+
+def _session_at_version_registration(api_app: FastAPI, seed: dict) -> dict:
+    """Drives a real session through every stage up to (and including)
+    `version_registration`, ready for `create_release_version()` --
+    shared setup for the GOV-26/GOV-33 approval tests below, unrelated to
+    what each of them individually verifies."""
+
+    svc = _svc(api_app)
+    session = svc.create_session(
+        core_model_version_public_id=seed["refs"]["base_model"],
+        pretraining_checkpoint_public_id=CHECKPOINT_PUBLIC_ID,
+        model_release_family_public_id=seed["family_id"], target_quantizations=["f16"],
+        dataset_version_public_id=seed["refs"]["dataset"],
+        model_evaluation_run_public_id=seed["evaluation_run_id"], admin_id=seed["admin_id"],
+    )
+    session = svc.validate_checkpoint(session["public_id"], admin_id=seed["admin_id"])
+    session = svc.convert_model(session["public_id"], admin_id=seed["admin_id"])
+    session = svc.quantize_and_export(session["public_id"], admin_id=seed["admin_id"])
+    session = svc.validate_integrity(session["public_id"], admin_id=seed["admin_id"])
+    session = svc.validate_compatibility(session["public_id"], admin_id=seed["admin_id"])
+    session = svc.measure_performance(session["public_id"], admin_id=seed["admin_id"])
+    assert session["stage"] == "version_registration"
+    return session
 
 
 async def test_full_release_pipeline_happy_path(api_app: FastAPI) -> None:
@@ -119,7 +158,33 @@ async def test_full_release_pipeline_happy_path(api_app: FastAPI) -> None:
     assert session["stage"] == "version_registration"
     assert "f16" in session["performance_report"]["levels"]
 
+    # GOV-26/GOV-33 (P0-1 Phase 15.2): create_release_version() now only
+    # prepares the candidate (manifest, model card, eligibility) -- it does
+    # not create the release. The session stays at "version_registration"
+    # and no release exists yet.
     session = svc.create_release_version(session["public_id"], version="Brud-0.1", admin_id=seed["admin_id"])
+    assert session["stage"] == "version_registration"
+    assert not session["model_release_public_id"]
+
+    candidate_public_id = session["model_release_candidate_public_id"]
+    model_release = ModelReleaseService(
+        ModelReleaseRepository(api_app.state.settings.resolved_database_path), api_app.state.settings
+    )
+    # Two real, distinct, non-creator admins each submit a real approval --
+    # neither is seed["admin_id"] (the candidate's own creator, who can
+    # never approve it under GOV-33, unconditionally).
+    model_release.submit_approval(
+        candidate_public_id,
+        ApprovalCreate(role="release", decision="approve", comment="first reviewer"),
+        seed["reviewer_1_id"],
+    )
+    model_release.submit_approval(
+        candidate_public_id,
+        ApprovalCreate(role="release", decision="approve", comment="second reviewer"),
+        seed["reviewer_2_id"],
+    )
+
+    session = svc.finalize_release_version(session["public_id"], version="Brud-0.1", admin_id=seed["admin_id"])
     assert session["stage"] == "awaiting_admin_review"
     assert session["version_string"] == "Brud-0.1"
     assert session["model_release_public_id"]
@@ -259,3 +324,76 @@ async def test_events_are_recorded(api_app: FastAPI) -> None:
     event_types = [e["event_type"] for e in events["items"]]
     assert "session_created" in event_types
     assert "checkpoint_validated" in event_types
+
+
+# -- GOV-26 / GOV-33 (P0-1 Phase 15.2): redesigned approval flow ----------------------------
+
+
+async def test_mb07_cannot_complete_using_the_creator_as_an_approver(api_app: FastAPI) -> None:
+    """The candidate's own creator (seed["admin_id"]) can never submit an
+    approval for it -- unconditionally, regardless of
+    release_allow_self_approval's configured value (GOV-33)."""
+
+    seed = _seed(api_app)
+    session = _session_at_version_registration(api_app, seed)
+    svc = _svc(api_app)
+
+    session = svc.create_release_version(session["public_id"], version="Brud-0.1", admin_id=seed["admin_id"])
+    assert session["stage"] == "version_registration"
+    candidate_public_id = session["model_release_candidate_public_id"]
+
+    model_release = ModelReleaseService(
+        ModelReleaseRepository(api_app.state.settings.resolved_database_path), api_app.state.settings
+    )
+    with pytest.raises(ValidationError, match="self_approval_not_allowed"):
+        model_release.submit_approval(
+            candidate_public_id,
+            ApprovalCreate(role="release", decision="approve", comment="self-approval attempt"),
+            seed["admin_id"],
+        )
+
+    # Even without ever successfully submitting an approval, finalize must
+    # fail -- no release should exist. create_release()'s own first gate
+    # (candidate status must already be "approved") fires before its
+    # separate is_policy_satisfied() recheck would ever produce "required
+    # approvals incomplete" -- since no approval was ever recorded, the
+    # candidate's status never left "eligible", so this is the exact
+    # message actually raised.
+    with pytest.raises(ValidationError, match="candidate must be approved before creating a release"):
+        svc.finalize_release_version(session["public_id"], version="Brud-0.1", admin_id=seed["admin_id"])
+
+
+async def test_mb07_completes_successfully_with_two_distinct_non_creator_approvers(
+    api_app: FastAPI,
+) -> None:
+    """The redesigned flow's positive case, isolated from the full happy
+    path above: create_release_version() prepares only; two distinct,
+    non-creator admins each submit a real approval; finalize_release_version()
+    then succeeds."""
+
+    seed = _seed(api_app)
+    session = _session_at_version_registration(api_app, seed)
+    svc = _svc(api_app)
+
+    session = svc.create_release_version(session["public_id"], version="Brud-0.2", admin_id=seed["admin_id"])
+    assert session["stage"] == "version_registration"
+    assert not session["model_release_public_id"]
+    candidate_public_id = session["model_release_candidate_public_id"]
+
+    model_release = ModelReleaseService(
+        ModelReleaseRepository(api_app.state.settings.resolved_database_path), api_app.state.settings
+    )
+    model_release.submit_approval(
+        candidate_public_id,
+        ApprovalCreate(role="release", decision="approve", comment="first reviewer"),
+        seed["reviewer_1_id"],
+    )
+    model_release.submit_approval(
+        candidate_public_id,
+        ApprovalCreate(role="release", decision="approve", comment="second reviewer"),
+        seed["reviewer_2_id"],
+    )
+
+    session = svc.finalize_release_version(session["public_id"], version="Brud-0.2", admin_id=seed["admin_id"])
+    assert session["stage"] == "awaiting_admin_review"
+    assert session["model_release_public_id"]

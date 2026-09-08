@@ -1,0 +1,9 @@
+{
+  "single_next_action": "AGGREGATE AND SEAL PUBLIC-DOMAIN MULTILINGUAL REFERENCE PROSE TO CLOSE THE 49.8M TOKEN DEFICIT",
+  "rationale": "The WS02 corpus pipeline is fully operational. Pretraining CANNOT be authorized until the 50M token corpus is assembled, validated, approved, and cryptographically sealed.",
+  "what_not_to_do": [
+    "Do NOT authorize pretraining while token deficit exists.",
+    "Do NOT scale model parameters to E6.",
+    "Do NOT enable Public Chat candidate traffic."
+  ]
+}

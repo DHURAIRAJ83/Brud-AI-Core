@@ -28,8 +28,10 @@ vi.mock('../services/api.js', () => ({
   setAssistantLanguagePreference: vi.fn(),
 }))
 
-function renderPage() {
-  return render(<ToastProvider><AssistantCenterPage admin={{ display_name: 'Admin' }} /></ToastProvider>)
+function renderPage(onNavigate) {
+  return render(
+    <ToastProvider><AssistantCenterPage admin={{ display_name: 'Admin' }} onNavigate={onNavigate} /></ToastProvider>,
+  )
 }
 
 afterEach(() => {
@@ -40,6 +42,17 @@ describe('AssistantCenterPage', () => {
   it('defaults to the Admin Tasks tab', async () => {
     renderPage()
     expect(screen.getByRole('button', { name: 'Admin Tasks' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('Admin Tasks links out to the one canonical Admin Assistant mount instead of embedding it again', async () => {
+    // Phase 16.1: AdminAssistantPage used to be mounted a second time here,
+    // duplicating its own dedicated Sidebar entry. This tab now points to
+    // that single canonical mount via onNavigate instead of re-rendering it.
+    const user = userEvent.setup()
+    const onNavigate = vi.fn()
+    renderPage(onNavigate)
+    await user.click(screen.getByRole('button', { name: 'Open Admin Assistant' }))
+    expect(onNavigate).toHaveBeenCalledWith('Admin Assistant')
   })
 
   it('switches to Mini Brain Chat and renders the real ChatPanel', async () => {

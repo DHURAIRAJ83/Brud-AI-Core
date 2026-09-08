@@ -7,11 +7,14 @@ builds, partitions, versions, exports, manifests, and comparisons."""
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from backend.core.json_utils import loads_json
 from backend.database.repositories.base import NotFoundError
+
+if TYPE_CHECKING:
+    from backend.database.connection_pool import ConnectionPool
 
 INTERNAL = {
     "id",
@@ -61,13 +64,37 @@ def public_row(row: sqlite3.Row | None) -> dict[str, Any]:
 
 
 class CorpusRepository:
-    def __init__(self, database_path) -> None:
+    def __init__(self, database_path, *, pool: "ConnectionPool | None" = None) -> None:
         self.database_path = database_path
+        self.pool = pool
 
-    def transaction(self):
+    def transaction(self, *, immediate: bool = False):
+        """Phase 7C-33: `CorpusRepository` doesn't subclass `BaseRepository`
+        (it predates that hierarchy), so it can't inherit `_acquire_connection()`
+        directly -- but it delegates to a real `BaseRepository` either way,
+        so passing `pool=self.pool` through is sufficient: when a pool was
+        supplied, the delegated transaction checks a connection out of it
+        instead of opening/closing a fresh one, exactly like every other
+        pool-aware repository. `pool=None` (the default, and the only
+        behavior every existing caller of this class exercises today)
+        keeps this byte-for-byte unchanged.
+
+        Phase 7C-37: `immediate` (default `False`, matching every existing
+        caller's current behavior unchanged) is threaded straight to the
+        real underlying `BaseRepository.transaction(immediate=...)` -- no
+        second transaction implementation, no new connection-management
+        logic. Phase 7C-36 proved this repository's own read-then-write and
+        repeated-write call paths (the majority of its real transaction
+        shapes) suffer severe deferred-BEGIN lock-upgrade contention once
+        pooled, and that `immediate=True` eliminates it completely; this
+        parameter exists so a future, separately-authorized wiring phase
+        can pass it at the specific call sites that need it, without
+        changing this repository's own default or requiring a second
+        `transaction()`-like method."""
+
         from backend.database.repositories.base import BaseRepository
 
-        return BaseRepository(self.database_path).transaction()
+        return BaseRepository(self.database_path, pool=self.pool).transaction(immediate=immediate)
 
     # --- policies -----------------------------------------------------
 

@@ -41,6 +41,13 @@ from tests.backend.test_incremental_training_review_report_and_acceptance import
 )
 from tests.backend.test_training_suitability_and_transformation import ADMIN_ID
 
+# GOV-26/GOV-26c (P0-1): release and non-public inference-assignment
+# approvals now require 2 distinct authenticated admins by default -- this
+# file's own shared helpers below use these extra identities purely as
+# test scaffolding, not as a subject of any assertion in this file.
+SECOND_ADMIN_ID = "00000000-0000-0000-0000-0000000000f2"
+THIRD_ADMIN_ID = "00000000-0000-0000-0000-0000000000f3"
+
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
@@ -193,10 +200,23 @@ def _create_release(settings: Settings, candidate_public_id: str, version: str) 
     release_service = ModelReleaseService(
         ModelReleaseRepository(settings.resolved_database_path), settings
     )
+    # GOV-26 (P0-1): the real, shipped default now requires 2 distinct
+    # authenticated admins, not just 1 -- both approvals are pure test
+    # scaffolding here, unrelated to whatever this file's own test is
+    # actually asserting. GOV-33 (P0-1 Phase 15.2): ADMIN_ID is always the
+    # candidate's own creator (via _validated_release_request /
+    # _accepted_checkpoint) and can never approve it -- both approvals use
+    # genuinely non-creator identities; ADMIN_ID is used only for
+    # create_release() itself, which does not check self-approval.
     release_service.submit_approval(
         candidate_public_id,
-        ApprovalCreate(role="release", decision="approve", comment="ok"),
-        ADMIN_ID,
+        ApprovalCreate(role="release", decision="approve", comment="first reviewer"),
+        SECOND_ADMIN_ID,
+    )
+    release_service.submit_approval(
+        candidate_public_id,
+        ApprovalCreate(role="release", decision="approve", comment="second reviewer"),
+        THIRD_ADMIN_ID,
     )
     return release_service.create_release(
         ModelReleaseCreate(candidate_public_id=candidate_public_id, version=version), ADMIN_ID,
@@ -244,10 +264,20 @@ def _approved_admin_diagnostic_assignment(
         ADMIN_ID,
     )
     assignment_service.validate_assignment(assignment["public_id"], ADMIN_ID)
+    # GOV-31/GOV-32 (P0-1): the creator (ADMIN_ID) can no longer approve
+    # their own assignment by default, and GOV-26c separately now requires
+    # 2 distinct approvers -- both non-creator identities here are pure
+    # test scaffolding, unrelated to whatever this file's own test is
+    # actually asserting.
     assignment_service.approve_assignment(
         assignment["public_id"],
-        AssignmentApprovalCreate(role="release", decision="approve", comment="ok"),
-        ADMIN_ID,
+        AssignmentApprovalCreate(role="release", decision="approve", comment="first reviewer"),
+        SECOND_ADMIN_ID,
+    )
+    assignment_service.approve_assignment(
+        assignment["public_id"],
+        AssignmentApprovalCreate(role="release", decision="approve", comment="second reviewer"),
+        THIRD_ADMIN_ID,
     )
     return assignment["public_id"]
 
@@ -390,10 +420,16 @@ def test_rollback_reactivates_the_previous_version(settings: Settings) -> None:
         assignment_public_id, AssignmentPatch(release_public_id=release_b["public_id"]), ADMIN_ID,
     )
     assignment_service.validate_assignment(assignment_public_id, ADMIN_ID)
+    # GOV-31/GOV-32 (P0-1): the assignment's creator (ADMIN_ID) can no
+    # longer approve it themselves by default. Approval records are tied to
+    # the assignment's own id, not reset per validate/patch round -- the
+    # first round's 2 distinct approvers (from _approved_admin_diagnostic_assignment,
+    # above) already satisfy GOV-26c's floor of 2, so exactly one additional
+    # non-creator approval is enough to re-satisfy the policy for this "v2" round.
     assignment_service.approve_assignment(
         assignment_public_id,
         AssignmentApprovalCreate(role="release", decision="approve", comment="v2"),
-        ADMIN_ID,
+        SECOND_ADMIN_ID,
     )
 
     plan_b = rollback_service.create_plan(
@@ -446,10 +482,17 @@ def test_canary_start_execute_stop(settings: Settings) -> None:
         ADMIN_ID,
     )
     assignment_service.validate_assignment(canary_assignment["public_id"], ADMIN_ID)
+    # GOV-31/GOV-32/GOV-26c (P0-1): same reasoning as above -- the creator
+    # cannot self-approve by default, and 2 distinct approvers are required.
     assignment_service.approve_assignment(
         canary_assignment["public_id"],
-        AssignmentApprovalCreate(role="release", decision="approve", comment="ok"),
-        ADMIN_ID,
+        AssignmentApprovalCreate(role="release", decision="approve", comment="first reviewer"),
+        SECOND_ADMIN_ID,
+    )
+    assignment_service.approve_assignment(
+        canary_assignment["public_id"],
+        AssignmentApprovalCreate(role="release", decision="approve", comment="second reviewer"),
+        THIRD_ADMIN_ID,
     )
     assignment_service.activate_assignment(canary_assignment["public_id"], ADMIN_ID)
 

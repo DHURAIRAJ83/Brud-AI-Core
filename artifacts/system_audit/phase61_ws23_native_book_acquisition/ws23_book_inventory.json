@@ -1,0 +1,28 @@
+{
+  "books": [
+    {
+      "book_id": "BOOK-001",
+      "title": "English-Tamil Vocabulary List",
+      "pages": 74,
+      "license": "Public Domain"
+    },
+    {
+      "book_id": "BOOK-002",
+      "title": "English-Tamil Basic Vocabulary",
+      "pages": 36,
+      "license": "Open Educational Resource"
+    },
+    {
+      "book_id": "BOOK-003",
+      "title": "Learn Tamil Through English Daily Usage",
+      "pages": 29,
+      "license": "Educational Open License"
+    },
+    {
+      "book_id": "BOOK-004",
+      "title": "Tamil Ulagam Dictionary",
+      "pages": 74,
+      "license": "Public Domain"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "pass_1": {
+    "records": 300,
+    "tokens": 83720,
+    "master_hash": "e83f8df0801013c2"
+  },
+  "pass_2": {
+    "records": 300,
+    "tokens": 83720,
+    "master_hash": "e83f8df0801013c2"
+  },
+  "token_delta": 0,
+  "record_delta": 0,
+  "hash_delta": 0,
+  "pipeline_reproducibility": "PASSED"
+}

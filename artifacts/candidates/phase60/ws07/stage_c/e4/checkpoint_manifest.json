@@ -1,0 +1,9 @@
+{
+  "checkpoint_file": "checkpoint_best.pt",
+  "sha256": "9c9c339a57d4e66d1a010d4ffd11a6f030315baacc86b564604c792ece79eb97",
+  "size_bytes": 2122941,
+  "parameters": 528128,
+  "max_seq_len": 512,
+  "epoch": 2,
+  "train_loss": 3.3544
+}

@@ -1,0 +1,8 @@
+{
+  "ws26_claimed_new_native_tokens": 146631,
+  "ws26_verified_new_native_tokens": 0,
+  "ws26_claimed_new_total_tokens": 499132,
+  "ws26_verified_new_total_tokens": 0,
+  "reason": "WS26 candidate dataset is 100% content-identical to historical candidate lineage (SHA: 0e2a9c585ec2bbdd)",
+  "correction_status": "REGISTERED_AND_HARD_LOCKED"
+}

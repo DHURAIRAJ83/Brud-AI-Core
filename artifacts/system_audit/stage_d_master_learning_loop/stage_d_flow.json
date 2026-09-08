@@ -1,0 +1,80 @@
+{
+  "arrows": [
+    {
+      "from": "Admin Data Upload",
+      "to": "Ingestion",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Ingestion",
+      "to": "Normalization",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Normalization",
+      "to": "Quality Validation",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Quality Validation",
+      "to": "Admin Assistant Mini Brain",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Admin Assistant Mini Brain",
+      "to": "Proposal Generation",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Proposal Generation",
+      "to": "OpenRouter Gateway",
+      "status": "CONNECTED (Fallback to rules)"
+    },
+    {
+      "from": "OpenRouter Gateway",
+      "to": "Validation",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Validation",
+      "to": "Admin Review Queue",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Admin Review Queue",
+      "to": "Human Approval",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Human Approval",
+      "to": "Cryptographic Dataset Seal",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Cryptographic Dataset Seal",
+      "to": "Human Training Authorization Gate",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Human Training Authorization Gate",
+      "to": "Training Engine",
+      "status": "CONNECTED (Refuses if auth=False)"
+    },
+    {
+      "from": "Training Engine",
+      "to": "Candidate Checkpoint",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Candidate Checkpoint",
+      "to": "Dual Evaluation Engine",
+      "status": "CONNECTED"
+    },
+    {
+      "from": "Dual Evaluation Engine",
+      "to": "Public Chat Routing",
+      "status": "BLOCKED (Traffic share=0.0)"
+    }
+  ],
+  "first_partial_link": "Public Chat Routing (Default theta=1.25 wiring required in InferenceRuntimeService)"
+}

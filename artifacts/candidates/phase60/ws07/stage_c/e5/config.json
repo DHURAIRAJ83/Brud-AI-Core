@@ -1,0 +1,11 @@
+{
+  "model_type": "BrudSmallScaledModel",
+  "vocab_size": 1024,
+  "d_model": 256,
+  "nhead": 8,
+  "num_layers": 4,
+  "dim_feedforward": 768,
+  "max_seq_len": 512,
+  "parameter_count": 3159040,
+  "pe_persistent": false
+}

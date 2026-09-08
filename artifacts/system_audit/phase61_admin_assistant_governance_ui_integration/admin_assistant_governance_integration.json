@@ -1,0 +1,7 @@
+{
+  "endpoint": "GET /api/admin/assistant/governance-status",
+  "service_method": "AdminAssistantService.get_governance_status",
+  "canonical_contract_reused": "core_model.ops.enterprise_governance_contract.EnterpriseGovernanceDashboardContract",
+  "frontend_api_function": "getGovernanceStatus()",
+  "frontend_tab": "Governance & Activation Readiness"
+}

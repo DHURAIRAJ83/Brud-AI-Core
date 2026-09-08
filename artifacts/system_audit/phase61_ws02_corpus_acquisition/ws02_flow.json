@@ -1,0 +1,70 @@
+{
+  "arrows": [
+    {
+      "step": 1,
+      "from": "Public Domain Source Discovery",
+      "to": "Source Rights Gate",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 2,
+      "from": "Source Rights Gate",
+      "to": "Streamable Ingestion Service",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 3,
+      "from": "Streamable Ingestion Service",
+      "to": "UTF-8 & NFC Normalization",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 4,
+      "from": "UTF-8 & NFC Normalization",
+      "to": "19-Rule Quality Engine",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 5,
+      "from": "19-Rule Quality Engine",
+      "to": "Exact SHA-256 Deduplication",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 6,
+      "from": "Exact SHA-256 Deduplication",
+      "to": "Tokenizer v2 Subword Accounting",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 7,
+      "from": "Tokenizer v2 Subword Accounting",
+      "to": "Admin Mini Brain Proposal Engine",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 8,
+      "from": "Admin Mini Brain Proposal Engine",
+      "to": "Admin Review Queue",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 9,
+      "from": "Admin Review Queue",
+      "to": "Human Approval Gate",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 10,
+      "from": "Human Approval Gate",
+      "to": "Cryptographic Dataset Seal (SHA-256)",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 11,
+      "from": "Cryptographic Dataset Seal",
+      "to": "Pretraining Engine",
+      "status": "BLOCKED (auth=False & 49.8M deficit)"
+    }
+  ]
+}

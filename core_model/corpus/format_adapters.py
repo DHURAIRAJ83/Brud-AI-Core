@@ -26,11 +26,11 @@ from core_model.corpus.text_extraction import (
     extract_plain_text,
 )
 
-SUPPORTED_FORMATS = ("pdf", "txt", "json", "jsonl", "csv", "docx", "html", "markdown")
+SUPPORTED_FORMATS = ("pdf", "epub", "txt", "json", "jsonl", "csv", "docx", "html", "markdown")
 
 _MAGIC_SIGNATURES: dict[bytes, str] = {
     b"%PDF-": "pdf",
-    b"PK\x03\x04": "docx",  # DOCX is a ZIP container; narrowed further by extension+structure
+    b"PK\x03\x04": "epub",  # EPUB/DOCX zip container
 }
 
 # Leading characters that a spreadsheet application would interpret as
@@ -335,6 +335,40 @@ class CsvAdapter:
         )
 
 
+class EpubAdapter:
+    """Pure zipfile HTML extraction adapter for .epub book archives."""
+
+    def inspect(self, raw_bytes: bytes) -> SourceInspection:
+        valid = raw_bytes.startswith(b"PK\x03\x04")
+        return SourceInspection(
+            format="epub",
+            declared_extension="epub",
+            detected_by_magic_bytes="epub" if valid else None,
+            size_bytes=len(raw_bytes),
+            warnings=[] if valid else ["not_zip_archive"],
+        )
+
+    def extract(self, raw_bytes: bytes, options: ExtractionOptions) -> ExtractionResult:
+        import zipfile
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw_bytes)) as z:
+                html_files = [f for f in z.namelist() if f.endswith((".html", ".xhtml", ".htm"))]
+                parts = []
+                for hf in sorted(html_files):
+                    with z.open(hf) as handle:
+                        text_part = extract_html_snapshot_text(handle.read()).get("text", "")
+                        if text_part.strip():
+                            parts.append(text_part.strip())
+                extracted_text = "\n\n".join(parts)
+                return ExtractionResult(
+                    text=extracted_text,
+                    confidence=1.0 if parts else 0.0,
+                    issues=[] if parts else ["no_html_content_in_epub"]
+                )
+        except Exception as exc:
+            return ExtractionResult(text="", confidence=0.0, issues=[f"epub_zip_error: {exc}"])
+
+
 ADAPTERS: dict[str, CorpusSourceAdapter] = {
     "txt": TxtAdapter(),
     "markdown": MarkdownAdapter(),
@@ -342,6 +376,7 @@ ADAPTERS: dict[str, CorpusSourceAdapter] = {
     "json": JsonAdapter(),
     "jsonl": JsonlAdapter(),
     "csv": CsvAdapter(),
+    "epub": EpubAdapter(),
 }
 
 

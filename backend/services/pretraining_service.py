@@ -360,6 +360,176 @@ class PretrainingService:
             )
         return {"verified": status == "verified", "status": status}
 
+    def register_external_checkpoint(
+        self, *, core_model_version_public_id: str, dataset_version_public_id: str,
+        checkpoint_directory: Path, step: int, processed_tokens: int,
+        training_loss: float | None, validation_loss: float | None,
+        configuration: dict[str, Any], source_label: str, admin_id: str,
+        existing_pretraining_job_public_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Phase 2.7F: the one governed entry point for registering a real,
+        externally-produced (never worker-executed) canonical checkpoint
+        into `pretraining_checkpoints` -- the exact table
+        `ModelReleaseService._resolve_checkpoint()` and `ModelEvaluationService.
+        _eligible_candidate()` already read from. Built for MB-22's real,
+        synchronous `TorchTrainingAdapter`-driven training (Phase 2.7C/E),
+        which produces a real canonical `TrainingCheckpointManager` bundle
+        without ever going through this service's own worker-lease
+        `_claim()`/`_run_claimed()` execution loop -- merging that
+        execution model into the worker-lease system was already ruled out
+        as out of scope in Phase 2.7C/2.7E.
+
+        Reuses `create_job()` verbatim for the anchor `pretraining_jobs`
+        row (same real dataset/tokenizer/Core-Model-Version eligibility
+        checks, same config-limit enforcement, same checksum) -- never a
+        second, parallel creation path. The one deliberate, explicit,
+        documented deviation from the normal state machine: this method
+        transitions that job directly from `draft` to `completed`,
+        **never** through `queued` (the only status `_claim()`'s own
+        `WHERE status='queued'` picks up) -- so a real worker process can
+        never claim and re-execute an externally-already-completed job.
+        This is not a bypass to make a test pass; it is the necessary,
+        honest consequence of a job that never needs a worker to run it
+        because it already ran, synchronously, elsewhere.
+
+        Verifies the checkpoint (`TrainingCheckpointManager.verify()`)
+        *before* touching the database -- an unverifiable/corrupt
+        checkpoint is never registered. Rejects a duplicate registration
+        of the same checkpoint directory (`safe_name` is globally
+        `UNIQUE` at the schema level regardless). When
+        `existing_pretraining_job_public_id` is supplied (a later
+        checkpoint from a job already registered once), reuses that same
+        job -- one real training identity, many checkpoints, exactly the
+        production system's own 1-job-to-many-checkpoints shape, never a
+        second competing job row per checkpoint.
+        """
+        from pathlib import Path as _Path
+
+        from core_model.checkpoints.training_checkpoint import TrainingCheckpointManager
+        from core_model.checkpoints.training_manifest import combined_checksum, sha256_file
+
+        checkpoint_directory = _Path(checkpoint_directory)
+        root = self.settings.resolved_pretraining_dir.resolve()
+        resolved_dir = checkpoint_directory.resolve()
+        if not resolved_dir.is_relative_to(root):
+            raise ValidationError(
+                "checkpoint directory must be under the canonical pretraining checkpoint root"
+            )
+        try:
+            TrainingCheckpointManager(
+                self.settings.resolved_pretraining_dir, self.settings.core_checkpoint_max_bytes
+            ).verify(resolved_dir)
+        except (OSError, ValueError) as exc:
+            raise ValidationError(f"checkpoint failed verification: {exc}") from exc
+
+        manifest = loads_json((resolved_dir / "manifest.json").read_text(encoding="utf-8"))
+        checksums = dict(manifest["checksums"])
+        checksums["manifest.json"] = sha256_file(resolved_dir / "manifest.json")
+        combined = combined_checksum(list(checksums.values()))
+        safe_name = str(resolved_dir.relative_to(root))
+        file_size_bytes = sum(f.stat().st_size for f in resolved_dir.iterdir() if f.is_file())
+
+        with self.repository.transaction() as connection:
+            core_model_version = connection.execute(
+                "SELECT id FROM core_model_versions WHERE public_id=?",
+                (core_model_version_public_id,),
+            ).fetchone()
+            if not core_model_version:
+                raise ValidationError(
+                    f"core model version not found: {core_model_version_public_id}"
+                )
+            tokenizer_row = connection.execute(
+                "SELECT public_id FROM tokenizer_versions WHERE id=(SELECT tokenizer_version_id FROM core_model_versions WHERE id=?)",
+                (core_model_version["id"],),
+            ).fetchone()
+            tokenizer_version_public_id = tokenizer_row["public_id"]
+            existing_job = None
+            if existing_pretraining_job_public_id:
+                existing_job = connection.execute(
+                    "SELECT * FROM pretraining_jobs WHERE public_id=?",
+                    (existing_pretraining_job_public_id,),
+                ).fetchone()
+                if not existing_job:
+                    raise ValidationError(
+                        f"pretraining job not found: {existing_pretraining_job_public_id}"
+                    )
+                if existing_job["core_model_version_id"] != core_model_version["id"]:
+                    raise ValidationError(
+                        "checkpoint's core model version does not match the existing pretraining job"
+                    )
+            if connection.execute(
+                "SELECT 1 FROM pretraining_checkpoints WHERE safe_name=?", (safe_name,)
+            ).fetchone():
+                raise ValidationError("this checkpoint is already registered")
+
+        if existing_job is None:
+            job = self.create_job(
+                PretrainingJobCreate(
+                    name=f"external:{source_label}"[:160],
+                    dataset_version_public_id=dataset_version_public_id,
+                    tokenizer_version_public_id=tokenizer_version_public_id,
+                    core_model_version_public_id=core_model_version_public_id,
+                    job_mode="bounded_pretraining", configuration=configuration,
+                ),
+                admin_id,
+            )
+            job_public_id = job["public_id"]
+        else:
+            job_public_id = existing_job["public_id"]
+
+        with self.repository.transaction() as connection:
+            job_row = self.repository.job(connection, job_public_id)
+            if existing_job is None:
+                connection.execute(
+                    """UPDATE pretraining_jobs SET status='completed',completed_steps=?,
+                    processed_tokens=?,latest_training_loss=?,latest_validation_loss=?,
+                    best_validation_loss=?,progress=1.0,completed_at=CURRENT_TIMESTAMP,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (
+                        step, processed_tokens, training_loss, validation_loss, validation_loss,
+                        job_row["id"],
+                    ),
+                )
+                self.repository.add_event(
+                    connection, job_row["id"], "external_checkpoint_registered", "draft",
+                    "completed", dumps_json({"source": source_label}),
+                )
+            connection.execute(
+                "UPDATE pretraining_checkpoints SET is_latest=0 WHERE pretraining_job_id=?",
+                (job_row["id"],),
+            )
+            checkpoint_public_id = str(uuid4())
+            connection.execute(
+                """INSERT INTO pretraining_checkpoints(
+                public_id,pretraining_job_id,core_model_version_id,
+                checkpoint_kind,status,step,processed_tokens,safe_name,file_size_bytes,manifest_json,
+                model_checksum_sha256,optimizer_checksum_sha256,scheduler_checksum_sha256,
+                trainer_state_checksum_sha256,combined_checksum_sha256,training_loss,validation_loss,
+                is_best,is_latest,verified_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
+                (
+                    checkpoint_public_id, job_row["id"], job_row["core_model_version_id"],
+                    "final", "verified", step, processed_tokens, safe_name, file_size_bytes,
+                    dumps_json(manifest),
+                    checksums["model_state.pt"], checksums["optimizer_state.pt"],
+                    checksums["scheduler_state.pt"], checksums["trainer_state.json"], combined,
+                    training_loss, validation_loss, 0, 1,
+                ),
+            )
+            self.repository.add_event(
+                connection, job_row["id"], "checkpoint_completed", None, None,
+                dumps_json({"step": step, "checksum": combined[:12], "kind": "external"}),
+            )
+            self._audit(
+                connection, "pretraining_checkpoint_registered_external", admin_id,
+                checkpoint_public_id, job_public_id=job_public_id, source=source_label,
+            )
+        return {
+            "pretraining_job_public_id": job_public_id,
+            "pretraining_checkpoint_public_id": checkpoint_public_id,
+            "combined_checksum_sha256": combined,
+            "safe_name": safe_name,
+        }
 
     def evaluate(self, public_id: str, admin_id: str) -> dict[str, Any]:
         with self.repository.transaction() as connection:

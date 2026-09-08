@@ -26,6 +26,9 @@ def build_diagnostics(
     active_session_count: int,
     total_messages: int,
     llama_cpp_installed: bool,
+    cache_metrics: dict[str, Any] | None = None,
+    resilience_metrics: dict[str, Any] | None = None,
+    provider_probes: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "local_available": local_available,
@@ -36,4 +39,7 @@ def build_diagnostics(
         "external_provider_key": external_provider_key,
         "active_session_count": active_session_count,
         "total_messages": total_messages,
+        "cache_metrics": cache_metrics,
+        "resilience_metrics": resilience_metrics,
+        "provider_probes": provider_probes,
     }

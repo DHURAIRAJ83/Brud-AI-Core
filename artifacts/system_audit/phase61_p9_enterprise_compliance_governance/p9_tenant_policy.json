@@ -1,0 +1,4 @@
+{
+  "tenant_isolation_enforced": true,
+  "cross_tenant_denied": true
+}

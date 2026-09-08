@@ -1,0 +1,16 @@
+[
+  {
+    "index": 0,
+    "run_id": "genesis_phase47",
+    "job_id": "job_phase47_baseline",
+    "worker_id": "system_init",
+    "parent_checkpoint_id": "phase46_checkpoint_step_130_root",
+    "child_checkpoint_id": "phase47_checkpoint_step_65_root",
+    "run_steps": 65,
+    "run_tokens": 4256,
+    "cumulative_tokens": 4256,
+    "previous_hash": "GENESIS_PHASE47_SOVEREIGN_ROOT",
+    "block_hash": "7dfe02bb4b1eafd3e5b0ac73f3d012aaf8460ae8bf06f469539e7a69b8c3c210",
+    "timestamp": 1788022100.7223792
+  }
+]

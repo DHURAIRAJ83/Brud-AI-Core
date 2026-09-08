@@ -21,6 +21,34 @@ async def health(settings: SettingsDependency) -> dict[str, str]:
     }
 
 
+@router.get("/ready")
+async def ready(settings: SettingsDependency) -> dict[str, str]:
+    from fastapi import HTTPException
+    connected = database_is_connected(settings.resolved_database_path)
+    if not connected:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "database": "unavailable"})
+    return {
+        "status": "ready",
+        "service": "brud-ai-backend",
+        "database": "connected",
+    }
+
+
+@router.get("/status")
+async def operational_status(settings: SettingsDependency) -> dict[str, str | int | bool]:
+    connected = database_is_connected(settings.resolved_database_path)
+    return {
+        "status": "operational" if connected else "degraded",
+        "service": "brud-ai-backend",
+        "version": __version__,
+        "phase": PROJECT_PHASE,
+        "environment": settings.env,
+        "database": "connected" if connected else "unavailable",
+        "debug": settings.debug,
+        "audit_enabled": settings.audit_enabled,
+    }
+
+
 @router.get("/version")
 async def version() -> dict[str, str | int]:
     return {"project": "Brud AI", "version": __version__, "phase": PROJECT_PHASE}

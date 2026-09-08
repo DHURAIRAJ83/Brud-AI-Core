@@ -1,0 +1,9 @@
+{
+  "single_next_action": "AGGREGATE PUBLIC-DOMAIN MULTILINGUAL REFERENCE PROSE TO CLOSE THE 767,153 TOKEN DEFICIT TO REACH THE 1M MILESTONE GATE",
+  "rationale": "The WS04 dataset pipeline is 100% reproducible and operational. Pretraining CANNOT be authorized until the 1M token milestone and eventually 50M token corpus are assembled, approved, and sealed.",
+  "what_not_to_do": [
+    "Do NOT authorize pretraining while token deficit exists.",
+    "Do NOT scale model parameters to E6.",
+    "Do NOT enable Public Chat candidate traffic."
+  ]
+}

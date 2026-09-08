@@ -32,25 +32,26 @@ docs/admin_assistant/phase10a_language_preference_plan.md.
 from __future__ import annotations
 
 import logging
-import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.core.config import Settings
 from backend.database.connection import database_connection
 from backend.database.repositories.admin_assistant_context import (
     AdminAssistantContextRepository,
 )
+from backend.database.repositories.base import NotFoundError
 from backend.database.repositories.conversation_memory import ConversationMemoryRepository
 from backend.database.repositories.inference_runtime import InferenceRuntimeRepository
 from backend.database.repositories.model_release import ModelReleaseRepository
 from backend.models.conversation_memory import SessionCreate
 from backend.services.admin_assistant_language_service import AdminAssistantLanguageService
 from backend.services.admin_assistant_service import AdminAssistantService
+from backend.services.admin_assistant_tool_governance import ToolAuthorizationError
 from backend.services.admin_assistant_tools import ReadOnlyToolError, run_tool
 from backend.services.conversation_session_service import ConversationSessionService
 from backend.services.inference_runtime_service import InferenceRuntimeService
 from backend.services.model_assignment_service import ModelAssignmentService
-from core_model.admin_assistant.chat_action_bridge import ChatActionMatch, match_actionable_intent
+from core_model.admin_assistant.chat_action_bridge import match_actionable_intent, propose_chat_action
 from core_model.admin_assistant.dashboard_registry import (
     REGISTRY_VERSION,
     get_page_by_id,
@@ -77,6 +78,9 @@ from core_model.admin_assistant.trusted_web_help import TRUSTED_WEB_FAQ, match_t
 from core_model.conversation.response_policy import decide_response_status
 from core_model.instruction_tuning.language_checks import requested_language_respected
 from core_model.rag.language_routing import classify_language
+
+if TYPE_CHECKING:
+    from backend.database.connection_pool import ConnectionPool
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +144,24 @@ def _summarize_document_nav_tool_result(tab_key: str, result: dict[str, Any]) ->
 
 
 class AdminAssistantChatService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, pool: "ConnectionPool | None" = None) -> None:
+        """Phase 7C-60: `pool` is optional and defaults to `None`, matching
+        every existing construction site (`chat_service(settings)` in
+        `admin_assistant.py`, and every direct `AdminAssistantChatService(settings)`
+        test construction) byte-for-byte unchanged. It is stored only to be
+        forwarded, per-call, into `run_tool(..., pool=...)` from
+        `_run_tool_logged()` below -- it is never used to build a
+        repository/service directly in this class, and it is never written
+        onto `self.settings` (the `@lru_cache`-backed `Settings` singleton
+        returned by `get_settings()` is shared across every request in the
+        process, so mutating it with a per-request pool would leak across
+        concurrent/subsequent requests; storing the pool on this
+        per-request `AdminAssistantChatService` instance instead keeps it
+        request-scoped, exactly like every other pool-aware object in this
+        investigation)."""
+
         self.settings = settings
+        self.pool = pool
         self.database_path = settings.resolved_database_path
         self.context = AdminAssistantContextRepository(self.database_path)
         self.assistant = AdminAssistantService(settings)
@@ -181,11 +201,13 @@ class AdminAssistantChatService:
             }
         )
         try:
-            result = run_tool(tool_name, self.settings, params)
-        except ReadOnlyToolError as exc:
+            result = run_tool(
+                tool_name, self.settings, params, pool=self.pool, admin_id=admin_id
+            )
+        except (ReadOnlyToolError, ToolAuthorizationError) as exc:
             self.context.complete_tool_invocation(
                 invocation["public_id"],
-                status="failed",
+                status="failed" if isinstance(exc, ReadOnlyToolError) else "denied",
                 result_summary={},
                 error_code=str(exc),
             )
@@ -540,73 +562,22 @@ class AdminAssistantChatService:
         return any(keyword in message_lower for keyword in self._RAG_SANDBOX_KEYWORDS)
 
     # -- MB-39: chat -> proposal bridge (creates proposals, never executes) --
-
-    def _propose_register_external_data_provider(
-        self, match: ChatActionMatch, message: str, admin_id: str,
-    ) -> dict[str, Any]:
-        provider_code = f"chat-{uuid.uuid4().hex[:10]}"
-        proposal = self.assistant.propose(
-            action_type=match.action_type,
-            target_type=match.target_type,
-            target_public_id=provider_code,
-            request_payload={
-                "provider_code": provider_code,
-                "name": f"Chat-requested provider ({provider_code})",
-                "provider_type": "custom_api",
-                "access_mode": "public",
-                "description": f"Registered from an Admin Assistant chat message: {message[:200]!r}",
-            },
-            requested_by=admin_id,
-            summary="Register a new external data provider requested via Admin Assistant chat",
-        )
-        return {"public_id": proposal.public_id, "action_type": proposal.action_type, "status": proposal.status}
-
-    def _propose_run_sample_quality_checks(
-        self, match: ChatActionMatch, admin_id: str, entity_public_id: str,
-    ) -> dict[str, Any]:
-        proposal = self.assistant.propose(
-            action_type=match.action_type,
-            target_type=match.target_type,
-            target_public_id=entity_public_id,
-            request_payload={},
-            requested_by=admin_id,
-            summary="Run dataset quality checks requested via Admin Assistant chat",
-        )
-        return {"public_id": proposal.public_id, "action_type": proposal.action_type, "status": proposal.status}
+    #
+    # Phase 16.5: the actual "match -> proposal" logic now lives in
+    # `core_model.admin_assistant.chat_action_bridge.propose_chat_action()`,
+    # shared with MB-28's `MiniBrainLlmRuntimeService.chat()` -- this
+    # method is now a thin call-site, not a second implementation.
 
     def _maybe_propose_chat_action(
         self, message: str, admin_id: str, entity_type: str | None, entity_public_id: str | None,
     ) -> dict[str, Any] | None:
-        """Returns a proposal summary when `message` names one of the
-        MB-39 actionable scopes AND enough real context exists to
-        propose it for real -- this never invents a target entity or a
-        payload value it was not actually given, and it never calls
-        `AdminAssistantService.execute()`. A returned proposal is always
-        `status="pending"` -- a human must still review and execute it
-        through the existing, unmodified proposal flow."""
-
         match = match_actionable_intent(message)
         if match is None:
             return None
-
-        if match.action_type == "register_external_data_provider":
-            # Registering a brand-new provider needs no pre-existing
-            # target, so this scope is always proposable once matched.
-            return self._propose_register_external_data_provider(match, message, admin_id)
-
-        if match.action_type == "run_sample_quality_checks":
-            if entity_type == match.target_type and entity_public_id:
-                return self._propose_run_sample_quality_checks(match, admin_id, entity_public_id)
-            return None
-
-        # build_rag_sandbox_index and run_rag_sandbox_evaluation both
-        # require real configuration this bridge was never given
-        # (index_kind/chunking_config/embedding_model_public_id, or an
-        # answer_run_public_id) -- inventing those would produce a
-        # proposal whose own preview misrepresents what was asked for,
-        # so this bridge deliberately declines and falls back to the
-        # existing RAG Sandbox guidance/navigation instead.
-        return None
+        return propose_chat_action(
+            self.assistant, match=match, message=message, admin_id=admin_id,
+            entity_type=entity_type, entity_public_id=entity_public_id,
+        )
 
     def _reply_rag_sandbox_guidance(self, resolved_language: str) -> str:
         bilingual = {
@@ -842,11 +813,30 @@ class AdminAssistantChatService:
         }
 
     def _resolve_admin_diagnostic_assignment(self) -> dict[str, Any] | None:
+        """Phase 6 fix: `list_assignments()` is a plain `SELECT * FROM
+        inference_model_assignments` -- it has no `scope_key` column
+        (that only exists on the separate, joined single-row
+        `.assignment()` lookup, via `inference_assignment_scopes`).
+        Reading `row["scope_key"]` here raised `IndexError` (sqlite3.Row's
+        missing-key error) the instant any assignment row existed --
+        masked pre-Phase-6 only because no test ever created a real
+        assignment before exercising this method. Fixed using the
+        existing, correct repository API (`scope_by_key()`) to resolve
+        the scope's id once, then filtering on the real
+        `model_assignment_scope_id` column `list_assignments()` rows
+        already carry -- no new SQL, no second data-access path."""
+
         with self._inference_repository.transaction() as connection:
+            try:
+                scope = self._inference_repository.scope_by_key(
+                    connection, ADMIN_ASSISTANT_LLM_SCOPE
+                )
+            except NotFoundError:
+                return None
             rows = [
                 dict(row)
                 for row in self._inference_repository.list_assignments(connection)
-                if row["scope_key"] == ADMIN_ASSISTANT_LLM_SCOPE and row["status"] == "active"
+                if row["model_assignment_scope_id"] == scope["id"] and row["status"] == "active"
             ]
         if not rows:
             return None

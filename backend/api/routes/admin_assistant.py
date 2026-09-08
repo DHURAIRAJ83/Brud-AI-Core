@@ -11,21 +11,29 @@ All three steps, plus failures, are written to the audit log by the
 service layer.
 """
 
-from typing import Any, Literal
+from pathlib import Path
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from pydantic import Field
 
 from backend.api.auth import AdminDependency, CsrfDependency, require_admin
-from backend.api.dependencies import SettingsDependency
+from backend.api.dependencies import PoolDependency, SettingsDependency
 from backend.core.validation import DomainModel
 from backend.database.repositories.admin_assistant_context import (
     AdminAssistantContextRepository,
 )
+from backend.database.repositories.base import ValidationError
 from backend.models.domain import AdminApprovalPublic
 from backend.services.admin_assistant_chat_service import AdminAssistantChatService
 from backend.services.admin_assistant_language_service import AdminAssistantLanguageService
 from backend.services.admin_assistant_service import ACTION_EXECUTORS, AdminAssistantService
+from backend.services.admin_assistant_write_governance import (
+    execute_with_governance,
+    propose_with_governance,
+)
+from backend.services.document_service import DocumentService
+from backend.services.import_service import ImportService
 from core_model.admin_assistant.action_registry import ACTION_DEFINITIONS
 from core_model.admin_assistant.dashboard_registry import DASHBOARD_PAGES, REGISTRY_VERSION
 from core_model.admin_assistant.localization import pending_work_lines
@@ -43,8 +51,8 @@ def language_service(settings) -> AdminAssistantLanguageService:
     return AdminAssistantLanguageService(settings)
 
 
-def chat_service(settings) -> AdminAssistantChatService:
-    return AdminAssistantChatService(settings)
+def chat_service(settings, pool=None) -> AdminAssistantChatService:
+    return AdminAssistantChatService(settings, pool=pool)
 
 
 class ProposalCreateRequest(DomainModel):
@@ -108,6 +116,12 @@ async def overview(settings: SettingsDependency, admin: AdminDependency) -> dict
     )
     result["resolved_language"] = resolved.resolved_language
     return result
+
+
+@router.get("/governance-status")
+async def governance_status(settings: SettingsDependency) -> dict[str, Any]:
+    """Read-only summary of canonical P0-P10G enterprise governance state."""
+    return service(settings).get_governance_status()
 
 
 @router.get("/actions")
@@ -215,9 +229,20 @@ async def preview_language_resolution(
 
 @router.post("/chat")
 async def send_chat_message(
-    payload: ChatMessageRequest, settings: SettingsDependency, admin: CsrfDependency
+    payload: ChatMessageRequest,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    pool: PoolDependency,
 ) -> dict[str, Any]:
-    return chat_service(settings).send_message(
+    """Phase 7C-60: opted into the shared app-instance pool, mirroring
+    `create_smoke_run`'s (Phase 7C-56) `payload, settings, admin, pool`
+    signature exactly. The pool flows through `chat_service(settings, pool)`
+    into `AdminAssistantChatService.__init__`, then per-call into
+    `run_tool(..., pool=...)` -- it never reaches a tool handler except as
+    a pool-backed repository, and only for the one tool
+    (`get_recent_audit_events`) whose `ToolDefinition.pool_aware=True`."""
+
+    return chat_service(settings, pool).send_message(
         admin_id=admin.admin.public_id,
         message=payload.message,
         page_id=payload.page_id,
@@ -251,7 +276,13 @@ async def submit_feedback(
 async def create_proposal(
     payload: ProposalCreateRequest, settings: SettingsDependency, admin: CsrfDependency
 ) -> AdminApprovalPublic:
-    return service(settings).propose(
+    """Phase 4: routed through `propose_with_governance()` -- the RBAC
+    `tool.propose` check -- rather than calling `AdminAssistantService.
+    propose()` directly. See admin_assistant_write_governance.py for
+    why the check lives here rather than inside the service itself."""
+
+    return propose_with_governance(
+        service(settings),
         action_type=payload.action_type,
         target_type=payload.target_type,
         target_public_id=payload.target_public_id,
@@ -296,7 +327,13 @@ async def review_proposal(
 async def execute_proposal(
     public_id: str, settings: SettingsDependency, admin: CsrfDependency
 ) -> AdminApprovalPublic:
-    return service(settings).execute(public_id, executor_public_id=admin.admin.public_id)
+    """Phase 4: routed through `execute_with_governance()` -- the RBAC
+    `tool.execute` check -- rather than calling `AdminAssistantService.
+    execute()` directly. See admin_assistant_write_governance.py."""
+
+    return execute_with_governance(
+        service(settings), public_id, executor_public_id=admin.admin.public_id
+    )
 
 
 @router.post("/proposals/{public_id}/cancel", response_model=AdminApprovalPublic)
@@ -309,3 +346,83 @@ async def cancel_proposal(
     return service(settings).cancel(
         public_id, cancelled_by=admin.admin.public_id, reason=payload.reason
     )
+
+
+@router.post("/upload")
+async def assistant_upload(
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    file: Annotated[UploadFile, File()],
+    session_id: Annotated[str | None, Form()] = None,
+    mode: Annotated[str, Form()] = "guide",
+) -> dict[str, Any]:
+    """Authenticated, CSRF-protected file upload handler for Admin Assistant chat.
+
+    Accepts PDF documents and dataset text files (.pdf, .jsonl, .json, .csv, .txt).
+    PDFs are processed and registered via DocumentService.
+    Dataset files are parsed, validated, and staged via ImportService.
+    Returns structured metadata and assistant action recommendations.
+    """
+    raw_filename = file.filename or "uploaded_file"
+    suffix = Path(raw_filename).suffix.lower()
+
+    if suffix == ".pdf":
+        doc_service = DocumentService(settings)
+        doc = await doc_service.upload(
+            upload=file,
+            strategy="auto",
+            language="mixed",
+            admin_id=admin.admin.public_id,
+        )
+        checksum_prefix = doc.get("checksum_prefix") or (doc.get("checksum_sha256") or "")[:12]
+        return {
+            "status": "success",
+            "file_type": "pdf",
+            "document": doc,
+            "summary": (
+                f"PDF '{doc.get('original_filename')}' successfully uploaded and registered. "
+                f"Pages: {doc.get('page_count')}, Size: {doc.get('file_size_bytes')} bytes, "
+                f"SHA-256: {checksum_prefix}... Ready for Page Review or SFT Candidate Generation."
+            ),
+            "action_recommendation": {
+                "type": "document_review",
+                "nav_key": "Documents",
+                "document_public_id": doc.get("public_id"),
+                "message": "Open in Documents workspace for Tamil OCR quality review and candidate generation.",
+            },
+        }
+
+    if suffix in {".jsonl", ".json", ".csv", ".tsv", ".txt"}:
+        import_service = ImportService(settings)
+        imp = await import_service.receive_upload(
+            upload=file,
+            record_type="instruction",
+            default_language="unknown",
+            import_mode="create_only",
+            field_mapping={},
+            parser_options={},
+            encoding="utf-8",
+            admin_id=admin.admin.public_id,
+        )
+        checksum_prefix = (imp.get("checksum_sha256") or "")[:12]
+        return {
+            "status": "success",
+            "file_type": "dataset",
+            "import": imp,
+            "summary": (
+                f"Dataset file '{imp.get('original_filename')}' successfully uploaded. "
+                f"Status: {imp.get('status')}, Size: {imp.get('file_size_bytes')} bytes, "
+                f"SHA-256: {checksum_prefix}... Staged for quarantine review."
+            ),
+            "action_recommendation": {
+                "type": "dataset_import",
+                "nav_key": "Sample Import & Quarantine",
+                "import_public_id": imp.get("public_id"),
+                "message": "Open in Sample Import & Quarantine to review records and schema mappings.",
+            },
+        }
+
+    raise ValidationError(
+        f"unsupported file type '{suffix}'. Supported formats are: .pdf, .jsonl, .json, .csv, .tsv, .txt"
+    )
+

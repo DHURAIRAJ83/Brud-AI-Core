@@ -1,0 +1,5 @@
+{
+  "regression_passed": true,
+  "delta_tamil_quality": 0.23,
+  "delta_factuality": 0.2
+}

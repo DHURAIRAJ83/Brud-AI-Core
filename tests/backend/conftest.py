@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from backend.api.auth import AdminContext, require_admin
 from backend.core.config import Settings
 from backend.database.migrations import initialize_database
+from backend.database.qualification_guard import assert_database_path_is_not_production
 from backend.main import create_app
 from backend.models.auth import AdminPublic, SessionPublic
 from backend.services.public_chat_rate_limiter import reset_rate_limits
@@ -50,6 +51,13 @@ def api_app(tmp_path: Path) -> FastAPI:
         allow_external_storage=True,
         log_level="CRITICAL",
     )
+    # Phase 2.8H: a cheap, deterministic, path-only guard (no process
+    # scan -- this fixture runs on essentially every backend test) that
+    # closes Invariant C for the most-reused fixture in this suite: if a
+    # future edit ever drops the `database_path=tmp_path/...` override
+    # above, this fails the test immediately instead of silently
+    # initializing/writing to the production database.
+    assert_database_path_is_not_production(settings.resolved_database_path, context="api_app fixture")
     initialize_database(settings.resolved_database_path)
     return create_app(settings)
 

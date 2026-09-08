@@ -1,6 +1,7 @@
 """Safe, deterministic handling for JSON stored in SQLite."""
 
 import json
+import re
 from typing import Any
 
 from backend.core.config import get_settings
@@ -53,9 +54,16 @@ def loads_json(value: str | None, *, default: Any = None) -> Any:
 
 SECRET_KEYS = {"secret", "password", "token", "api_key", "apikey", "authorization"}
 
+_SECRET_STRING_PATTERNS = [
+    re.compile(r"sk-[a-zA-Z0-9_\-]{10,}", re.IGNORECASE),
+    re.compile(r"ghp_[a-zA-Z0-9]{20,}", re.IGNORECASE),
+    re.compile(r"bearer\s+[a-zA-Z0-9_\-\.]{16,}", re.IGNORECASE),
+    re.compile(r"((?:api[_-]?key|secret|password|token)\s*[:=]\s*[\"']?)([^\"'\s]+)([\"']?)", re.IGNORECASE),
+]
+
 
 def redact_secrets(value: Any) -> Any:
-    """Recursively redact values whose keys look secret-bearing."""
+    """Recursively redact values whose keys look secret-bearing or strings containing secret tokens."""
 
     if isinstance(value, dict):
         return {
@@ -66,4 +74,10 @@ def redact_secrets(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [redact_secrets(item) for item in value]
+    if isinstance(value, str):
+        result = value
+        for pattern in _SECRET_STRING_PATTERNS:
+            result = pattern.sub("[REDACTED]", result)
+        return result
     return value
+

@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "source_id": "SRC-WS10-AUGMENTED-COLLECTION",
+      "source_name": "Multilingual Rebalanced & Governed Augmentation Collection (843 JSONL + 6,210 TXT + 1,513 MD Files)",
+      "status": "APPROVED",
+      "license": "CC-BY-4.0 / Public Domain / CC-BY-SA-4.0",
+      "accepted_records": 4961,
+      "subword_tokens": 5140476
+    }
+  ]
+}

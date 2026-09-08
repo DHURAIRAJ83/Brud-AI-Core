@@ -1,0 +1,3 @@
+# 11 PRE-FLIGHT SNAPSHOT AUDIT
+
+- Snapshot Hashing: Recorded immutable hashes: `BASE_MODEL_HASH`, `DATASET_HASH`, `TOKENIZER_HASH`, `TRAINING_CONFIG_HASH`.

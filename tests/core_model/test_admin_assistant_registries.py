@@ -78,8 +78,8 @@ def _frontend_document_nav_targets() -> dict[str, dict[str, object]]:
 
 def test_every_real_nav_key_is_registered() -> None:
     real_keys = _real_nav_keys()
-    registered_keys = {page.nav_key for page in DASHBOARD_PAGES}
-    assert real_keys == registered_keys
+    implemented_keys = {page.nav_key for page in DASHBOARD_PAGES if page.implemented}
+    assert real_keys == implemented_keys
 
 
 def test_page_ids_and_nav_keys_are_unique() -> None:

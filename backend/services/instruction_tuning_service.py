@@ -230,7 +230,7 @@ class InstructionTuningService:
         records = self._dataset_rows(connection, experiment["dataset_version_id"])
         processor = TokenizerService(
             TokenizerRepository(self.repository.database_path), self.settings
-        ).processor_for_version(experiment["tokenizer_version_public_id"])
+        ).processor_for_version(experiment["tokenizer_version_public_id"], connection=connection)
         template = self._resolve_template(connection, experiment)
         if sequence_length is None:
             evaluation_configuration = loads_json(experiment["evaluation_configuration_json"])

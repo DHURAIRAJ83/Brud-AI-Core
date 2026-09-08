@@ -1,0 +1,5 @@
+{
+  "exact_duplicates": 0,
+  "unique_candidates": 300,
+  "semantic_dedup_status": "SEMANTIC_DEDUP_STATUS = NOT_IMPLEMENTED"
+}

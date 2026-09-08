@@ -1,0 +1,18 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS02-01",
+      "category": "Pretraining Token Deficit",
+      "description": "Total approved token volume is 193,160 subword tokens, leaving a 49.8M token deficit against the 50M foundation pretraining target.",
+      "severity": "CRITICAL",
+      "mitigation": "Ingest public-domain Tamil literature, reference encyclopedias, and educational texts before authorizing pretraining."
+    },
+    {
+      "id": "RISK-WS02-02",
+      "category": "Synthetic Data Pollution",
+      "description": "Allowing synthetic data ratio to exceed 15% risks model degeneration.",
+      "severity": "HIGH",
+      "mitigation": "Enforce synthetic_ratio <= 0.15 ceiling."
+    }
+  ]
+}

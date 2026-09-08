@@ -1,0 +1,8 @@
+{
+  "step": 3133,
+  "loss": 4.748667240142822,
+  "cumulative_tokens": 155776,
+  "new_exposure_tokens": 20736,
+  "effective_epochs": 9.874285714285714,
+  "guard_state": "WARN"
+}

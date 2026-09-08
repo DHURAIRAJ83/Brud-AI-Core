@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from backend.api.auth import CsrfDependency, require_admin
-from backend.api.dependencies import SettingsDependency
+from backend.api.dependencies import PoolDependency, SettingsDependency
+from backend.database.connection_pool import ConnectionPool
 from backend.database.repositories.corpus import CorpusRepository
 from backend.models.corpus import (
     BalancePolicyCreate,
@@ -87,56 +88,104 @@ class ExportReleaseRequest(BaseModel):
     export_public_id: str = Field(min_length=1, max_length=64)
 
 
-def _repository(settings) -> CorpusRepository:
-    return CorpusRepository(settings.resolved_database_path)
+def _repository(settings, pool: ConnectionPool | None = None) -> CorpusRepository:
+    return CorpusRepository(settings.resolved_database_path, pool=pool)
 
 
-def source_service(settings) -> CorpusSourceService:
-    return CorpusSourceService(_repository(settings), settings)
+def source_service(settings, pool: ConnectionPool | None = None) -> CorpusSourceService:
+    """Phase 7C-41: `pool` defaults to `None`, so every existing call site
+    below that still says `source_service(settings)` (unchanged) keeps
+    today's exact unpooled behavior. `source_training_eligibility()` and
+    `advance_source_production_lifecycle()` were opted into the shared
+    app-instance pool via `PoolDependency` -- the exact pair the Phase
+    7C-39 `connection=` propagation fix made safe to pool.
+
+    Phase 7C-42: `list_policies()`, `get_policy()`, `list_sources()`, and
+    `get_source()` were added to the same shared pool -- each is a single,
+    plain read-only `self.repository.transaction()` block with no nested
+    call and no sibling repository, so the same evidence already
+    established for `source_training_eligibility()` applies directly.
+
+    Phase 7C-46: `list_snapshots()`/`get_snapshot()` were added on the same
+    basis -- both single, plain read-only transactions (`get_snapshot`'s
+    `_snapshot_detail` helper takes `connection` directly and never opens
+    its own transaction), qualified in Phase 7C-45. This is still not a
+    signal that the rest of this file needs converting in one phase --
+    remaining routes/factories are deliberately left unpooled pending
+    their own evidence, per the Phase 7C-40 qualification manifest."""
+
+    return CorpusSourceService(_repository(settings, pool), settings)
 
 
-def processing_service(settings) -> CorpusProcessingService:
-    return CorpusProcessingService(_repository(settings), settings)
+def processing_service(settings, pool: ConnectionPool | None = None) -> CorpusProcessingService:
+    """Phase 7C-46: `get_extraction_run()`/`get_normalization_run()` were
+    opted into the shared app-instance pool -- both already carry the
+    established `connection=None` propagation idiom (used internally by
+    `create_extraction_run`/`create_normalization_run`) and are single,
+    plain read-only transactions with no nested call and no sibling
+    repository when invoked standalone (Phase 7C-45's qualification). This
+    is `processing_service`'s first real use of the `pool` parameter it
+    mechanically gained in Phase 7C-41 -- every other route/factory in this
+    file remains deliberately unpooled pending its own evidence."""
+
+    return CorpusProcessingService(_repository(settings, pool), settings)
 
 
-def quality_service(settings) -> CorpusQualityService:
-    return CorpusQualityService(_repository(settings), settings)
+def quality_service(settings, pool: ConnectionPool | None = None) -> CorpusQualityService:
+    """Phase 7C-48: `get_deduplication_run()`/`get_contamination_run()` were
+    opted into the shared app-instance pool -- both are single, plain
+    read-only transactions with no nested call and no sibling repository
+    (Phase 7C-47's qualification). This is `quality_service`'s first real
+    use of the `pool` parameter it mechanically gained in Phase 7C-41 --
+    every other route/factory in this file remains deliberately unpooled
+    pending its own evidence."""
+
+    return CorpusQualityService(_repository(settings, pool), settings)
 
 
-def build_service(settings) -> CorpusBuildService:
-    return CorpusBuildService(_repository(settings), settings)
+def build_service(settings, pool: ConnectionPool | None = None) -> CorpusBuildService:
+    return CorpusBuildService(_repository(settings, pool), settings)
 
 
-def export_service(settings) -> CorpusExportService:
-    return CorpusExportService(_repository(settings), settings)
+def export_service(settings, pool: ConnectionPool | None = None) -> CorpusExportService:
+    return CorpusExportService(_repository(settings, pool), settings)
 
 
-def profile_service(settings) -> CorpusProfileService:
-    return CorpusProfileService(_repository(settings), settings)
+def profile_service(settings, pool: ConnectionPool | None = None) -> CorpusProfileService:
+    """Phase 7C-48: `list_normalization_profiles()` was opted into the
+    shared app-instance pool -- a single, plain read-only transaction with
+    no nested call and no sibling repository (Phase 7C-47's qualification).
+    This is `profile_service`'s first real use of the `pool` parameter it
+    mechanically gained in Phase 7C-41 -- every other route/factory in this
+    file remains deliberately unpooled pending its own evidence."""
+
+    return CorpusProfileService(_repository(settings, pool), settings)
 
 
-def ingestion_service(settings) -> CorpusIngestionService:
-    return CorpusIngestionService(_repository(settings), settings)
+def ingestion_service(settings, pool: ConnectionPool | None = None) -> CorpusIngestionService:
+    return CorpusIngestionService(_repository(settings, pool), settings)
 
 
-def tokenizer_analysis_service(settings) -> CorpusTokenizerAnalysisService:
-    return CorpusTokenizerAnalysisService(_repository(settings), settings)
+def tokenizer_analysis_service(
+    settings, pool: ConnectionPool | None = None
+) -> CorpusTokenizerAnalysisService:
+    return CorpusTokenizerAnalysisService(_repository(settings, pool), settings)
 
 
-def readiness_service(settings) -> CorpusReadinessService:
-    return CorpusReadinessService(_repository(settings), settings)
+def readiness_service(settings, pool: ConnectionPool | None = None) -> CorpusReadinessService:
+    return CorpusReadinessService(_repository(settings, pool), settings)
 
 
-def release_service(settings) -> CorpusReleaseService:
-    return CorpusReleaseService(_repository(settings), settings)
+def release_service(settings, pool: ConnectionPool | None = None) -> CorpusReleaseService:
+    return CorpusReleaseService(_repository(settings, pool), settings)
 
 
 # --- policies -----------------------------------------------------
 
 
 @router.get("/policies")
-async def list_policies(settings: SettingsDependency):
-    return source_service(settings).list_policies()
+async def list_policies(settings: SettingsDependency, pool: PoolDependency):
+    return source_service(settings, pool).list_policies()
 
 
 @router.post("/policies")
@@ -147,8 +196,8 @@ async def create_policy(
 
 
 @router.get("/policies/{public_id}")
-async def get_policy(public_id: str, settings: SettingsDependency):
-    return source_service(settings).get_policy(public_id)
+async def get_policy(public_id: str, settings: SettingsDependency, pool: PoolDependency):
+    return source_service(settings, pool).get_policy(public_id)
 
 
 @router.patch("/policies/{public_id}")
@@ -173,8 +222,8 @@ async def activate_policy(public_id: str, settings: SettingsDependency, admin: C
 
 
 @router.get("/sources")
-async def list_sources(settings: SettingsDependency):
-    return source_service(settings).list_sources()
+async def list_sources(settings: SettingsDependency, pool: PoolDependency):
+    return source_service(settings, pool).list_sources()
 
 
 @router.post("/sources")
@@ -185,8 +234,8 @@ async def create_source(
 
 
 @router.get("/sources/{public_id}")
-async def get_source(public_id: str, settings: SettingsDependency):
-    return source_service(settings).get_source(public_id)
+async def get_source(public_id: str, settings: SettingsDependency, pool: PoolDependency):
+    return source_service(settings, pool).get_source(public_id)
 
 
 @router.patch("/sources/{public_id}")
@@ -218,8 +267,10 @@ async def verify_origin(
 
 
 @router.get("/sources/{public_id}/training-eligibility")
-async def source_training_eligibility(public_id: str, settings: SettingsDependency):
-    return source_service(settings).training_eligibility(public_id)
+async def source_training_eligibility(
+    public_id: str, settings: SettingsDependency, pool: PoolDependency
+):
+    return source_service(settings, pool).training_eligibility(public_id)
 
 
 # --- licences -----------------------------------------------------
@@ -252,13 +303,13 @@ async def create_snapshot(
 
 
 @router.get("/sources/{public_id}/snapshots")
-async def list_snapshots(public_id: str, settings: SettingsDependency):
-    return source_service(settings).list_snapshots(public_id)
+async def list_snapshots(public_id: str, settings: SettingsDependency, pool: PoolDependency):
+    return source_service(settings, pool).list_snapshots(public_id)
 
 
 @router.get("/snapshots/{public_id}")
-async def get_snapshot(public_id: str, settings: SettingsDependency):
-    return source_service(settings).get_snapshot(public_id)
+async def get_snapshot(public_id: str, settings: SettingsDependency, pool: PoolDependency):
+    return source_service(settings, pool).get_snapshot(public_id)
 
 
 # --- extraction -----------------------------------------------------
@@ -275,8 +326,8 @@ async def create_extraction_run(
 
 
 @router.get("/extraction-runs/{public_id}")
-async def get_extraction_run(public_id: str, settings: SettingsDependency):
-    return processing_service(settings).get_extraction_run(public_id)
+async def get_extraction_run(public_id: str, settings: SettingsDependency, pool: PoolDependency):
+    return processing_service(settings, pool).get_extraction_run(public_id)
 
 
 # --- normalization -----------------------------------------------------
@@ -293,8 +344,10 @@ async def create_normalization_run(
 
 
 @router.get("/normalization-runs/{public_id}")
-async def get_normalization_run(public_id: str, settings: SettingsDependency):
-    return processing_service(settings).get_normalization_run(public_id)
+async def get_normalization_run(
+    public_id: str, settings: SettingsDependency, pool: PoolDependency
+):
+    return processing_service(settings, pool).get_normalization_run(public_id)
 
 
 # --- segmentation -----------------------------------------------------
@@ -329,8 +382,10 @@ async def create_deduplication_run(
 
 
 @router.get("/deduplication-runs/{public_id}")
-async def get_deduplication_run(public_id: str, settings: SettingsDependency):
-    return quality_service(settings).get_deduplication_run(public_id)
+async def get_deduplication_run(
+    public_id: str, settings: SettingsDependency, pool: PoolDependency
+):
+    return quality_service(settings, pool).get_deduplication_run(public_id)
 
 
 # --- contamination -----------------------------------------------------
@@ -344,8 +399,10 @@ async def create_contamination_run(
 
 
 @router.get("/contamination-runs/{public_id}")
-async def get_contamination_run(public_id: str, settings: SettingsDependency):
-    return quality_service(settings).get_contamination_run(public_id)
+async def get_contamination_run(
+    public_id: str, settings: SettingsDependency, pool: PoolDependency
+):
+    return quality_service(settings, pool).get_contamination_run(public_id)
 
 
 # --- collections -----------------------------------------------------
@@ -493,9 +550,9 @@ async def set_source_review_metadata(
 @router.post("/sources/{public_id}/production-lifecycle")
 async def advance_source_production_lifecycle(
     public_id: str, payload: ProductionLifecycleTransitionRequest, settings: SettingsDependency,
-    admin: CsrfDependency,
+    admin: CsrfDependency, pool: PoolDependency,
 ):
-    return source_service(settings).advance_production_lifecycle(
+    return source_service(settings, pool).advance_production_lifecycle(
         public_id, payload.target_status, admin.admin.public_id, reason=payload.reason
     )
 
@@ -504,8 +561,8 @@ async def advance_source_production_lifecycle(
 
 
 @router.get("/normalization-profiles")
-async def list_normalization_profiles(settings: SettingsDependency):
-    return profile_service(settings).list_normalization_profiles()
+async def list_normalization_profiles(settings: SettingsDependency, pool: PoolDependency):
+    return profile_service(settings, pool).list_normalization_profiles()
 
 
 @router.post("/normalization-profiles")

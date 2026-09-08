@@ -1,0 +1,4 @@
+{
+  "cross_tenant_denied": true,
+  "data_isolation_enforced": true
+}

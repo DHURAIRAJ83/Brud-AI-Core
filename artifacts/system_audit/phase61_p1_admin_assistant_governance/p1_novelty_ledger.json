@@ -1,0 +1,5 @@
+{
+  "schema_version": 77,
+  "table": "global_novelty_ledger",
+  "three_way_accounting": "PASSED"
+}

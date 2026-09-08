@@ -1,0 +1,8 @@
+{
+  "step": 3060,
+  "cumulative_tokens": 1088,
+  "best_val_loss": 0.026660028379410505,
+  "current_val_loss": 0.02666479372419417,
+  "worker_id": "worker_daemon_sovereign_phase50_phase50_w107_1788003334673",
+  "saved_at": 1788003340.2642016
+}

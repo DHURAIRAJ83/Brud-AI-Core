@@ -90,6 +90,11 @@ ROUTE_PLUGINS: Tuple[RoutePlugin, ...] = (
     RoutePlugin("incremental_training", False, True, "backend.api.routes.incremental_training", tags=("admin", "training")),
     RoutePlugin("knowledge_routing", False, True, "backend.api.routes.knowledge_routing", tags=("admin",)),
     RoutePlugin("knowledge_gap_admin", False, True, "backend.api.routes.knowledge_gap_admin", tags=("admin",)),
+    RoutePlugin("candidate_admin", False, True, "backend.api.routes.candidate_admin", tags=("admin",)),
+    RoutePlugin("controlled_ingestion_admin", False, True, "backend.api.routes.controlled_ingestion_admin", tags=("admin",)),
+    RoutePlugin("evaluation_admin", False, True, "backend.api.routes.evaluation_admin", tags=("admin",)),
+    RoutePlugin("release_admin", False, True, "backend.api.routes.release_admin", tags=("admin",)),
+    RoutePlugin("deployment_admin", False, True, "backend.api.routes.deployment_admin", tags=("admin",)),
     RoutePlugin("public_chat_admin", False, True, "backend.api.routes.public_chat_admin", tags=("admin",)),
     RoutePlugin("trusted_web_admin", False, True, "backend.api.routes.trusted_web_admin", tags=("admin",)),
     RoutePlugin("deterministic_tools_admin", False, True, "backend.api.routes.deterministic_tools_admin", tags=("admin",)),
@@ -131,6 +136,8 @@ ROUTE_PLUGINS: Tuple[RoutePlugin, ...] = (
     RoutePlugin("mini_brain_release_governance", False, False, "backend.api.routes.mini_brain_release_governance", tags=("admin", "mini_brain")),
     RoutePlugin("mini_brain_external_ai_gateway", False, False, "backend.api.routes.mini_brain_external_ai_gateway", tags=("admin", "mini_brain")),
     RoutePlugin("mini_brain_training_engine", False, False, "backend.api.routes.mini_brain_training_engine", tags=("admin", "mini_brain")),
+    RoutePlugin("mini_brain_pretraining_handoff", False, False, "backend.api.routes.mini_brain_pretraining_handoff", tags=("admin", "mini_brain")),
+    RoutePlugin("mini_brain_dataset_pipeline", False, False, "backend.api.routes.mini_brain_dataset_pipeline", tags=("admin", "mini_brain")),
     RoutePlugin("mini_brain_public_chat_runtime", False, False, "backend.api.routes.mini_brain_public_chat_runtime", tags=("admin", "mini_brain")),
     RoutePlugin("mini_brain_plugin_governance", False, False, "backend.api.routes.mini_brain_plugin_governance", tags=("admin", "mini_brain")),
     RoutePlugin("mini_brain_plugin_runtime", False, False, "backend.api.routes.mini_brain_plugin_runtime", tags=("admin", "mini_brain")),
@@ -142,6 +149,10 @@ ROUTE_PLUGINS: Tuple[RoutePlugin, ...] = (
     RoutePlugin("mini_brain_health", False, False, "backend.api.routes.mini_brain_health", tags=("admin", "mini_brain")),
     RoutePlugin("production_readiness", False, False, "backend.api.routes.production_readiness", tags=("admin", "production_readiness")),
     RoutePlugin("rag_sandbox", False, False, "backend.api.routes.rag_sandbox", tags=("admin", "rag_sandbox")),
+    RoutePlugin("observability_admin", False, False, "backend.api.routes.observability_admin", tags=("admin", "phase26")),
+    RoutePlugin("lock_maintenance_admin", False, False, "backend.api.routes.lock_maintenance_admin", tags=("admin", "lock_maintenance")),
+    RoutePlugin("disaster_recovery_admin", False, False, "backend.api.routes.disaster_recovery_admin", tags=("admin", "disaster_recovery")),
+    RoutePlugin("recovery_validation_admin", False, False, "backend.api.routes.recovery_validation_admin", tags=("admin", "recovery_validation")),
 )
 
 

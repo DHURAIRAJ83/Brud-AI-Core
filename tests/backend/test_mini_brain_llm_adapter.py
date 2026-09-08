@@ -157,7 +157,7 @@ def test_external_adapter_generate_without_key_is_honest_not_a_crash() -> None:
 
 def test_external_adapter_openai_generate_mocked_httpx_success() -> None:
     adapter = ExternalProviderMiniBrainAdapter(provider_key="openai", api_key="sk-x")
-    fake_response = MagicMock()
+    fake_response = MagicMock(status_code=200)
     fake_response.raise_for_status = MagicMock()
     fake_response.json.return_value = {"choices": [{"message": {"content": "hello there"}}], "usage": {"completion_tokens": 3}}
     with patch("httpx.post", return_value=fake_response) as mock_post:
@@ -169,7 +169,7 @@ def test_external_adapter_openai_generate_mocked_httpx_success() -> None:
 
 def test_external_adapter_anthropic_generate_mocked_httpx_success() -> None:
     adapter = ExternalProviderMiniBrainAdapter(provider_key="anthropic", api_key="sk-x")
-    fake_response = MagicMock()
+    fake_response = MagicMock(status_code=200)
     fake_response.raise_for_status = MagicMock()
     fake_response.json.return_value = {"content": [{"text": "hi there"}], "usage": {"output_tokens": 2}}
     with patch("httpx.post", return_value=fake_response):
@@ -179,7 +179,7 @@ def test_external_adapter_anthropic_generate_mocked_httpx_success() -> None:
 
 def test_external_adapter_gemini_generate_mocked_httpx_success() -> None:
     adapter = ExternalProviderMiniBrainAdapter(provider_key="gemini", api_key="sk-x")
-    fake_response = MagicMock()
+    fake_response = MagicMock(status_code=200)
     fake_response.raise_for_status = MagicMock()
     fake_response.json.return_value = {"candidates": [{"content": {"parts": [{"text": "gemini reply"}]}}], "usageMetadata": {"candidatesTokenCount": 2}}
     with patch("httpx.post", return_value=fake_response):

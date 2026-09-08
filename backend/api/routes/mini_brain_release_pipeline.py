@@ -131,8 +131,24 @@ async def performance(session_id: str, settings: SettingsDependency, admin: Csrf
 async def create_release_version(
     session_id: str, payload: CreateReleaseVersionRequest, settings: SettingsDependency, admin: CsrfDependency
 ):
+    # Prepares the candidate (manifest generation etc.) only -- does not
+    # create the release. GOV-26/GOV-33: real, distinct, non-creator admins
+    # must separately submit approvals (POST /admin/model-releases/candidates/
+    # {id}/approvals, unchanged) before /finalize-version below can succeed.
     svc = service(settings)
     svc.create_release_version(
+        session_id, version=payload.version, prerelease_label=payload.prerelease_label,
+        admin_id=admin.admin.public_id,
+    )
+    return svc.generate_report(session_id, admin_id=admin.admin.public_id)
+
+
+@router.post("/sessions/{session_id}/finalize-version")
+async def finalize_release_version(
+    session_id: str, payload: CreateReleaseVersionRequest, settings: SettingsDependency, admin: CsrfDependency
+):
+    svc = service(settings)
+    svc.finalize_release_version(
         session_id, version=payload.version, prerelease_label=payload.prerelease_label,
         admin_id=admin.admin.public_id,
     )

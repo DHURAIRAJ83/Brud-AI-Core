@@ -1,11 +1,9 @@
 """Environment-backed application configuration."""
 
 import logging
-import sqlite3
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
-from uuid import uuid4
 
 from pydantic import AnyHttpUrl, Field, field_validator, model_validator
 from pydantic import ValidationError as PydanticValidationError
@@ -81,9 +79,24 @@ class Settings(BaseSettings):
         default=15, ge=1, le=1440, validation_alias="BRUD_ADMIN_LOCKOUT_MINUTES"
     )
     admin_cookie_secure: bool = Field(default=False, validation_alias="BRUD_ADMIN_COOKIE_SECURE")
+    trust_proxy_headers: bool = Field(default=False, validation_alias="BRUD_TRUST_PROXY_HEADERS")
+    ollama_url: str = Field(default="http://localhost:11434", validation_alias="BRUD_OLLAMA_URL")
     admin_cookie_name: str = Field(
         default="brud_admin_session", validation_alias="BRUD_ADMIN_COOKIE_NAME"
     )
+    admin_role_overrides: str = Field(
+        default="",
+        validation_alias="BRUD_ADMIN_ROLE_OVERRIDES",
+    )
+    # Phase 3: `admin_public_id:ROLE` pairs, comma-separated (e.g.
+    # "00000000-...:SUPER_ADMIN,11111111-...:AUDITOR"). No admin role
+    # is persisted in the database (no migration in this phase -- see
+    # `AdminRole`'s docstring in admin_assistant_tool_governance.py);
+    # this is the least invasive correct representation available.
+    # An admin_id absent from this map resolves to `AdminRole.ADMIN`
+    # (see `admin_role_overrides_map` / `resolve_admin_role`), which
+    # is what keeps every pre-Phase-3 caller's READ_ONLY tool access
+    # unchanged.
     csrf_cookie_name: str = Field(default="brud_csrf", validation_alias="BRUD_CSRF_COOKIE_NAME")
     csrf_header_name: str = Field(default="X-CSRF-Token", validation_alias="BRUD_CSRF_HEADER_NAME")
     import_dir: Path = Field(default=Path("data/imports"), validation_alias="BRUD_IMPORT_DIR")
@@ -660,6 +673,19 @@ class Settings(BaseSettings):
     release_allow_self_approval: bool = Field(
         default=True, validation_alias="BRUD_RELEASE_ALLOW_SELF_APPROVAL"
     )
+    release_minimum_distinct_approvers: int = Field(
+        default=2, ge=1, validation_alias="BRUD_RELEASE_MINIMUM_DISTINCT_APPROVERS"
+    )
+    # 2 is an explicit, owner-approved governance decision (GOV-26; floor
+    # semantics resolved in GOV-26b), recorded in
+    # deploy/repository-audit/BRUD_AI_P0_1_GOVERNANCE_DECISION_RECORD.md.
+    # This value is a permanent floor, not merely an initial value: the
+    # effective minimum actually enforced is
+    # `resolve_minimum_distinct_approvers(release_required_approval_roles_list,
+    # release_minimum_distinct_approvers)` = `max(floor, role_count)` (see
+    # core_model/release/approval_policy.py) -- it can only ever be raised
+    # above this floor by a larger required-role count, never lowered
+    # below it.
     release_require_rollback_target: bool = Field(
         default=False, validation_alias="BRUD_RELEASE_REQUIRE_ROLLBACK_TARGET"
     )
@@ -709,6 +735,12 @@ class Settings(BaseSettings):
     mini_brain_public_chat_runtime_hash_salt: str = Field(
         default="brud-mini-brain-public-chat-runtime-default-salt",
         validation_alias="BRUD_MINI_BRAIN_PUBLIC_CHAT_RUNTIME_HASH_SALT",
+    )
+    mini_brain_context_cache_ttl_seconds: float = Field(
+        default=4.0,
+        ge=0.5,
+        le=60.0,
+        validation_alias="BRUD_MINI_BRAIN_CONTEXT_CACHE_TTL_SECONDS",
     )
     knowledge_gap_capture_enabled: bool = Field(
         default=True, validation_alias="BRUD_KNOWLEDGE_GAP_CAPTURE_ENABLED"
@@ -822,6 +854,37 @@ class Settings(BaseSettings):
         default="technical,evaluation,security,release",
         validation_alias="BRUD_INFERENCE_REQUIRED_PUBLIC_APPROVAL_ROLES",
     )
+    inference_public_chat_minimum_distinct_approvers: int = Field(
+        default=4, ge=1, validation_alias="BRUD_INFERENCE_PUBLIC_CHAT_MINIMUM_DISTINCT_APPROVERS"
+    )
+    # 4 is an explicit governance decision for the public_chat inference-assignment
+    # scope (deploy/repository-audit/BRUD_AI_P0_1_GOVERNANCE_DECISION_PACKET.md,
+    # GOV-25/GOV-26) -- the same 4 roles named above must now come from 4 distinct
+    # authenticated admin identities, not merely 4 distinct role labels.
+    inference_default_minimum_distinct_approvers: int = Field(
+        default=2, ge=1, validation_alias="BRUD_INFERENCE_DEFAULT_MINIMUM_DISTINCT_APPROVERS"
+    )
+    # 2 is an explicit, owner-approved governance decision (GOV-26c),
+    # recorded in
+    # deploy/repository-audit/BRUD_AI_P0_1_GOVERNANCE_DECISION_RECORD.md.
+    # Applies as ONE shared value to every inference-assignment scope
+    # other than public_chat (today: admin_diagnostic, admin_chat_lab,
+    # internal_canary) -- deliberately not auto-tracked against role
+    # count (unlike the release flow's GOV-26b) and deliberately not
+    # differentiated per scope; both were explicitly out of scope for
+    # this decision.
+    inference_assignment_allow_self_approval: bool = Field(
+        default=False, validation_alias="BRUD_INFERENCE_ASSIGNMENT_ALLOW_SELF_APPROVAL"
+    )
+    # False is an explicit, owner-approved governance decision (GOV-31:
+    # self-approval prohibited; GOV-32: default changed accordingly),
+    # recorded in
+    # deploy/repository-audit/BRUD_AI_P0_1_GOVERNANCE_DECISION_RECORD.md.
+    # Deliberately separate from release_allow_self_approval: the two
+    # approval flows govern different domains and must not silently
+    # share one flag. is_self_approval is computed from the real
+    # assignment creator identity (backend/services/model_assignment_service.py),
+    # so this flag now has a real, meaningful effect.
     rag_enabled: bool = Field(default=True, validation_alias="BRUD_RAG_ENABLED")
     rag_max_source_characters: int = Field(
         default=2_000_000, ge=1, validation_alias="BRUD_RAG_MAX_SOURCE_CHARACTERS"
@@ -1221,6 +1284,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "BRUD_INFERENCE_MAX_NEW_TOKENS must not exceed BRUD_INFERENCE_MAX_CONTEXT_LENGTH"
             )
+        if self.env == "production":
+            if self.debug:
+                raise ValueError("BRUD_DEBUG must be False in production")
+            if not self.admin_cookie_secure:
+                raise ValueError("BRUD_ADMIN_COOKIE_SECURE must be True in production")
+            if self.allow_external_storage:
+                raise ValueError("BRUD_ALLOW_EXTERNAL_STORAGE must be False in production")
+            if not self.trust_proxy_headers:
+                raise ValueError("BRUD_TRUST_PROXY_HEADERS must be True in production")
         return self
 
     @field_validator("ocr_languages")
@@ -1384,6 +1456,34 @@ class Settings(BaseSettings):
         )
 
     @property
+    def admin_role_overrides_map(self) -> dict[str, "AdminRole"]:
+        """Parses `admin_role_overrides` into `{admin_public_id: AdminRole}`.
+        A malformed entry's role name (config typo) resolves to
+        `AdminRole.NONE` -- zero permissions -- rather than being
+        silently dropped (which would fail open onto the `ADMIN`
+        default for that admin_id instead). Import is local to avoid a
+        module-level cycle (`admin_assistant_tool_governance` does not
+        import `backend.core.config`)."""
+
+        from backend.services.admin_assistant_tool_governance import AdminRole
+
+        overrides: dict[str, AdminRole] = {}
+        for entry in self.admin_role_overrides.split(","):
+            entry = entry.strip()
+            if not entry or ":" not in entry:
+                continue
+            admin_id, _, role_name = entry.partition(":")
+            admin_id = admin_id.strip()
+            role_name = role_name.strip().upper()
+            if not admin_id:
+                continue
+            try:
+                overrides[admin_id] = AdminRole[role_name]
+            except KeyError:
+                overrides[admin_id] = AdminRole.NONE
+        return overrides
+
+    @property
     def allowed_import_extensions(self) -> set[str]:
         return set(self.import_allowed_extensions.split(","))
 
@@ -1438,34 +1538,35 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return the process-wide immutable settings instance."""
+    """Return the process-wide immutable settings instance.
+
+    On a validation failure, this used to open a raw, writable
+    `sqlite3.connect()` against the hardcoded literal production database
+    path (`PROJECT_ROOT / "data/database/brud_ai.db"`) to record an audit
+    row -- reachable from *any* invalid environment, in *any* process,
+    including qualification/test code, with no way for
+    `backend.database.qualification_guard` to intercept it: the write
+    happens while constructing the very `Settings` object every guard
+    check requires as its own input, so no guard can ever see it coming
+    (Phase 2.8O independently reproduced this against the real production
+    database; Phase 2.8P removes it). `@lru_cache` does not cache a raised
+    exception, so every repeated call under a persistently-invalid
+    environment would have re-triggered this write, compounding rather
+    than deduplicating. Diagnostics are preserved via the same `logging`
+    mechanism the rest of this application already uses -- never a
+    database of any kind."""
 
     try:
         return Settings()
     except PydanticValidationError as exc:
-        logger.error("configuration_validation_failure", extra={"error_count": exc.error_count()})
-        audit_path = PROJECT_ROOT / "data/database/brud_ai.db"
-        if audit_path.is_file():
-            try:
-                with sqlite3.connect(audit_path) as connection:
-                    columns = {
-                        row[1] for row in connection.execute("PRAGMA table_info(audit_logs)")
-                    }
-                    if "public_id" in columns:
-                        connection.execute(
-                            """INSERT INTO audit_logs(action,actor,details,public_id,event_type,
-                            actor_type,outcome,metadata_json) VALUES (?,?,?,?,?,?,?,?)""",
-                            (
-                                "configuration_validation_failure",
-                                "system",
-                                "{}",
-                                str(uuid4()),
-                                "configuration_validation_failure",
-                                "system",
-                                "failure",
-                                f'{{"error_count":{exc.error_count()}}}',
-                            ),
-                        )
-            except sqlite3.Error:
-                logger.exception("configuration_failure_audit_write_failed")
+        logger.error(
+            "configuration_validation_failure",
+            extra={
+                "error_count": exc.error_count(),
+                "errors": [
+                    {"loc": ".".join(str(part) for part in e.get("loc", ())), "type": e.get("type"), "msg": e.get("msg")}
+                    for e in exc.errors()
+                ],
+            },
+        )
         raise

@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS07-01",
+      "category": "Domain Imbalance Post 1M Qualification",
+      "description": "English technical prose represents 95.8% of the 4.92M token collection. Tamil, Tanglish, and Structured Knowledge require expansion prior to 50M pretraining.",
+      "severity": "MEDIUM",
+      "mitigation": "Aggressively expand Tamil reference prose and Structured Knowledge glossary collections in upcoming workstreams."
+    }
+  ]
+}

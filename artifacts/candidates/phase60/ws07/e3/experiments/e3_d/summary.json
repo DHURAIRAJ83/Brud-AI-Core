@@ -1,0 +1,35 @@
+{
+  "experiment_id": "e3_d",
+  "name": "Tamil + English + Tanglish + Mixed",
+  "dataset_size": 2072,
+  "train_size": 1672,
+  "val_size": 200,
+  "test_size": 200,
+  "languages": [
+    "ta",
+    "en",
+    "tgl",
+    "mixed"
+  ],
+  "duration_seconds": 51.47,
+  "final_train_loss": 5.0538,
+  "best_val_loss": 5.7854,
+  "held_out_test_loss": 5.7509,
+  "checkpoint_sha256": "0bcc2c7b1daa6e77639cd229a225feea4a8d52b1a9e75bcc56e243fedeef1002",
+  "best_step": 100,
+  "evaluation": {
+    "raw_weights": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.9,
+      "eos_emission_rate": 0.0
+    },
+    "inference_controlled": {
+      "capability_pass_count": 1,
+      "capability_pass_rate": 0.0417,
+      "mean_repetition_ratio": 0.0,
+      "eos_emission_rate": 0.3333
+    },
+    "multi_turn_retention": false
+  }
+}

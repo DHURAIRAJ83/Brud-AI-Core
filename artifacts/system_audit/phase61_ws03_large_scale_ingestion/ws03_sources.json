@@ -1,0 +1,28 @@
+{
+  "sources": [
+    {
+      "source_id": "SRC-WS03-APPROVED-001",
+      "source_name": "Base Phase 60 & E3 Approved Instruction Dataset Collection",
+      "status": "APPROVED",
+      "license": "CC-BY-4.0 / Public Domain",
+      "records": 2088,
+      "tokens": 173329
+    },
+    {
+      "source_id": "SRC-WS03-APPROVED-002",
+      "source_name": "Canonical data/approved/*.jsonl Multilingual Collection",
+      "status": "APPROVED",
+      "license": "Public Domain / CC-BY-SA-4.0",
+      "records": 215,
+      "tokens": 19831
+    },
+    {
+      "source_id": "SRC-WS03-APPROVED-003",
+      "source_name": "Phase 20 & Phase 59 Clean Instruction Extensions",
+      "status": "APPROVED",
+      "license": "CC-BY-4.0",
+      "records": 336,
+      "tokens": 28252
+    }
+  ]
+}

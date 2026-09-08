@@ -1,0 +1,33 @@
+{
+  "experiment_id": "e3_b",
+  "name": "Tamil + English Translations",
+  "dataset_size": 1436,
+  "train_size": 1124,
+  "val_size": 155,
+  "test_size": 157,
+  "languages": [
+    "ta",
+    "en"
+  ],
+  "duration_seconds": 86.26,
+  "final_train_loss": 4.9597,
+  "best_val_loss": 5.4787,
+  "held_out_test_loss": 5.4327,
+  "checkpoint_sha256": "ba3d57a89c2f7bd347ff40f99b19d0179b808e21ca876d618b123d3fc113be1c",
+  "best_step": 100,
+  "evaluation": {
+    "raw_weights": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.9,
+      "eos_emission_rate": 0.0
+    },
+    "inference_controlled": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.0,
+      "eos_emission_rate": 0.7917
+    },
+    "multi_turn_retention": false
+  }
+}

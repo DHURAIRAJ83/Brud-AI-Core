@@ -1,0 +1,15 @@
+{
+  "production_baseline": {
+    "total_tokens": 5140476,
+    "en_tokens": 4489543,
+    "en_ratio": 87.34,
+    "ta_tokens": 445469,
+    "ta_ratio": 8.67,
+    "structured_tokens": 97606,
+    "structured_ratio": 1.9,
+    "mixed_tokens": 87746,
+    "mixed_ratio": 1.71,
+    "tgl_tokens": 20112,
+    "tgl_ratio": 0.39
+  }
+}

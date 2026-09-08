@@ -1,0 +1,35 @@
+{
+  "experiment_id": "e3_e",
+  "name": "Balanced Multilingual + QA + Instruction",
+  "dataset_size": 2088,
+  "train_size": 1670,
+  "val_size": 210,
+  "test_size": 208,
+  "languages": [
+    "ta",
+    "en",
+    "tgl",
+    "mixed"
+  ],
+  "duration_seconds": 53.81,
+  "final_train_loss": 5.234,
+  "best_val_loss": 5.5874,
+  "held_out_test_loss": 5.535,
+  "checkpoint_sha256": "deece489a9e554d691118d4127d3d1ce94a33b1238bce71616b36141fdb1e323",
+  "best_step": 100,
+  "evaluation": {
+    "raw_weights": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.7634,
+      "eos_emission_rate": 0.1667
+    },
+    "inference_controlled": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.0,
+      "eos_emission_rate": 1.0
+    },
+    "multi_turn_retention": false
+  }
+}

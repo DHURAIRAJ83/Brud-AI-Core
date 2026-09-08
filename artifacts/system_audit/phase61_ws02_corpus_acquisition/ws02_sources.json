@@ -1,0 +1,43 @@
+{
+  "sources": [
+    {
+      "source_id": "SRC-TA-PUBLIC-LIT-001",
+      "source_name": "Authentic Thirukkural & Avvaiyar Aathichudi Public Domain Collection",
+      "source_type": "public_literature",
+      "uri": "data/approved/thirukkural_authentic_collection.jsonl",
+      "language": "ta",
+      "domain": "classical_prose",
+      "license": "Public Domain",
+      "usage_rights": "VERIFIED_PUBLIC_TRAINING_PERMITTED",
+      "record_count": 65,
+      "subword_tokens": 6440,
+      "status": "APPROVED"
+    },
+    {
+      "source_id": "SRC-TA-DICTIONARY-002",
+      "source_name": "Tamil-English Bilingual Reference Dictionary",
+      "source_type": "bilingual_reference",
+      "uri": "data/approved/tamil_english_bilingual_dictionary.jsonl",
+      "language": "mixed",
+      "domain": "structured_lexicon",
+      "license": "CC-BY-SA-4.0",
+      "usage_rights": "VERIFIED_PUBLIC_TRAINING_PERMITTED",
+      "record_count": 100,
+      "subword_tokens": 4675,
+      "status": "APPROVED"
+    },
+    {
+      "source_id": "SRC-STEM-SCIENCE-003",
+      "source_name": "Tamil STEM Science & Technology Reference Prose",
+      "source_type": "technical_reference",
+      "uri": "data/approved/stem_science_and_mathematics.jsonl",
+      "language": "ta",
+      "domain": "stem_education",
+      "license": "CC-BY-4.0",
+      "usage_rights": "VERIFIED_PUBLIC_TRAINING_PERMITTED",
+      "record_count": 50,
+      "subword_tokens": 8716,
+      "status": "APPROVED"
+    }
+  ]
+}

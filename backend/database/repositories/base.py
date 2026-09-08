@@ -1,12 +1,18 @@
 """Shared repository safety primitives."""
 
+from __future__ import annotations
+
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from backend.database.connection import database_connection
+
+if TYPE_CHECKING:
+    from backend.database.connection_pool import ConnectionPool
 
 
 class RepositoryError(RuntimeError):
@@ -26,8 +32,33 @@ class ValidationError(RepositoryError):
 
 
 class BaseRepository:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, *, pool: "ConnectionPool | None" = None) -> None:
         self.database_path = database_path
+        self.pool = pool
+
+    @contextmanager
+    def _acquire_connection(self) -> Iterator[sqlite3.Connection]:
+        """Phase 7C-28: the sole seam between `transaction()`'s BEGIN/COMMIT/
+        ROLLBACK/exception logic (unchanged below) and how a connection is
+        obtained. `pool` defaults to `None` for every existing caller, so
+        every one of the ~1,926 pre-existing `SomeRepository(database_path)`
+        construction sites is byte-for-byte behavior-unchanged: they keep
+        opening a fresh connection via `database_connection()` and closing
+        it, exactly as before this phase. Passing `pool=` at repository
+        construction time (not per `transaction()` call, and not via a
+        hidden global) is an explicit, request-scoped, per-repository
+        opt-in -- no mass call-site modification, no ambiguity about which
+        pool a given repository instance uses, no implicit pool creation."""
+
+        if self.pool is not None:
+            connection = self.pool.checkout()
+            try:
+                yield connection
+            finally:
+                self.pool.checkin(connection)
+        else:
+            with database_connection(self.database_path) as connection:
+                yield connection
 
     @contextmanager
     def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
@@ -52,8 +83,17 @@ class BaseRepository:
         thread able to release it. Only opt into `immediate=True` at (or
         for) callers verified not to nest a second `transaction()` inside
         an already-open one.
+
+        Connection acquisition itself (fresh `database_connection()` vs. a
+        pooled `ConnectionPool` checkout) is controlled entirely by
+        `self.pool` -- see `_acquire_connection()`. This method's own
+        BEGIN/COMMIT/ROLLBACK/exception semantics are identical either way;
+        Phase 7C-28 qualified this equivalence directly (real concurrent
+        multi-threaded integration test, real nested-propagation
+        compatibility test, real ReentrantCheckout test) before this
+        parameter existed.
         """
-        with database_connection(self.database_path) as connection:
+        with self._acquire_connection() as connection:
             try:
                 connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
                 yield connection

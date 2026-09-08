@@ -10,12 +10,28 @@ PASSWORD = "Assistant-Admin-Password-42"
 
 
 async def authenticated_client(app: FastAPI):
-    AdminRepository(app.state.settings.resolved_database_path).create_admin(
-        AdminCreate(username="assistant-admin", display_name="Assistant Admin", password=PASSWORD)
+    return await _authenticated_client_as(app, "assistant-admin")
+
+
+async def _authenticated_client_as(app: FastAPI, username: str):
+    admin = AdminRepository(app.state.settings.resolved_database_path).create_admin(
+        AdminCreate(username=username, display_name=username, password=PASSWORD)
+    )
+    # Phase 4: this suite exercises the full propose/review/execute HTTP
+    # flow end to end for already-authorized admins -- RBAC denial
+    # itself is covered by tests/database/test_admin_write_governance.py.
+    # Granting SUPER_ADMIN here keeps this suite's pre-Phase-4 execute
+    # assertions valid without touching AdminAssistantService itself.
+    # Appended (not overwritten) so multiple admins created against the
+    # same app (e.g. proposer + reviewer) each keep their own override.
+    existing = app.state.settings.admin_role_overrides
+    override = f"{admin.public_id}:SUPER_ADMIN"
+    app.state.settings.admin_role_overrides = (
+        f"{existing},{override}" if existing else override
     )
     client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     response = await client.post(
-        "/api/admin/auth/login", json={"username": "assistant-admin", "password": PASSWORD}
+        "/api/admin/auth/login", json={"username": username, "password": PASSWORD}
     )
     assert response.status_code == 200
     csrf = (await client.get("/api/admin/auth/csrf")).json()["csrf_token"]
@@ -205,7 +221,11 @@ async def test_high_risk_action_proposal_requires_reason(api_app: FastAPI) -> No
 
 
 async def test_high_risk_action_full_propose_review_execute_flow(api_app: FastAPI) -> None:
+    # governance_target_approval_override is risk_level="high" -- Phase 16.8C
+    # requires the reviewer to be a distinct admin from the proposer, so
+    # this test uses two separate authenticated sessions.
     client, headers = await authenticated_client(api_app)
+    reviewer_client, reviewer_headers = await _authenticated_client_as(api_app, "assistant-reviewer")
     try:
         proposed = await client.post(
             "/api/admin/assistant/proposals",
@@ -228,9 +248,16 @@ async def test_high_risk_action_full_propose_review_execute_flow(api_app: FastAP
         assert proposal["risk_level"] == "high"
         assert proposal["preview"]["proposed_state"]["decision"] == "allowed"
 
-        reviewed = await client.post(
+        same_admin_rejected = await client.post(
             f"/api/admin/assistant/proposals/{proposal['public_id']}/review",
             headers=headers,
+            json={"decision": "approved", "comment": None},
+        )
+        assert same_admin_rejected.status_code == 422
+
+        reviewed = await reviewer_client.post(
+            f"/api/admin/assistant/proposals/{proposal['public_id']}/review",
+            headers=reviewer_headers,
             json={"decision": "approved", "comment": None},
         )
         assert reviewed.status_code == 200
@@ -242,3 +269,4 @@ async def test_high_risk_action_full_propose_review_execute_flow(api_app: FastAP
         assert executed.json()["execution_result"]["decision"] == "allowed"
     finally:
         await client.aclose()
+        await reviewer_client.aclose()

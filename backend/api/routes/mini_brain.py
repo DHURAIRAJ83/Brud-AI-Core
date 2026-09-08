@@ -104,5 +104,29 @@ async def placeholder_suggestions(settings: SettingsDependency, admin: CsrfDepen
 
 
 @router.get("/context")
-async def placeholder_context(settings: SettingsDependency, admin: AdminDependency):
-    return service(settings).placeholder_context(admin.admin.public_id)
+async def system_context(
+    settings: SettingsDependency,
+    admin: AdminDependency,
+    force_refresh: bool = Query(default=False),
+):
+    """Real, unified Dashboard Context endpoint for Mini Brain Admin Assistant.
+    Aggregates real-time, non-secret state across System, Providers, Models, Datasets,
+    Training, Evaluation, RAG, Memory, and Governance. Uses bounded context cache."""
+    from backend.services.mini_brain_dashboard_context_service import (
+        MiniBrainDashboardContextService,
+    )
+
+    return MiniBrainDashboardContextService(settings).get_system_context(
+        admin.admin.public_id, force_refresh=force_refresh,
+    )
+
+
+@router.get("/context/metrics")
+async def system_context_metrics(settings: SettingsDependency, admin: AdminDependency):
+    """Observability endpoint for Context Cache performance metrics."""
+    from backend.services.mini_brain_dashboard_context_service import (
+        MiniBrainDashboardContextService,
+    )
+
+    return MiniBrainDashboardContextService.get_cache_metrics()
+

@@ -26,6 +26,10 @@ CAPABILITIES = Literal[
 class ChatRequest(DomainModel):
     session_id: str | None = None
     message: str = Field(min_length=1, max_length=8000)
+    execution_mode: Literal["auto", "local", "provider"] | None = "auto"
+    provider_key: str | None = None
+    model_override: str | None = None
+    trace_id: str | None = None
 
 
 class GroundedChatRequest(DomainModel):
@@ -33,6 +37,23 @@ class GroundedChatRequest(DomainModel):
     session_id: str | None = None
     retrieval_profile_public_id: str | None = None
     top_k: int = Field(default=4, ge=1, le=8)
+    execution_mode: Literal["auto", "local", "provider"] | None = "auto"
+    provider_key: str | None = None
+    model_override: str | None = None
+    trace_id: str | None = None
+
+
+class StreamChatRequest(DomainModel):
+    message: str = Field(min_length=1, max_length=8000)
+    session_id: str | None = None
+    execution_mode: Literal["auto", "local", "provider"] | None = "auto"
+    provider_key: str | None = None
+    model_override: str | None = None
+    grounded: bool = False
+    retrieval_profile_public_id: str | None = None
+    top_k: int = Field(default=4, ge=1, le=8)
+    trace_id: str | None = None
+
 
 
 class ExplainPageRequest(DomainModel):
@@ -93,6 +114,7 @@ class ChatResponse(DomainModel):
     reply: MessageResponse
     backend_type: str
     error_message: str | None = None
+    trace_id: str | None = None
 
 
 class GroundedCitation(DomainModel):
@@ -110,6 +132,7 @@ class GroundedChatResponse(DomainModel):
     backend_type: str
     error_message: str | None = None
     citations: list[GroundedCitation] = Field(default_factory=list)
+    trace_id: str | None = None
 
 
 class NextActionsResponse(DomainModel):
@@ -154,3 +177,6 @@ class DiagnosticsResponse(DomainModel):
     external_provider_key: str | None = None
     active_session_count: int
     total_messages: int
+    cache_metrics: dict | None = None
+    resilience_metrics: dict | None = None
+    provider_probes: dict | None = None

@@ -1,0 +1,16 @@
+{
+  "pass_1": {
+    "records": 4961,
+    "tokens": 5140476,
+    "master_hash": "1cad009f7974fdfb"
+  },
+  "pass_2": {
+    "records": 4961,
+    "tokens": 5140476,
+    "master_hash": "1cad009f7974fdfb"
+  },
+  "token_delta": 0,
+  "record_delta": 0,
+  "hash_delta": 0,
+  "status": "REPRODUCIBLE"
+}

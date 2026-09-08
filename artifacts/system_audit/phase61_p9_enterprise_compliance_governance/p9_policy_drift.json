@@ -1,0 +1,4 @@
+{
+  "drift_monitoring": true,
+  "fail_closed": true
+}

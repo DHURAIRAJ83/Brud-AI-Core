@@ -1,0 +1,26 @@
+{
+  "workstream_name": "Phase 61 WS21 True 10M Corpus Recovery + Source-Level New Data Discovery + 4.36M Gap Elimination",
+  "audit_date": "2026-09-01",
+  "governance_state": {
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED"
+  },
+  "ws21_summary": {
+    "verified_baseline_tokens": 5140476,
+    "historical_unique_candidate_tokens": 499132,
+    "stage2_v001_candidate_records": 1785,
+    "stage2_v001_candidate_tokens": 499132,
+    "projected_total_tokens": 5639608,
+    "projected_synthetic_ratio": 6.25,
+    "deficit_10m": 4360392,
+    "token_crosscheck_status": "PASSED (Method A == Method B == Method C)",
+    "stage2_v001_file_path": "data/candidate/foundation_stage2_v001/stage2_candidate_v001.jsonl",
+    "rc_v005_file_path": "data/candidate/foundation_10m_rc_v005/foundation_10m_rc_v005.jsonl",
+    "ws21_status": "WS21_QUALIFIED_PENDING_HUMAN_APPROVAL",
+    "reproducibility": "PASS"
+  }
+}

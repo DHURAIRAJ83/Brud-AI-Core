@@ -1,0 +1,9 @@
+{
+  "pages_audited": [
+    "apps/admin-dashboard/src/pages/AdminAssistantPage.jsx",
+    "apps/admin-dashboard/src/components/admin-assistant/AdminAssistantWidget.jsx"
+  ],
+  "hardcoded_status_found": false,
+  "stale_cache_found": false,
+  "advisory_banner_rendered": true
+}

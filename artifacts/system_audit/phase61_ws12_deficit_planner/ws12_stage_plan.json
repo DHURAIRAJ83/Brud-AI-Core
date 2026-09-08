@@ -1,0 +1,35 @@
+{
+  "stage_1": {
+    "name": "5M -> 10M Milestone",
+    "tokens_required": 4859524,
+    "alloc": {
+      "ta": 2915714,
+      "tgl": 728928,
+      "structured": 728928,
+      "mixed": 485954,
+      "en": 0
+    }
+  },
+  "stage_2": {
+    "name": "10M -> 25M Milestone",
+    "tokens_required": 15000000,
+    "alloc": {
+      "ta": 9000000,
+      "tgl": 2250000,
+      "structured": 2250000,
+      "mixed": 1500000,
+      "en": 0
+    }
+  },
+  "stage_3": {
+    "name": "25M -> 50M Target",
+    "tokens_required": 25000000,
+    "alloc": {
+      "ta": 5138817,
+      "tgl": 4500000,
+      "structured": 1923488,
+      "mixed": 2926512,
+      "en": 10511183
+    }
+  }
+}

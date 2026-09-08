@@ -1,0 +1,4 @@
+{
+  "tenant_isolation_passed": true,
+  "cross_tenant_data_leakage": false
+}

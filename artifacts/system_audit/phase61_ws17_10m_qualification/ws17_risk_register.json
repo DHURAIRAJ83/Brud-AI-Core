@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS17-01",
+      "category": "Release Candidate Dataset Isolation",
+      "description": "10M Release Candidate dataset must remain isolated in data/candidate/foundation_10m_rc_v001/ until explicit human authorization.",
+      "severity": "LOW",
+      "mitigation": "Isolated file paths & locked runtime governance."
+    }
+  ]
+}

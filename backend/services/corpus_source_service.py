@@ -274,8 +274,20 @@ class CorpusSourceService:
             )
             return public_row(self.repository.licence(connection, licence_public_id))
 
-    def training_eligibility(self, source_public_id: str) -> dict[str, Any]:
-        with self.repository.transaction() as connection:
+    def training_eligibility(
+        self, source_public_id: str, *, connection=None
+    ) -> dict[str, Any]:
+        """``connection``: when supplied, runs directly on the caller's own
+        already-open transaction instead of opening a second, independent
+        one -- required for callers that already hold a transaction open
+        (see `advance_production_lifecycle()`'s `connection=` propagation,
+        Phase 7C-39, for the identical precedent established at
+        `create_turn`/`processor_for_version`/`evaluate_suitability`/
+        `get_analysis`). Callers that do not pass a connection keep today's
+        exact behavior unchanged: `training_eligibility` opens and owns its
+        own transaction."""
+
+        if connection is not None:
             source_row = self.repository.source(connection, source_public_id)
             licence_row = self.repository.latest_licence_for_source(connection, source_row["id"])
             if licence_row is None:
@@ -295,6 +307,9 @@ class CorpusSourceService:
                 licence_family=licence_row["licence_family"],
                 expires_at_is_past=expired,
             )
+
+        with self.repository.transaction() as connection:
+            return self.training_eligibility(source_public_id, connection=connection)
 
     # --- Phase 20: production governance lifecycle -----------------------------
 
@@ -316,9 +331,19 @@ class CorpusSourceService:
         coexist. Every transition re-validates its real prerequisite
         (verified origin, a reviewed licence, full training
         eligibility, an actually-completed ingestion job) rather than
-        trusting the caller's word for it."""
+        trusting the caller's word for it.
 
-        with self.repository.transaction() as connection:
+        Phase 7C-41: opens with `immediate=True`. This method always reads
+        `row = self.repository.source(...)` before its eventual
+        `update_source(...)` -- a confirmed READ-THEN-WRITE shape (Phase
+        7C-36/37 proved this exact shape suffers severe pooled-deferred-BEGIN
+        lock contention, eliminated completely by `immediate=True`), so this
+        is evidence-backed for this specific method, not a blanket policy
+        change. `training_eligibility()`'s own standalone transaction (used
+        when it's not passed a `connection=`) remains at the default
+        deferred BEGIN -- it is read-only in that shape."""
+
+        with self.repository.transaction(immediate=True) as connection:
             row = self.repository.source(connection, source_public_id)
             current = row["production_lifecycle_status"]
             allowed = _PRODUCTION_LIFECYCLE_TRANSITIONS.get(current, set())
@@ -338,7 +363,7 @@ class CorpusSourceService:
                     )
 
             if target_status == "approved":
-                eligibility = self.training_eligibility(source_public_id)
+                eligibility = self.training_eligibility(source_public_id, connection=connection)
                 if not eligibility["eligible"]:
                     raise ValidationError(
                         f"source is not training-eligible: {eligibility['blocking_reasons']}"

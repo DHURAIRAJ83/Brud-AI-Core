@@ -40,6 +40,7 @@ from core_model.release.approval_policy import (
     ApprovalPolicy,
     is_approval_stale,
     is_policy_satisfied,
+    resolve_minimum_distinct_approvers,
     validate_approval_submission,
 )
 from core_model.release.artifact_inventory import (
@@ -1076,6 +1077,10 @@ class ModelReleaseService:
             policy = ApprovalPolicy(
                 required_roles=self.settings.release_required_approval_roles_list,
                 allow_self_approval=self.settings.release_allow_self_approval,
+                minimum_distinct_approvers=resolve_minimum_distinct_approvers(
+                    self.settings.release_required_approval_roles_list,
+                    self.settings.release_minimum_distinct_approvers,
+                ),
             )
             violations = validate_approval_submission(
                 decision=payload.decision, comment=payload.comment,
@@ -1146,6 +1151,10 @@ class ModelReleaseService:
             policy = ApprovalPolicy(
                 required_roles=self.settings.release_required_approval_roles_list,
                 allow_self_approval=self.settings.release_allow_self_approval,
+                minimum_distinct_approvers=resolve_minimum_distinct_approvers(
+                    self.settings.release_required_approval_roles_list,
+                    self.settings.release_minimum_distinct_approvers,
+                ),
             )
             policy_result = is_policy_satisfied([public_row(row) for row in approvals], policy)
             if not policy_result["satisfied"]:

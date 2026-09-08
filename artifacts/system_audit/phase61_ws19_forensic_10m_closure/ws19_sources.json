@@ -1,0 +1,9 @@
+{
+  "sources_used": [
+    {
+      "file": "data/approved/tamil_educational_reference.jsonl",
+      "records": 595,
+      "license": "Public Domain"
+    }
+  ]
+}

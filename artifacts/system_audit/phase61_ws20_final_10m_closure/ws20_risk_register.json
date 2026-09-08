@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS20-01",
+      "category": "Stage 1 Candidate Dataset v006 Isolation",
+      "description": "Stage 1 candidate v006 dataset must remain isolated in data/candidate/foundation_stage1_v006/ until explicit human approval.",
+      "severity": "LOW",
+      "mitigation": "Isolated file paths & locked runtime governance."
+    }
+  ]
+}

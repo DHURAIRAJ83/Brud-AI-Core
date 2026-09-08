@@ -45,6 +45,7 @@ const VisionIntelligenceTab = lazy(() => import('./mini-brain/VisionIntelligence
 const VisionModelCenterTab = lazy(() => import('./mini-brain/VisionModelCenterTab.jsx'))
 const VisionRAGTab = lazy(() => import('./mini-brain/VisionRAGTab.jsx'))
 const VoiceRuntimeTab = lazy(() => import('./mini-brain/VoiceRuntimeTab.jsx'))
+const MiniBrainGuideTab = lazy(() => import('./mini-brain/MiniBrainGuideTab.jsx'))
 import {
   analyzeQuestion, capabilityDiagnostics, capabilityGenerate, continuousLearningAdminReview,
   continuousLearningAnalyzeDifficulty, continuousLearningAnalyzeFailures,
@@ -124,9 +125,13 @@ import {
   gaDiagnostics, gaDispatch, gaEvents, gaGenerateReport, gaMemory, gaNormalize, gaProviderRuns,
   gaSanitize, gaSelectProviders, gaSession, gaSessions,
   teArchive, teAudit, teAuthorize, teBuildManifest, teCancel, teCheckpoints, teCreateJob,
+  teDatasetReadiness,
+  teDatasetReadinessContract,
+  teTrainingReadinessContract,
   teDiagnostics, teEvents, teFinalize, teGenerateReport, teJob, teJobs, teMemory, teMetrics,
   tePause, tePlanResources, teReserveRuntime, teResume, teSaveCheckpoint, teStart, teStreamMetric,
   teValidatePackage, teValidateRelease,
+  coreModelVersion,
   pcrAnalytics, pcrCandidate, pcrCandidateEvents, pcrCandidates, pcrClusters, pcrDiagnostics,
   pcrExportAnalytics, pcrExportCandidates, pcrGenerateCandidates, pcrMessages, pcrReviewCandidate,
   pcrSession, pcrSessionEvents, pcrSessions, pcrSignals,
@@ -154,7 +159,8 @@ import {
 } from '../services/api.js'
 
 const tabs = [
-  'Overview', 'Settings', 'Logs', 'Diagnostics', 'Knowledge Core', 'Intelligence Engine', 'Runtime',
+  // ── Core navigation (11 primary sections) ──
+  'Overview', 'Guide', 'Settings', 'Logs', 'Diagnostics', 'Knowledge Core', 'Intelligence Engine', 'Runtime',
   'Response Quality', 'Capability', 'Dataset Intelligence', 'Learning Supervisor', 'Release Pipeline',
   'Continuous Learning', 'Continuous Learning Center', 'Research Center', 'Dataset Evolution',
   'Pipeline Coordinator', 'Language Intelligence', 'Vision Intelligence', 'Vision Model Center',
@@ -523,6 +529,12 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
   const [teNewPackageId, setTeNewPackageId] = useState('')
   const [teNewReleaseId, setTeNewReleaseId] = useState('')
   const [teNewExecutionMode, setTeNewExecutionMode] = useState('simulation')
+  const [teNewCoreModelVersionId, setTeNewCoreModelVersionId] = useState('')
+  const [teCoreModelVersion, setTeCoreModelVersion] = useState(null)
+  const [teDatasetReadinessData, setTeDatasetReadinessData] = useState(null)
+  const [teDatasetReadinessContractData, setTeDatasetReadinessContractData] = useState(null)
+  const [teTrainingReadinessData, setTeTrainingReadinessData] = useState(null)
+  const [teNewDatasetVersionId, setTeNewDatasetVersionId] = useState('')
   const [teAuthorizationReason, setTeAuthorizationReason] = useState('')
   const [teMetricStep, setTeMetricStep] = useState('0')
   const [teMetricEpoch, setTeMetricEpoch] = useState('0')
@@ -1991,6 +2003,8 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
   async function selectTeJob(publicId) {
     setTeSelectedId(publicId)
     setError('')
+    setTeCoreModelVersion(null)
+    setTeDatasetReadinessData(null)
     if (!publicId) { setTeJobData(null); setTeEventsList([]); setTeCheckpointsList([]); setTeMetricsList([]); return }
     try {
       const [job, events, checkpoints, metrics] = await Promise.all([
@@ -2000,6 +2014,42 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
       setTeEventsList(events.items)
       setTeCheckpointsList(checkpoints.items)
       setTeMetricsList(metrics.items)
+      // Phase 2.7E: resolve this job's real Core Model Version identity
+      // (Family/Config/Version/lifecycle_status) for display -- read-only,
+      // the same real Core Model lifecycle API Phase 2.7D's Admin UI
+      // already uses, never a second identity lookup system.
+      if (job.core_model_version_public_id) {
+        try { setTeCoreModelVersion(await coreModelVersion(job.core_model_version_public_id)) }
+        catch { setTeCoreModelVersion(null) }
+      }
+      // Phase 2.7G: real, read-only training-readiness for this job's own
+      // real dataset + Core Model Version -- runs the same real gate a
+      // real reserve-runtime call would hit, never a separate check.
+      if (job.core_model_version_public_id && job.dataset_version_public_id) {
+        try {
+          setTeDatasetReadinessData(
+            await teDatasetReadiness(job.dataset_version_public_id, job.core_model_version_public_id),
+          )
+        } catch { setTeDatasetReadinessData(null) }
+        // Phase 2.7H: the same real gate, reported as the structured
+        // READY / NOT_READY / BLOCKED contract instead of a plain
+        // boolean -- still read-only, still no second gate.
+        try {
+          setTeDatasetReadinessContractData(
+            await teDatasetReadinessContract(job.dataset_version_public_id, job.core_model_version_public_id),
+          )
+        } catch { setTeDatasetReadinessContractData(null) }
+        // Phase 2.8A: the Training Readiness Gate -- a narrower question
+        // than the dataset contract above ("is this dataset/tokenizer/
+        // Core Model Version combination, plus real training configuration
+        // and measured resource envelope, qualified to START a controlled
+        // training run"). Still read-only, still no mutation.
+        try {
+          setTeTrainingReadinessData(
+            await teTrainingReadinessContract(job.dataset_version_public_id, job.core_model_version_public_id),
+          )
+        } catch { setTeTrainingReadinessData(null) }
+      }
     } catch (reason) { setError(reason.message) }
   }
 
@@ -2022,8 +2072,11 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
     event.preventDefault()
     if (!teNewTopic.trim() || !teNewPackageId.trim() || !teNewReleaseId.trim()) return
     await runTeAction(async () => {
-      const job = await teCreateJob(teNewTopic.trim(), teNewPackageId.trim(), teNewReleaseId.trim(), teNewExecutionMode)
-      setTeNewTopic(''); setTeNewPackageId(''); setTeNewReleaseId('')
+      const job = await teCreateJob(
+        teNewTopic.trim(), teNewPackageId.trim(), teNewReleaseId.trim(), teNewExecutionMode,
+        teNewCoreModelVersionId.trim(), teNewDatasetVersionId.trim(),
+      )
+      setTeNewTopic(''); setTeNewPackageId(''); setTeNewReleaseId(''); setTeNewCoreModelVersionId(''); setTeNewDatasetVersionId('')
       setTeJobsList((await teJobs()).items)
       await selectTeJob(job.public_id)
     })
@@ -3104,6 +3157,10 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
         <SettingsTab settings={settings} logLevel={logLevel} setLogLevel={setLogLevel} saveSettings={saveSettings} />
       )}
 
+      {tab === 'Guide' && (
+        <MiniBrainGuideTab onNavigate={selectTab} />
+      )}
+
       {tab === 'Logs' && <LogsTab logs={logs} />}
 
       {tab === 'Diagnostics' && <DiagnosticsTab diagnostics={diagnostics} />}
@@ -3523,6 +3580,12 @@ export default function MiniBrainPage({ initialTab, admin } = {}) {
           teJobsList={teJobsList} teSelectedId={teSelectedId} selectTeJob={selectTeJob} submitTeCreateJob={submitTeCreateJob}
           teNewTopic={teNewTopic} setTeNewTopic={setTeNewTopic} teNewPackageId={teNewPackageId} setTeNewPackageId={setTeNewPackageId} teNewReleaseId={teNewReleaseId} setTeNewReleaseId={setTeNewReleaseId}
           teNewExecutionMode={teNewExecutionMode} setTeNewExecutionMode={setTeNewExecutionMode} teBusy={teBusy}
+          teNewCoreModelVersionId={teNewCoreModelVersionId} setTeNewCoreModelVersionId={setTeNewCoreModelVersionId}
+          teCoreModelVersion={teCoreModelVersion}
+          teNewDatasetVersionId={teNewDatasetVersionId} setTeNewDatasetVersionId={setTeNewDatasetVersionId}
+          teDatasetReadinessData={teDatasetReadinessData}
+          teDatasetReadinessContractData={teDatasetReadinessContractData}
+          teTrainingReadinessData={teTrainingReadinessData}
           submitTeAuthorize={submitTeAuthorize} teAuthorizationReason={teAuthorizationReason} setTeAuthorizationReason={setTeAuthorizationReason}
           runTePlanResources={runTePlanResources}
           runTeBuildManifest={runTeBuildManifest}

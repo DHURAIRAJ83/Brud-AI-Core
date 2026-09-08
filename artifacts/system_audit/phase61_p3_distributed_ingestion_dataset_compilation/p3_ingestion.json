@@ -1,0 +1,6 @@
+{
+  "max_workers": 4,
+  "bounded_concurrency": true,
+  "idempotent": true,
+  "failure_isolation": true
+}

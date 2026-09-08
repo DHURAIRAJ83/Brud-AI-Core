@@ -1,0 +1,7 @@
+{
+  "verdict": "BLOCKED_PENDING_HUMAN_AUTHORIZATION",
+  "authorization_package": "INCOMPLETE",
+  "pre_activation_readiness": "VERIFIED_PENDING_SIGNATURES",
+  "activation_execution": "NOT_EXECUTED",
+  "production_state": "UNTOUCHED_AND_LOCKED"
+}

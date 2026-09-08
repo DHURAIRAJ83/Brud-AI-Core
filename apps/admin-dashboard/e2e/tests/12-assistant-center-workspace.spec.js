@@ -13,13 +13,9 @@ test.describe('Assistant Center', () => {
       await expect(tabs.getByRole('button', { name: tabName })).toBeVisible()
     }
 
-    // Admin Tasks: the real, unmodified AdminAssistantPage embedded
-    // wholesale -- same three sections its own dedicated nav entry shows.
+    // Admin Tasks tab is checked last in this test (see bottom) since
+    // opening it navigates away from Assistant Center entirely.
     await expect(tabs.getByRole('button', { name: 'Admin Tasks' })).toHaveAttribute('aria-current', 'page')
-    const adminTasksNav = page.getByRole('navigation', { name: 'Admin Assistant sections' })
-    for (const sectionName of ['Guidance', 'Propose an Action', 'Proposals & Admin Review']) {
-      await expect(adminTasksNav.getByRole('button', { name: sectionName })).toBeVisible()
-    }
 
     // Mini Brain Chat: the shared ChatPanel, real runtime diagnostics, plain
     // chat, then grounded chat with a real citation.
@@ -60,6 +56,21 @@ test.describe('Assistant Center', () => {
     // never a fabricated message bubble.
     await tabs.getByRole('button', { name: 'Public Chat Monitor' }).click()
     await expect(page.getByText('No raw message text is ever stored, only content hashes and already-sanitized signal text.')).toBeVisible()
+
+    // Admin Tasks: Phase 16.1 removed the second full mount of
+    // AdminAssistantPage here (it was reachable both via its own dedicated
+    // Sidebar entry and, wholesale, inside this tab) -- this tab now links
+    // out to the one canonical mount instead of duplicating it. Checked
+    // last since following the link navigates away from Assistant Center.
+    await tabs.getByRole('button', { name: 'Admin Tasks' }).click()
+    const openAdminAssistant = page.getByRole('button', { name: 'Open Admin Assistant' })
+    await expect(openAdminAssistant).toBeVisible()
+    await openAdminAssistant.click()
+    await expect(page.getByRole('heading', { name: 'Admin Assistant', level: 2 })).toBeVisible()
+    const adminTasksNav = page.getByRole('navigation', { name: 'Admin Assistant sections' })
+    for (const sectionName of ['Guidance', 'Propose an Action', 'Proposals & Admin Review']) {
+      await expect(adminTasksNav.getByRole('button', { name: sectionName })).toBeVisible()
+    }
   })
 })
 

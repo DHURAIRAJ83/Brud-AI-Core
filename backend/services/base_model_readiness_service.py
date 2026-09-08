@@ -46,7 +46,18 @@ class BaseModelReadinessService:
     def evaluate(
         self, payload: BaseModelReadinessEvaluationCreate, admin_id: str
     ) -> dict[str, Any]:
-        with self.readiness_repository.transaction() as connection:
+        # Phase 7C-44: opens with immediate=True. This block reads up to 4
+        # rows (snapshot/comparison/estimate/smoke_run) before its own
+        # writes (create_base_model_readiness_evaluation,
+        # update_base_model_readiness_evaluation) -- a READ-THEN-WRITE
+        # shape. Phase 7C-36/37 established this shape suffers severe
+        # deferred-BEGIN lock-upgrade contention once pooled; Phase 7C-43's
+        # own real Barrier-synchronized qualification of this exact block
+        # additionally found the contention is severe (44-57%) even
+        # unpooled under concurrent load, unlike every previously-qualified
+        # shape -- immediate=True eliminated it completely (0%) in both
+        # pooled and unpooled configurations across every trial.
+        with self.readiness_repository.transaction(immediate=True) as connection:
             snapshot = self.readiness_repository.pretraining_dataset_snapshot(
                 connection, payload.pretraining_dataset_snapshot_public_id
             )

@@ -1,10 +1,102 @@
-"""MB-03: Brud Intelligence Engine -- pure domain logic.
+from core_model.mini_brain.intelligence.conflict_detector import (
+    ConflictClassification,
+    ConflictConfidence,
+    ConflictKnowledgeEngine,
+    ConflictMatchResult,
+    DisputeRecord,
+    DisputeState,
+    ResolutionStrategy,
+)
+from core_model.mini_brain.intelligence.context_intelligence import (
+    ContextIntelligenceManager,
+    ContextState,
+    ResolvedReference,
+    UnresolvedQuestion,
+)
+from core_model.mini_brain.intelligence.duplicate_detector import (
+    DuplicateClassification,
+    DuplicateKnowledgeEngine,
+    DuplicateMatchResult,
+    RELATED_THRESHOLD,
+    SEMANTIC_DUPLICATE_THRESHOLD,
+)
+from core_model.mini_brain.intelligence.memory_consolidator import (
+    CONSOLIDATION_SIMILARITY_THRESHOLD,
+    MAX_CONSOLIDATION_CANDIDATES,
+    ConsolidationGroup,
+    ConsolidationResult,
+    MemoryConsolidatorEngine,
+)
+from core_model.mini_brain.intelligence.memory_intelligence import (
+    AccessFrequency,
+    FreshnessState,
+    MemoryCategory,
+    MemoryIntelligenceEngine,
+    MemoryIntelligenceMetadata,
+    MemoryLifecycleState,
+)
 
-Every function in this package is deterministic: keyword/pattern
-matching, fixed rule tables, and plain arithmetic. No model call, no
-embedding, no vector math, no probability distribution anywhere.
-`backend/services/mini_brain_intelligence_service.py` is the only
-impure layer, and its only I/O is a read-only call into MB-02's
-Knowledge Core plus a log write to MB-01's existing event log -- it
-never mutates Knowledge Core, Admin Assistant, or any other module.
-"""
+from core_model.mini_brain.intelligence.memory_lifecycle import (
+    FRESHNESS_PENALTIES,
+    VALID_STATUS_TRANSITIONS,
+    FreshnessEvaluationResult,
+    MemoryLifecycleEngine,
+)
+from core_model.mini_brain.intelligence.memory_recall import (
+    MemoryRecallEngine,
+    MemoryRecallItem,
+    MemoryRecallResult,
+    MemoryRecallWeights,
+    RetrievalMode,
+)
+from core_model.mini_brain.intelligence.memory_reasoner import (
+    EvidenceCluster,
+    MemoryReasoningEngine,
+    MemoryReasoningPacket,
+    PreferenceResolution,
+    ProceduralStep,
+)
+
+__all__ = [
+    "ContextIntelligenceManager",
+    "ContextState",
+    "ResolvedReference",
+    "UnresolvedQuestion",
+    "AccessFrequency",
+    "FreshnessState",
+    "MemoryCategory",
+    "MemoryIntelligenceEngine",
+    "MemoryIntelligenceMetadata",
+    "MemoryLifecycleState",
+    "DuplicateClassification",
+    "DuplicateKnowledgeEngine",
+    "DuplicateMatchResult",
+    "RELATED_THRESHOLD",
+    "SEMANTIC_DUPLICATE_THRESHOLD",
+    "ConflictClassification",
+    "ConflictConfidence",
+    "ConflictKnowledgeEngine",
+    "ConflictMatchResult",
+    "DisputeRecord",
+    "DisputeState",
+    "ResolutionStrategy",
+    "ConsolidationGroup",
+    "ConsolidationResult",
+    "MemoryConsolidatorEngine",
+    "CONSOLIDATION_SIMILARITY_THRESHOLD",
+    "MAX_CONSOLIDATION_CANDIDATES",
+    "FreshnessEvaluationResult",
+    "MemoryLifecycleEngine",
+    "FRESHNESS_PENALTIES",
+    "VALID_STATUS_TRANSITIONS",
+    "MemoryRecallEngine",
+    "MemoryRecallItem",
+    "MemoryRecallResult",
+    "MemoryRecallWeights",
+    "RetrievalMode",
+    "MemoryReasoningEngine",
+    "MemoryReasoningPacket",
+    "EvidenceCluster",
+    "ProceduralStep",
+    "PreferenceResolution",
+]

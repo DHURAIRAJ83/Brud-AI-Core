@@ -1,0 +1,9 @@
+{
+  "single_next_action": "AGGREGATE TAMIL AND STRUCTURED KNOWLEDGE REFERENCE PROSE TO BALANCE THE 4.92M TOKEN CORPUS TOWARD THE 50M PRETRAINING TARGET",
+  "rationale": "The 1M Token Milestone is 100% QUALIFIED (4.92M subword tokens). Pretraining remains BLOCKED until explicit human authorization is granted.",
+  "what_not_to_do": [
+    "Do NOT authorize pretraining without explicit human instruction.",
+    "Do NOT scale model parameters to E6.",
+    "Do NOT enable Public Chat candidate traffic."
+  ]
+}

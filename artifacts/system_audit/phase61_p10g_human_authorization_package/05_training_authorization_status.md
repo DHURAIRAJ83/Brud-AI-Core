@@ -1,0 +1,3 @@
+# 05 TRAINING AUTHORIZATION STATUS REPORT
+
+- Status: `TRAINING_EXECUTED = FALSE`, `TRAINING_AUTHORIZATION = FALSE`. Real human training authorization token absent.

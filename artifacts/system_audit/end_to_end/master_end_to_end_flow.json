@@ -1,0 +1,39 @@
+{
+  "audit_date": "2026-09-01",
+  "description": "End-to-end flow from Admin dataset submission through to Public Chat final answer, with per-arrow connection status.",
+  "flow_arrows": [
+    {"arrow_id": 1, "from": "ADMIN", "to": "Provide Tamil Dataset", "status": "REAL", "evidence": "POST /api/admin/dataset-sample-imports, backend/api/routes/manual_data.py", "integration": "IMPLEMENTED"},
+    {"arrow_id": 2, "from": "Mini Brain", "to": "Translate to English", "status": "PARTIAL", "evidence": "TAMIL_ENGLISH_LEXICON in dataset_expansion_engine.py (10 concepts)", "integration": "PARTIALLY_IMPLEMENTED"},
+    {"arrow_id": 3, "from": "Mini Brain", "to": "Transliterate to Tanglish", "status": "REAL", "evidence": "tanglish_normalizer.py, _transliterate_tanglish()", "integration": "IMPLEMENTED"},
+    {"arrow_id": 4, "from": "Mini Brain", "to": "Generate Phrases", "status": "REAL", "evidence": "dataset_expansion_engine.py mode=phrase_level", "integration": "IMPLEMENTED"},
+    {"arrow_id": 5, "from": "Mini Brain", "to": "Generate Sentences", "status": "REAL", "evidence": "dataset_expansion_engine.py mode=sentence_level", "integration": "IMPLEMENTED"},
+    {"arrow_id": 6, "from": "Mini Brain", "to": "Generate Conversation Pairs", "status": "REAL", "evidence": "dataset_expansion_engine.py mode=conversational", "integration": "IMPLEMENTED"},
+    {"arrow_id": 7, "from": "Mini Brain", "to": "Generate Instruction Data", "status": "REAL", "evidence": "dataset_expansion_engine.py mode=instruction", "integration": "IMPLEMENTED"},
+    {"arrow_id": 8, "from": "Mini Brain", "to": "External Provider Request", "status": "PARTIAL", "evidence": "mini_brain_external_ai_gateway_service.py / OpenRouterProviderClient — disabled in env", "integration": "IMPLEMENTED_BUT_NOT_ACTIVE"},
+    {"arrow_id": 9, "from": "Candidate Data", "to": "Validation Engine", "status": "REAL", "evidence": "dataset_expansion_validator.py (NFC, virama, script ratio, air-gap)", "integration": "IMPLEMENTED"},
+    {"arrow_id": 10, "from": "Validated Data", "to": "Admin Review Queue", "status": "REAL", "evidence": "admin_assistant_dataset_expansion_service.py (status=PENDING)", "integration": "IMPLEMENTED"},
+    {"arrow_id": 11, "from": "Review Queue", "to": "Human Approval Gate", "status": "REAL", "evidence": "review_proposal() with Two-Person Rule enforcement", "integration": "IMPLEMENTED"},
+    {"arrow_id": 12, "from": "Human Approval", "to": "Dataset Sealing SHA-256", "status": "REAL", "evidence": "seal_dataset() generates immutable JSONL with SHA-256 digest", "integration": "IMPLEMENTED"},
+    {"arrow_id": 13, "from": "Sealed Dataset", "to": "Training Sandbox", "status": "PARTIAL", "evidence": "run_e3_experiments.py — requires human operator command to start", "integration": "IMPLEMENTED_MANUAL_TRIGGER"},
+    {"arrow_id": 14, "from": "Training Sandbox", "to": "Brud Model (PyTorch CPU)", "status": "REAL", "evidence": "BrudSmallV2Model forward/backward + AdamW optimizer loop", "integration": "IMPLEMENTED"},
+    {"arrow_id": 15, "from": "Brud Model", "to": "Candidate Checkpoint", "status": "REAL", "evidence": "torch.save(checkpoint_best.pt) + SHA-256 state_dict manifest", "integration": "IMPLEMENTED"},
+    {"arrow_id": 16, "from": "Checkpoint", "to": "Independent Evaluation (24 CAPs)", "status": "REAL", "evidence": "run_capability_evaluation_ws06.py probing 24 CAP capabilities", "integration": "IMPLEMENTED"},
+    {"arrow_id": 17, "from": "Evaluation", "to": "Human Promotion Approval", "status": "REAL", "evidence": "Governance enforces explicit human sign-off; training halted after evaluation", "integration": "IMPLEMENTED"},
+    {"arrow_id": 18, "from": "Human Approval", "to": "Promotion Gate", "status": "BLOCKED", "evidence": "phase44_runtime_governance.py bars transition to PUBLIC_PRODUCTION", "integration": "HARD_BLOCKED"},
+    {"arrow_id": 19, "from": "Promotion Gate", "to": "Candidate Canary Monitor", "status": "BLOCKED", "evidence": "candidate_traffic_share=0.0 locked in code", "integration": "HARD_BLOCKED"},
+    {"arrow_id": 20, "from": "Canary Monitor", "to": "Public Chat Runtime", "status": "BLOCKED", "evidence": "is_public_chat_eligible=false; cannot receive user queries", "integration": "HARD_BLOCKED"},
+    {"arrow_id": 21, "from": "User", "to": "Public Chat Runtime", "status": "REAL", "evidence": "POST /api/chat/message on port 5173 via React 19 chatbot frontend", "integration": "IMPLEMENTED"},
+    {"arrow_id": 22, "from": "Public Chat", "to": "Chat Orchestrator", "status": "REAL", "evidence": "PublicChatRoutingService.handle_message() — 13-stage pipeline", "integration": "IMPLEMENTED"},
+    {"arrow_id": 23, "from": "Orchestrator", "to": "RAG / Memory / Tools", "status": "REAL", "evidence": "Dynamic resolvers; Tools work; RAG and Memory architecturally ready", "integration": "IMPLEMENTED"},
+    {"arrow_id": 24, "from": "Orchestrator", "to": "Brud Model / Final Answer", "status": "PARTIAL", "evidence": "_execute_evidence_route() degrades to model_assignment_unavailable; 0 active assignments", "integration": "SAFELY_DEGRADED"}
+  ],
+  "summary": {
+    "total_arrows": 24,
+    "status_real": 14,
+    "status_partial": 4,
+    "status_blocked": 3,
+    "status_safely_degraded": 1,
+    "status_implemented_manual": 1,
+    "status_implemented_not_active": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "mutation_capability": false,
+  "raw_secret_exposure": false,
+  "rbac_boundary": "ADVISORY_ONLY",
+  "tenant_isolation_passed": true
+}

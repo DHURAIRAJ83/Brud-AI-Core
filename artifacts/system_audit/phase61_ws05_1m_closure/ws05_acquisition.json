@@ -1,0 +1,10 @@
+{
+  "acquisition_summary": {
+    "jsonl_files_scanned": 843,
+    "txt_files_scanned": 6040,
+    "quarantined_records_filtered": 3991,
+    "exact_duplicates_filtered": 7142,
+    "unique_accepted_records": 2931,
+    "total_subword_tokens": 244793
+  }
+}

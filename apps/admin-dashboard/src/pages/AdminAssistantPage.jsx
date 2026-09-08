@@ -8,14 +8,13 @@ import {
   assistantProposals,
   createAssistantProposal,
   executeAssistantProposal,
+  getGovernanceStatus,
   reviewAssistantProposal,
   setAssistantLanguagePreference,
 } from '../services/api.js'
 
 const GOVERNANCE_NOTICE = 'The Admin Assistant never mutates anything on its own. Every proposed action must be approved through Admin Review, and approved actions execute only through the existing secured dataset/admin services -- never a direct database write. It cannot start model training.'
 
-// Mirrors AdminAssistantWidget.jsx's LANGUAGE_OPTIONS exactly -- both
-// surfaces read/write the one saved preference, never a competing copy.
 const LANGUAGE_OPTIONS = [
   { key: 'tamil', label: 'தமிழ்' },
   { key: 'english', label: 'English' },
@@ -28,11 +27,12 @@ function Pre({ value }) {
   return <pre className="notice" style={{ whiteSpace: 'pre-wrap', overflowX: 'auto' }}>{JSON.stringify(value, null, 2)}</pre>
 }
 
-const TABS = ['Guidance', 'Propose an Action', 'Proposals & Admin Review']
+const TABS = ['Guidance', 'Governance & Activation Readiness', 'Propose an Action', 'Proposals & Admin Review']
 
 export default function AdminAssistantPage() {
   const [tab, setTab] = useState('Guidance')
   const [overview, setOverview] = useState(null)
+  const [govStatus, setGovStatus] = useState(null)
   const [actions, setActions] = useState([])
   const [proposals, setProposals] = useState([])
   const [statusFilter, setStatusFilter] = useState('')
@@ -55,6 +55,7 @@ export default function AdminAssistantPage() {
 
   function loadOverview() {
     assistantOverview().then(setOverview).catch((reason) => setError(reason.message))
+    getGovernanceStatus().then(setGovStatus).catch(() => {})
     assistantActions().then((data) => setActions(data.action_types)).catch(() => {})
   }
 
@@ -174,6 +175,55 @@ export default function AdminAssistantPage() {
           ))}
         </section>
         <Pre value={overview.summary} />
+      </>}
+    </>}
+
+    {tab === 'Governance & Activation Readiness' && <>
+      <h3>Canonical Governance Status (P0–P10G)</h3>
+      {!govStatus && <p>Loading canonical governance status…</p>}
+      {govStatus && <>
+        <div className="notice" style={{ background: '#0d2238', color: '#70baff', borderLeft: '4px solid #388bfd', marginBottom: '1rem' }}>
+          <strong>Authority Lock:</strong> {govStatus.admin_assistant_authority} — The Admin Assistant displays status and provides advice only. It cannot authorize training, sign tokens, promote candidates, or activate production.
+        </div>
+
+        <section className="card-grid" style={{ marginBottom: '1.5rem' }}>
+          <StatusCard label="Canonical Components" value={govStatus.activation_readiness.p0_p10g_canonical_components} />
+          <StatusCard label="Production State" value={govStatus.activation_readiness.production_state} />
+          <StatusCard label="Final Verdict" value={govStatus.activation_readiness.final_verdict} />
+          <StatusCard label="Compliance Status" value={govStatus.governance.compliance.compliance_status} />
+        </section>
+
+        <h3>System Governance & Invariants</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div className="card" style={{ padding: '1rem', background: '#161b22', borderRadius: '6px', border: '1px solid #30363d' }}>
+            <h4 style={{ margin: '0 0 .5rem 0', color: '#58a6ff' }}>Training & Mutation</h4>
+            <p><strong>Training Execution Authorized:</strong> {String(govStatus.governance.invariants.training_execution_authorized)}</p>
+            <p><strong>Optimizer Stepping:</strong> {String(govStatus.governance.invariants.optimizer_stepping)}</p>
+            <p><strong>Tokenizer Mutation:</strong> {String(govStatus.governance.invariants.tokenizer_mutation)}</p>
+          </div>
+
+          <div className="card" style={{ padding: '1rem', background: '#161b22', borderRadius: '6px', border: '1px solid #30363d' }}>
+            <h4 style={{ margin: '0 0 .5rem 0', color: '#58a6ff' }}>Candidate & Release</h4>
+            <p><strong>Promotion:</strong> {govStatus.governance.invariants.production_promotion}</p>
+            <p><strong>Public Chat Eligible:</strong> {String(govStatus.governance.invariants.public_chat_eligible)}</p>
+            <p><strong>Candidate Traffic Share:</strong> {govStatus.governance.invariants.candidate_traffic_share}</p>
+          </div>
+
+          <div className="card" style={{ padding: '1rem', background: '#161b22', borderRadius: '6px', border: '1px solid #30363d' }}>
+            <h4 style={{ margin: '0 0 .5rem 0', color: '#58a6ff' }}>Security & Compliance</h4>
+            <p><strong>RBAC Integrity:</strong> {govStatus.governance.rbac.rbac_integrity_passed ? 'PASSED' : 'FAILED'}</p>
+            <p><strong>Tenant Isolation:</strong> {govStatus.governance.rbac.tenant_isolation_passed ? 'PASSED' : 'FAILED'}</p>
+            <p><strong>Policy Drift:</strong> {govStatus.governance.rbac.policy_drift_status}</p>
+            <p><strong>Active Keys:</strong> {govStatus.governance.secrets.active_keys_count}</p>
+          </div>
+        </div>
+
+        <h3>Final Activation Blockers</h3>
+        <ul style={{ background: '#21262d', padding: '1rem 1.5rem', borderRadius: '6px', border: '1px solid #363b42' }}>
+          {govStatus.activation_readiness.activation_blockers.map((blocker) => (
+            <li key={blocker} style={{ color: '#f85149', marginBottom: '.25rem' }}>{blocker}</li>
+          ))}
+        </ul>
       </>}
     </>}
 

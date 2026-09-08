@@ -1,0 +1,24 @@
+{
+  "scenarios": [
+    {
+      "name": "Scenario A",
+      "type": "Native-only Expansion",
+      "synthetic_ratio": 0.0
+    },
+    {
+      "name": "Scenario B",
+      "type": "Native + Limited English",
+      "synthetic_ratio": 2.5
+    },
+    {
+      "name": "Scenario C",
+      "type": "Native + Tanglish/Mixed",
+      "synthetic_ratio": 5.0
+    },
+    {
+      "name": "Scenario D",
+      "type": "Controlled Multilingual Augmentation",
+      "synthetic_ratio": 10.0
+    }
+  ]
+}

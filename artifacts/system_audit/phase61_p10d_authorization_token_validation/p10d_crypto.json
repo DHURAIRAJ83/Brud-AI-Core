@@ -1,0 +1,4 @@
+{
+  "hmac_sha256_verification": true,
+  "token_payload_bindings_verified": true
+}

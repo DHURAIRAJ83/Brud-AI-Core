@@ -10,9 +10,15 @@ PASSWORD = "Assistant-Admin-Password-42"
 
 
 async def authenticated_client(app: FastAPI):
-    AdminRepository(app.state.settings.resolved_database_path).create_admin(
+    admin = AdminRepository(app.state.settings.resolved_database_path).create_admin(
         AdminCreate(username="assistant-admin", display_name="Assistant Admin", password=PASSWORD)
     )
+    # Phase 4: this suite exercises the full propose/review/execute HTTP
+    # flow end to end for an already-authorized admin -- RBAC denial
+    # itself is covered by tests/database/test_admin_write_governance.py.
+    # Granting SUPER_ADMIN here keeps this suite's pre-Phase-4 execute
+    # assertions valid without touching AdminAssistantService itself.
+    app.state.settings.admin_role_overrides = f"{admin.public_id}:SUPER_ADMIN"
     client = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     response = await client.post(
         "/api/admin/auth/login", json={"username": "assistant-admin", "password": PASSWORD}

@@ -14,6 +14,9 @@ export default function TrainingEngineTab({
   teJobsList, teSelectedId, selectTeJob, submitTeCreateJob,
   teNewTopic, setTeNewTopic, teNewPackageId, setTeNewPackageId, teNewReleaseId, setTeNewReleaseId,
   teNewExecutionMode, setTeNewExecutionMode, teBusy,
+  teNewCoreModelVersionId, setTeNewCoreModelVersionId, teCoreModelVersion,
+  teNewDatasetVersionId, setTeNewDatasetVersionId, teDatasetReadinessData, teDatasetReadinessContractData,
+  teTrainingReadinessData,
   submitTeAuthorize, teAuthorizationReason, setTeAuthorizationReason,
   runTePlanResources,
   runTeBuildManifest,
@@ -34,8 +37,10 @@ export default function TrainingEngineTab({
         MB-22 -- Real Training Execution Engine. The first Mini Brain phase allowed to run a
         training workflow -- but only ever behind a fresh, per-job admin authorization token,
         never auto-started, never auto-deployed, never auto-promoted to production. Simulation
-        mode is the only runtime that actually executes here; the real CPU/GPU adapters are
-        honestly disclosed stubs. An existing checkpoint is never overwritten.
+        and CPU execution modes never run real weights; GPU mode drives the real trainer against
+        a real, admin-identified Core Model Version and requires one (Phase 2.7E) -- select or
+        create one on the Core Model page first. An existing checkpoint is never overwritten,
+        and training here never releases, activates, or assigns a model to Public Chat.
       </p>
 
       <div className="dataset-tabs">
@@ -58,6 +63,79 @@ export default function TrainingEngineTab({
               <StatusCard label="Stage" value={teJobData.stage} tone="neutral" />
               <StatusCard label="Status" value={teJobData.status} tone="neutral" />
             </section>
+          )}
+          {teJobData && teJobData.execution_mode === 'gpu' && (
+            <div className="notice">
+              <h4>Real Brud AI Text Model identity</h4>
+              {!teJobData.core_model_version_public_id && (
+                <p>This job has no Core Model Version identity -- real training cannot proceed without one.</p>
+              )}
+              {teJobData.core_model_version_public_id && !teCoreModelVersion && <Skeleton lines={2} />}
+              {teCoreModelVersion && (
+                <p>
+                  Family <strong>{teCoreModelVersion.family_name}</strong> -- config <strong>{teCoreModelVersion.config_public_id?.slice(0, 8)}</strong> -- version <strong>{teCoreModelVersion.version}</strong> -- lifecycle <strong>{teCoreModelVersion.lifecycle_status}</strong>.
+                  {' '}This is the exact Family/Config/Version this training job trains -- see the Core Model page for its full lifecycle, checkpoints, and architecture checks. Training here never releases, activates, or assigns this model to Public Chat -- that remains governed elsewhere.
+                </p>
+              )}
+              <p>
+                Dataset: <strong>{teJobData.dataset_version_public_id ? teJobData.dataset_version_public_id.slice(0, 8) : 'none'}</strong>
+                {' -- '}Pretraining checkpoint registration: <strong>{teJobData.pretraining_job_public_id ? `job ${teJobData.pretraining_job_public_id.slice(0, 8)} registered` : 'not registered yet'}</strong>.
+                {' '}Registration (Phase 2.7F) links a real checkpoint into the existing evaluation/release system -- it never evaluates, releases, or activates a model by itself.
+              </p>
+              {teDatasetReadinessData && (
+                <p>
+                  Training readiness (Phase 2.7G, real dataset -&gt; token-block pipeline):{' '}
+                  <strong>{teDatasetReadinessData.ready ? 'TRAINING_READY' : 'NOT_READY'}</strong>
+                  {!teDatasetReadinessData.ready && <>{' -- '}{teDatasetReadinessData.reason}</>}
+                  {teDatasetReadinessData.ready && teDatasetReadinessData.report && (
+                    <>
+                      {' -- context length '}{teDatasetReadinessData.report.context_length}
+                      {', train blocks '}{teDatasetReadinessData.report.train_report?.packed?.block_count}
+                      {', validation blocks '}{teDatasetReadinessData.report.validation_report?.packed?.block_count}
+                    </>
+                  )}
+                </p>
+              )}
+              {teDatasetReadinessContractData && (
+                <p>
+                  Readiness contract (Phase 2.7H, distinguishes BLOCKED from NOT_READY): {' '}
+                  <strong>{teDatasetReadinessContractData.status}</strong>
+                  {teDatasetReadinessContractData.status !== 'READY' && teDatasetReadinessContractData.reason && (
+                    <>{' -- '}{teDatasetReadinessContractData.reason}</>
+                  )}
+                  {teDatasetReadinessContractData.status === 'READY' && (
+                    <>
+                      {' -- '}{teDatasetReadinessContractData.dataset?.record_count}{' dataset records, '}
+                      avg tokens/record{' '}
+                      {teDatasetReadinessContractData.blocks?.train_token_length_stats?.average_tokens?.toFixed(1)},
+                      {' vocabulary utilization '}
+                      {(
+                        (teDatasetReadinessContractData.quality?.train_vocabulary_coverage?.vocabulary_utilization_ratio || 0) * 100
+                      ).toFixed(1)}%,
+                      {' pipeline time '}
+                      {teDatasetReadinessContractData.resource_estimate?.pipeline_wall_clock_seconds?.toFixed(3)}s
+                    </>
+                  )}
+                </p>
+              )}
+              {teTrainingReadinessData && (
+                <p>
+                  Training readiness gate (Phase 2.8A -- qualified to start a controlled training run, not a
+                  release or model-quality verdict): {' '}
+                  <strong>{teTrainingReadinessData.status}</strong>
+                  {teTrainingReadinessData.status !== 'READY' && teTrainingReadinessData.reason && (
+                    <>{' -- '}{teTrainingReadinessData.reason}</>
+                  )}
+                  {teTrainingReadinessData.status === 'READY' && (
+                    <>
+                      {' -- '}{teTrainingReadinessData.core_model?.context_length}{' context length, '}
+                      {teTrainingReadinessData.resource_estimate?.parameter_count?.toLocaleString()}{' parameters, '}
+                      envelope {teTrainingReadinessData.resource_estimate?.envelope_classification}
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
           )}
           {!teJobData && <div className="notice">Select or create a job in the Jobs sub-tab first.</div>}
           {teJobData && (
@@ -105,7 +183,17 @@ export default function TrainingEngineTab({
                   <option value="gpu">gpu</option>
                 </select>
               </label>
-              <Button type="submit" disabled={teBusy || !teNewTopic.trim() || !teNewPackageId.trim() || !teNewReleaseId.trim()}>{teBusy ? 'Working…' : 'Create job'}</Button>
+              {teNewExecutionMode === 'gpu' && (
+                <>
+                  <label>Core Model Version public ID (required for real training -- create/verify one on the Core Model page first)
+                    <input value={teNewCoreModelVersionId} onChange={(e) => setTeNewCoreModelVersionId(e.target.value)} placeholder="architecture-verified version public id" />
+                  </label>
+                  <label>Dataset version public ID (required for real training -- must be ready or archived)
+                    <input value={teNewDatasetVersionId} onChange={(e) => setTeNewDatasetVersionId(e.target.value)} placeholder="ready dataset version public id" />
+                  </label>
+                </>
+              )}
+              <Button type="submit" disabled={teBusy || !teNewTopic.trim() || !teNewPackageId.trim() || !teNewReleaseId.trim() || (teNewExecutionMode === 'gpu' && (!teNewCoreModelVersionId.trim() || !teNewDatasetVersionId.trim()))}>{teBusy ? 'Working…' : 'Create job'}</Button>
             </form>
           </div>
           <div>
@@ -248,7 +336,11 @@ export default function TrainingEngineTab({
               )}
               <ul className="notice">
                 {teCheckpointsList.map((c) => (
-                  <li key={c.public_id}>{c.checkpoint_name} -- sha256 {c.sha256.slice(0, 16)}… -- {c.is_metadata_only ? 'metadata-only' : 'real file'}</li>
+                  <li key={c.public_id}>
+                    {c.checkpoint_name} -- sha256 {c.sha256.slice(0, 16)}… -- {c.is_metadata_only ? 'metadata-only' : 'real file'}
+                    {' -- registered for release: '}
+                    <strong>{c.pretraining_checkpoint_public_id ? 'yes' : 'no'}</strong>
+                  </li>
                 ))}
                 {!teCheckpointsList.length && <li>No checkpoints saved yet.</li>}
               </ul>

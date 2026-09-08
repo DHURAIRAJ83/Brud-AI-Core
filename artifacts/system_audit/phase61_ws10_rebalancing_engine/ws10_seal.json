@@ -1,0 +1,9 @@
+{
+  "dataset_id": "foundation-v010-rebalancing-qualified",
+  "version": "foundation-v010",
+  "records": 4961,
+  "tokens": 5140476,
+  "tokenizer_sha256": "65342625ebb88eaab0996f0f6c5f3ef24ae9fd3203bc8377a0db353601e9ffd4",
+  "master_dataset_sha256": "1cad009f7974fdfb549ef01a882a9bf8912e7534c01e98bc72ef850438a09bc1",
+  "human_approval": "RECORDED_AND_SEALED"
+}

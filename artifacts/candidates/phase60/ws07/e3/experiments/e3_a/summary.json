@@ -1,0 +1,32 @@
+{
+  "experiment_id": "e3_a",
+  "name": "Tamil Only Baseline",
+  "dataset_size": 725,
+  "train_size": 438,
+  "val_size": 138,
+  "test_size": 149,
+  "languages": [
+    "ta"
+  ],
+  "duration_seconds": 105.69,
+  "final_train_loss": 4.394,
+  "best_val_loss": 4.5633,
+  "held_out_test_loss": 4.5219,
+  "checkpoint_sha256": "23593750fd25368f83e088d52c7da67509a64d4e005e4eea5503850dea2e0573",
+  "best_step": 100,
+  "evaluation": {
+    "raw_weights": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.9,
+      "eos_emission_rate": 0.0
+    },
+    "inference_controlled": {
+      "capability_pass_count": 0,
+      "capability_pass_rate": 0.0,
+      "mean_repetition_ratio": 0.0,
+      "eos_emission_rate": 0.625
+    },
+    "multi_turn_retention": false
+  }
+}

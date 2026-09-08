@@ -1,0 +1,66 @@
+{
+  "audit_id": "WS08-DUP-FORENSIC-2026-09-01",
+  "audit_date": "2026-09-01",
+  "repository_mutation": false,
+  "total_duplicate_class_names": 71,
+  "total_duplicate_occurrences": 215,
+  "previous_reported_count": 53,
+  "previous_count_accurate": false,
+  "previous_count_reason": "Undercount — previous audit excluded test files and some candidate directories",
+  "classification_breakdown": {
+    "A_true_duplicate": {"count": 8, "occurrences": 19},
+    "B_intentional_specialization": {"count": 31, "occurrences": 74},
+    "C_legacy_compatibility": {"count": 1, "occurrences": 2},
+    "D_test_fixture_mock": {"count": 11, "occurrences": 63},
+    "E_experimental_candidate": {"count": 1, "occurrences": 9},
+    "F_versioned_implementation": {"count": 14, "occurrences": 33},
+    "G_dead_orphan": {"count": 0, "occurrences": 0},
+    "H_uncertain": {"count": 5, "occurrences": 15}
+  },
+  "true_duplicates": [
+    {"class": "HardwareProbeResponse", "occurrences": 2, "files": ["backend/models/local_setup.py", "backend/models/mini_brain_runtime_manager.py"]},
+    {"class": "IngestProviderResultsRequest", "occurrences": 2, "files": ["backend/models/mini_brain_continuous_learning_center.py", "backend/models/mini_brain_research_center.py"]},
+    {"class": "ProviderOutput", "occurrences": 2, "files": ["backend/models/mini_brain_continuous_learning_center.py", "backend/models/mini_brain_research_center.py"]},
+    {"class": "RagAdminReviewRequest", "occurrences": 2, "files": ["backend/models/mini_brain_dataset_evolution.py", "backend/models/mini_brain_research_center.py"]},
+    {"class": "RecordExposureTelemetry", "occurrences": 2, "files": ["core_model/training/phase54_memorization_guard.py", "core_model/training/phase56_memorization_guard.py"]},
+    {"class": "VoiceAudioDecodeError", "occurrences": 2, "files": ["backend/services/public_voice_runtime.py", "backend/services/mini_brain_voice_runtime.py"]},
+    {"class": "FakeUploadFile", "occurrences": 15, "files": ["tests/backend/*.py (15 files)"]},
+    {"class": "Out", "occurrences": 2, "files": ["tests/evaluation/test_phase59_ws07_runtime_isolation.py", "tests/evaluation/test_phase59_ws08_release_readiness.py"]}
+  ],
+  "brud_small_v2_model": {
+    "total_occurrences": 9,
+    "production_runners": 4,
+    "test_copies": 5,
+    "canonical": "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+    "canonical_hash": "6aecf087c213d4506129",
+    "pe_persistent_false": {"ws05": false, "ws06": true, "ws07a": true, "e3": true},
+    "checkpoint_compatibility": "compatible via strict=False loading",
+    "p0_risk": "WS05 checkpoint includes pe key; E4/E5 loaders must use strict=False"
+  },
+  "create_session_request": {
+    "total_occurrences": 12,
+    "classification": "B_intentional_specialization",
+    "field_groups": {
+      "43c966445410": ["dataset_evolution", "language_intelligence"],
+      "f58526dbf7f7": ["evaluation_center", "release_governance", "training_pipeline"],
+      "c518aa62f155": ["pipeline_coordinator", "research_center"],
+      "f072d49fd16f": ["external_ai_gateway"],
+      "9bd9b17f8d0f": ["multimodal_dataset_generator"],
+      "fabdf17a9390": ["vision_intelligence"],
+      "01f4a7ec2d91": ["vision_model"],
+      "67bc340b334f": ["vision_rag"]
+    },
+    "recommendation": "KEEP separately — intentional domain-specific schemas"
+  },
+  "dead_code": {
+    "inference_stub": {"file": "core_model/inference/__init__.py", "size_bytes": 354, "callable": false, "raises": "NotImplementedError"},
+    "gguf_stubs": [
+      {"file": "models/brud_v1.gguf", "size_bytes": 18, "content": "MOCK_MODEL_WEIGHTS", "required": true},
+      {"file": "models/candidate_model.gguf", "size_bytes": 20, "content": "GGUF_VALID_MOCK_DATA", "required": true},
+      {"file": "models/tiny_model.gguf", "size_bytes": 21, "content": "GGUF_HEADER_MOCK_DATA", "required": true},
+      {"file": "models/trained_model.gguf", "size_bytes": 9, "content": "GGUF_DATA", "required": true}
+    ],
+    "adapter_checkpoints": {"directory": "data/core_models/checkpoints/adapter-it-at-*", "count": 6017, "size_gb": 3.8, "imported": false, "required": "historical"},
+    "phase59_md_reports": {"count": 40, "size_kb": 500, "imported": false, "required": "historical"}
+  }
+}

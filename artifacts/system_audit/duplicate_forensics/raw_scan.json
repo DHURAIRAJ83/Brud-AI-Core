@@ -1,0 +1,1951 @@
+{
+  "_FakeUploadFile": [
+    {
+      "file": "./tests/backend/test_mini_brain_vision_model_service.py",
+      "line": 72,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "f1a840b4837c1c6f",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_external_ai_gateway_service.py",
+      "line": 73,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "20c76c21dc4ffd74",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_vision_rag_api.py",
+      "line": 54,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "11282906da0e0b6a",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_vision_intelligence_service.py",
+      "line": 58,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "e9241c074893ec3d",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_training_pipeline_api.py",
+      "line": 57,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "9a815a85f8e6df57",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_vision_rag_service.py",
+      "line": 66,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "fd485a9156808a30",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_training_engine_api.py",
+      "line": 56,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "205c8cad577938d0",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_training_engine_service.py",
+      "line": 71,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "fb84bd12462f68d7",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_training_pipeline_service.py",
+      "line": 79,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "3398091f6c7d5391",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_evaluation_center_service.py",
+      "line": 72,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "dc405e2f1a53267e",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_multimodal_dataset_generator_service.py",
+      "line": 64,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "44c0bc61eb6e703e",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_multimodal_dataset_generator_api.py",
+      "line": 52,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "68d63cc3f8516433",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_evaluation_center_api.py",
+      "line": 58,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "a21410c864b91600",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_release_governance_api.py",
+      "line": 59,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "32f1b6d356e84731",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_vision_model_api.py",
+      "line": 59,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "a0d9b52b6ac48de3",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_release_governance_service.py",
+      "line": 73,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "100e9b525483a0a5",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_vision_intelligence_api.py",
+      "line": 48,
+      "impl_hash": "677b38677377bc9f",
+      "file_hash": "0ab76b313053492b",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./apps/admin-dashboard/e2e/seed.py",
+      "line": 62,
+      "impl_hash": "2576fcd2e4b57982",
+      "file_hash": "e01d7ebd5edef277",
+      "methods": [
+        "__init__"
+      ]
+    }
+  ],
+  "TestDeterminism": [
+    {
+      "file": "./tests/backend/test_mini_brain_dataset_pipeline.py",
+      "line": 294,
+      "impl_hash": "6632abe47ee82145",
+      "file_hash": "b07c2117ea96855c",
+      "methods": []
+    },
+    {
+      "file": "./tests/backend/test_phase28a_training_readiness.py",
+      "line": 387,
+      "impl_hash": "281bd3f38f63ed50",
+      "file_hash": "49ad01444b2b30c0",
+      "methods": []
+    },
+    {
+      "file": "./tests/backend/test_phase28b_training_execution_recovery_integrity.py",
+      "line": 705,
+      "impl_hash": "0174c35c73989365",
+      "file_hash": "7238406c4c95f80d",
+      "methods": []
+    }
+  ],
+  "TestNegativeChecks": [
+    {
+      "file": "./tests/backend/test_mini_brain_dataset_pipeline.py",
+      "line": 393,
+      "impl_hash": "37d0958833786dd7",
+      "file_hash": "b07c2117ea96855c",
+      "methods": []
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_pretraining_checkpoint_handoff.py",
+      "line": 248,
+      "impl_hash": "0d52ea2a77a14aef",
+      "file_hash": "8b1e21a8ae7180ce",
+      "methods": []
+    }
+  ],
+  "FakeUploadFile": [
+    {
+      "file": "./tests/backend/test_document_sft_vision_blocking.py",
+      "line": 39,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "4d8dcf6ff24f67d9",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_sft_workflow_service.py",
+      "line": 45,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "f13b771dd9e4bf44",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_sft_finalization_admin_assistant.py",
+      "line": 61,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "0e114dca69cd8ee0",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_semantic_chunk_service.py",
+      "line": 36,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "5f5588001d0df229",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_structured_record_service.py",
+      "line": 36,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "05c1bb010005eb34",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_sft_workflow_admin_assistant.py",
+      "line": 52,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "7e430d8129a42d39",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_content_classification.py",
+      "line": 31,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "535a66ad55d5c2ca",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_security_review.py",
+      "line": 41,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "e10b5b75357bf794",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_admin_assistant_document_navigation.py",
+      "line": 43,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "32a26906e7063c55",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_governance_service.py",
+      "line": 51,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "249a5b6c92c8edc2",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_workspace_service.py",
+      "line": 32,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "6ee58ef5a95cf8f2",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_sft_workflow_security.py",
+      "line": 44,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "3f6306269983ef7d",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_sft_dataset_handoff.py",
+      "line": 45,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "4c99cff6ff73f4a7",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_document_sft_expanded_generators.py",
+      "line": 43,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "28719733d245dce2",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./deploy/phase-2.7B/sandbox/live_http_test.py",
+      "line": 106,
+      "impl_hash": "1809d579503e8e4d",
+      "file_hash": "f8de16d6ea52c6c6",
+      "methods": [
+        "__init__"
+      ]
+    }
+  ],
+  "_RecordingAdapter": [
+    {
+      "file": "./tests/backend/test_mini_brain_llm_runtime_service.py",
+      "line": 616,
+      "impl_hash": "613be7b81a63b5e0",
+      "file_hash": "cb8f56d26f845434",
+      "methods": [
+        "__init__",
+        "is_available",
+        "generate"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_pilot_metrics.py",
+      "line": 35,
+      "impl_hash": "def80d29b23382cb",
+      "file_hash": "2ae47d00c08c3fcb",
+      "methods": [
+        "is_available",
+        "generate"
+      ]
+    }
+  ],
+  "_StubRetrievalService": [
+    {
+      "file": "./tests/backend/test_mini_brain_llm_runtime_service.py",
+      "line": 634,
+      "impl_hash": "8d5ff9c1282c9dd7",
+      "file_hash": "cb8f56d26f845434",
+      "methods": [
+        "__init__",
+        "retrieve"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_pilot_metrics.py",
+      "line": 45,
+      "impl_hash": "d8011dbddf92cdd7",
+      "file_hash": "2ae47d00c08c3fcb",
+      "methods": [
+        "__init__",
+        "retrieve"
+      ]
+    }
+  ],
+  "TestTrainingQualification": [
+    {
+      "file": "./tests/backend/test_phase28a_training_readiness.py",
+      "line": 420,
+      "impl_hash": "36d251a857f74041",
+      "file_hash": "49ad01444b2b30c0",
+      "methods": []
+    },
+    {
+      "file": "./tests/backend/test_phase27h_training_dataset_readiness.py",
+      "line": 831,
+      "impl_hash": "2692ad59f4bce4e5",
+      "file_hash": "b30986e0f3420afd",
+      "methods": []
+    }
+  ],
+  "TestAuthorityBoundary": [
+    {
+      "file": "./tests/backend/test_document_sft_workflow_admin_assistant.py",
+      "line": 269,
+      "impl_hash": "4d929da9b977afe9",
+      "file_hash": "7e430d8129a42d39",
+      "methods": []
+    },
+    {
+      "file": "./tests/backend/test_admin_assistant_document_navigation.py",
+      "line": 213,
+      "impl_hash": "3febf30b369dc335",
+      "file_hash": "32a26906e7063c55",
+      "methods": []
+    }
+  ],
+  "TestIdempotency": [
+    {
+      "file": "./tests/backend/test_phase28e_cross_request_training_runtime.py",
+      "line": 561,
+      "impl_hash": "33c3dd054ec50cc2",
+      "file_hash": "3c1271996c0fa624",
+      "methods": [
+        "test_repeated_recovery_via_fresh_processes_is_safe"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_phase28f_multi_worker_concurrency.py",
+      "line": 579,
+      "impl_hash": "02477063fecf0247",
+      "file_hash": "17bd5928544ada10",
+      "methods": [
+        "test_repeated_checkpoint_same_step_across_processes_rejected",
+        "test_repeated_cancel_across_processes_rejected",
+        "test_repeated_finalize_across_processes_rejected",
+        "test_repeated_resume_across_processes_rejected"
+      ]
+    }
+  ],
+  "TestNoSilentSubstitution": [
+    {
+      "file": "./tests/backend/test_phase28n_checkpoint_destination_hard_isolation.py",
+      "line": 163,
+      "impl_hash": "db6e294c66864ce9",
+      "file_hash": "772348f977026d38",
+      "methods": [
+        "test_rejection_reports_the_exact_unsafe_path_never_a_different_one",
+        "test_preflight_result_reports_the_exact_pretraining_dir_given"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_phase28i_qualification_environment_hard_isolation.py",
+      "line": 241,
+      "impl_hash": "9a1a7eda1157f438",
+      "file_hash": "aca805aaf7ff7e7d",
+      "methods": [
+        "test_preflight_reports_the_exact_path_given_never_a_different_one"
+      ]
+    }
+  ],
+  "TestRestartSurvival": [
+    {
+      "file": "./tests/backend/test_mini_brain_core_model_identity_integration.py",
+      "line": 442,
+      "impl_hash": "a9064b8f174e46eb",
+      "file_hash": "f2241a9b5402dd64",
+      "methods": []
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_pretraining_checkpoint_handoff.py",
+      "line": 530,
+      "impl_hash": "01a687909062141c",
+      "file_hash": "8b1e21a8ae7180ce",
+      "methods": []
+    }
+  ],
+  "TestFreshProcessRecovery": [
+    {
+      "file": "./tests/backend/test_phase28g_real_model_training_qualification.py",
+      "line": 177,
+      "impl_hash": "b4ecf76fc09e7d6f",
+      "file_hash": "2c8d194f03af01dc",
+      "methods": [
+        "test_fresh_process_recovers_bit_exact_weights_and_continues_training",
+        "test_recovered_weights_sha256_matches_independently_loaded_checkpoint"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_phase28c_checkpoint_resume_recovery.py",
+      "line": 202,
+      "impl_hash": "634061998e672562",
+      "file_hash": "eecd4d064533c46f",
+      "methods": [
+        "test_train_checkpoint_pause_then_fresh_process_recovers_and_continues"
+      ]
+    }
+  ],
+  "FakeInferenceBackend": [
+    {
+      "file": "./tests/backend/test_mini_brain_runtime_service.py",
+      "line": 22,
+      "impl_hash": "7e4dd15f544db52e",
+      "file_hash": "4dc59049ab81e787",
+      "methods": [
+        "__init__",
+        "is_available",
+        "load",
+        "unload",
+        "generate"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_prompt_optimization_service.py",
+      "line": 25,
+      "impl_hash": "e3dd9b92de87f0da",
+      "file_hash": "06437392066ba809",
+      "methods": [
+        "__init__",
+        "is_available",
+        "load",
+        "unload",
+        "generate"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_mini_brain_quality_service.py",
+      "line": 25,
+      "impl_hash": "8a096321cafaade1",
+      "file_hash": "203d199b2ea18062",
+      "methods": [
+        "is_available",
+        "load",
+        "unload",
+        "generate"
+      ]
+    }
+  ],
+  "_FailingStepAdapter": [
+    {
+      "file": "./tests/backend/test_phase28b_training_execution_recovery_integrity.py",
+      "line": 151,
+      "impl_hash": "ac84f56c3158eb69",
+      "file_hash": "7238406c4c95f80d",
+      "methods": [
+        "__init__",
+        "is_available",
+        "reserve",
+        "start",
+        "step",
+        "save_checkpoint",
+        "pause",
+        "resume",
+        "cancel",
+        "finalize"
+      ]
+    },
+    {
+      "file": "./tests/backend/test_phase28c_checkpoint_resume_recovery.py",
+      "line": 149,
+      "impl_hash": "5e1678213a359e64",
+      "file_hash": "eecd4d064533c46f",
+      "methods": [
+        "__init__",
+        "is_available",
+        "reserve",
+        "start",
+        "step",
+        "save_checkpoint",
+        "pause",
+        "resume",
+        "cancel",
+        "finalize",
+        "_model",
+        "_optimizer_state",
+        "_completed_steps"
+      ]
+    }
+  ],
+  "BrudSmallV2StandardModel": [
+    {
+      "file": "./tests/evaluation/test_phase59_ws07_runtime_isolation.py",
+      "line": 46,
+      "impl_hash": "c02802bc3c0c8bed",
+      "file_hash": "0d00c90a0bbb482e",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase59_ws08_release_readiness.py",
+      "line": 47,
+      "impl_hash": "c02802bc3c0c8bed",
+      "file_hash": "460a6ee881bbceb4",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase59_ws06_model_initialization.py",
+      "line": 46,
+      "impl_hash": "3c8ab05cb2dc3c54",
+      "file_hash": "6e599623e06ad0cc",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    }
+  ],
+  "Out": [
+    {
+      "file": "./tests/evaluation/test_phase59_ws07_runtime_isolation.py",
+      "line": 66,
+      "impl_hash": "04d0dcfb3275bee0",
+      "file_hash": "0d00c90a0bbb482e",
+      "methods": []
+    },
+    {
+      "file": "./tests/evaluation/test_phase59_ws08_release_readiness.py",
+      "line": 67,
+      "impl_hash": "04d0dcfb3275bee0",
+      "file_hash": "460a6ee881bbceb4",
+      "methods": []
+    }
+  ],
+  "BrudSmallV2Model": [
+    {
+      "file": "./tests/evaluation/test_phase60_ws06_capability_evaluation.py",
+      "line": 63,
+      "impl_hash": "518a7b39d5e84ae9",
+      "file_hash": "89d9296a263ee72b",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase59_ws05_training_safety.py",
+      "line": 70,
+      "impl_hash": "4228516e13cdc9b0",
+      "file_hash": "139645f0922430ed",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase60_ws07_remediation.py",
+      "line": 70,
+      "impl_hash": "93c2d088bbbf7d23",
+      "file_hash": "4c2d1d5a528cea01",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase60_ws04_training_preparation.py",
+      "line": 62,
+      "impl_hash": "e8056a70bc11d548",
+      "file_hash": "391c240a224f9080",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase60_ws05_controlled_training.py",
+      "line": 63,
+      "impl_hash": "71103863b11361bd",
+      "file_hash": "f44abf3d4f7e811b",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./artifacts/candidates/phase60/run_capability_evaluation_ws06.py",
+      "line": 46,
+      "impl_hash": "5f5834fb207027f7",
+      "file_hash": "4721426bac87565e",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./artifacts/candidates/phase60/run_controlled_training_ws05.py",
+      "line": 47,
+      "impl_hash": "e8056a70bc11d548",
+      "file_hash": "4e9a55889094feda",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./artifacts/candidates/phase60/ws07/run_ws07_stage_a_diagnostics.py",
+      "line": 49,
+      "impl_hash": "518a7b39d5e84ae9",
+      "file_hash": "4252245ca8ccb421",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    },
+    {
+      "file": "./artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+      "line": 75,
+      "impl_hash": "6aecf087c213d450",
+      "file_hash": "a94d6f93c12322d7",
+      "methods": [
+        "__init__",
+        "_build_sinusoidal_pe",
+        "forward"
+      ]
+    }
+  ],
+  "M": [
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 603,
+      "impl_hash": "b5c38248b747fc44",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 621,
+      "impl_hash": "b5c38248b747fc44",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 641,
+      "impl_hash": "b5c38248b747fc44",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 685,
+      "impl_hash": "b5c38248b747fc44",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 727,
+      "impl_hash": "4af300dd348be008",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 741,
+      "impl_hash": "4af300dd348be008",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 1959,
+      "impl_hash": "b5c38248b747fc44",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase56_controlled_training.py",
+      "line": 2000,
+      "impl_hash": "b5c38248b747fc44",
+      "file_hash": "2ae6c37083b5df0a",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase58_tokenizer_repair.py",
+      "line": 554,
+      "impl_hash": "9cc78353809f5e88",
+      "file_hash": "4e4f80e6f535f957",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    }
+  ],
+  "TinyM": [
+    {
+      "file": "./tests/evaluation/test_phase58_tokenizer_repair.py",
+      "line": 624,
+      "impl_hash": "d3764502212c8516",
+      "file_hash": "4e4f80e6f535f957",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    },
+    {
+      "file": "./tests/evaluation/test_phase58_tokenizer_repair.py",
+      "line": 653,
+      "impl_hash": "d3764502212c8516",
+      "file_hash": "4e4f80e6f535f957",
+      "methods": [
+        "__init__",
+        "forward"
+      ]
+    }
+  ],
+  "RecordMemoryRequest": [
+    {
+      "file": "./backend/models/mini_brain_continuous_learning_center.py",
+      "line": 10,
+      "impl_hash": "b4e88fb9033601e0",
+      "file_hash": "41737ada0c1be93c",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_research_center.py",
+      "line": 53,
+      "impl_hash": "f88ac5a9f93efe78",
+      "file_hash": "2c434c452aacb924",
+      "methods": []
+    }
+  ],
+  "ProviderOutput": [
+    {
+      "file": "./backend/models/mini_brain_continuous_learning_center.py",
+      "line": 27,
+      "impl_hash": "2e95673c2ee338cc",
+      "file_hash": "41737ada0c1be93c",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_research_center.py",
+      "line": 26,
+      "impl_hash": "2e95673c2ee338cc",
+      "file_hash": "2c434c452aacb924",
+      "methods": []
+    }
+  ],
+  "IngestProviderResultsRequest": [
+    {
+      "file": "./backend/models/mini_brain_continuous_learning_center.py",
+      "line": 32,
+      "impl_hash": "71583b2f032e8c32",
+      "file_hash": "41737ada0c1be93c",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_research_center.py",
+      "line": 31,
+      "impl_hash": "71583b2f032e8c32",
+      "file_hash": "2c434c452aacb924",
+      "methods": []
+    }
+  ],
+  "AdminReviewRequest": [
+    {
+      "file": "./backend/models/mini_brain_continuous_learning_center.py",
+      "line": 40,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "41737ada0c1be93c",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_language_intelligence.py",
+      "line": 22,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "322f6455fc93d3ac",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_evaluation_center.py",
+      "line": 28,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "3621bac2b4399839",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_training_pipeline.py",
+      "line": 24,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "d6a42ff2a2982b26",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_external_ai_gateway.py",
+      "line": 32,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "af404d21f40a691f",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_release_pipeline.py",
+      "line": 31,
+      "impl_hash": "c59e92d40d9b2d1b",
+      "file_hash": "e271ca59d889fa9f",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_dataset_evolution.py",
+      "line": 12,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "805e5811c2a36b4b",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_continuous_learning.py",
+      "line": 12,
+      "impl_hash": "c59e92d40d9b2d1b",
+      "file_hash": "6781f748ffe2a7f5",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_learning_supervisor.py",
+      "line": 47,
+      "impl_hash": "c59e92d40d9b2d1b",
+      "file_hash": "454bf1829d7f6818",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_multimodal_dataset_generator.py",
+      "line": 16,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "ebaf5eb3a75294aa",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_vision_rag.py",
+      "line": 20,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "afbbbb2efc834541",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_vision_intelligence.py",
+      "line": 31,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "fa01b52e99e30871",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_release_governance.py",
+      "line": 28,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "829a1b6a9150dcb4",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_vision_model.py",
+      "line": 37,
+      "impl_hash": "446c38f42e00f781",
+      "file_hash": "f54cf19b3f5d110a",
+      "methods": []
+    }
+  ],
+  "RuntimeEventRequest": [
+    {
+      "file": "./backend/models/mini_brain_plugin_governance.py",
+      "line": 61,
+      "impl_hash": "7cc5dcfa0cd550bb",
+      "file_hash": "c749d93052c9e9da",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_plugin_runtime.py",
+      "line": 26,
+      "impl_hash": "7cc5dcfa0cd550bb",
+      "file_hash": "889eeb4b58106a06",
+      "methods": []
+    }
+  ],
+  "BilingualLabel": [
+    {
+      "file": "./backend/models/local_setup.py",
+      "line": 36,
+      "impl_hash": "f966d019a6079cc8",
+      "file_hash": "02a3381df724bcf6",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_health.py",
+      "line": 16,
+      "impl_hash": "f966d019a6079cc8",
+      "file_hash": "98a4048d1217b11e",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_runtime_manager.py",
+      "line": 37,
+      "impl_hash": "f966d019a6079cc8",
+      "file_hash": "219f20481ff7aa37",
+      "methods": []
+    }
+  ],
+  "HardwareProbeResponse": [
+    {
+      "file": "./backend/models/local_setup.py",
+      "line": 49,
+      "impl_hash": "27cf1fad28ec8318",
+      "file_hash": "02a3381df724bcf6",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_runtime_manager.py",
+      "line": 42,
+      "impl_hash": "27cf1fad28ec8318",
+      "file_hash": "219f20481ff7aa37",
+      "methods": []
+    }
+  ],
+  "QualityAssessRequest": [
+    {
+      "file": "./backend/models/corpus.py",
+      "line": 109,
+      "impl_hash": "e8583c7243caff55",
+      "file_hash": "9cc8f123b9f5686a",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/dataset_quality.py",
+      "line": 10,
+      "impl_hash": "c340745abf3611f5",
+      "file_hash": "c06a85b19bbeaf94",
+      "methods": []
+    }
+  ],
+  "BuildCreate": [
+    {
+      "file": "./backend/models/corpus.py",
+      "line": 166,
+      "impl_hash": "dbe23ff16a9d6727",
+      "file_hash": "9cc8f123b9f5686a",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/dataset_versions.py",
+      "line": 29,
+      "impl_hash": "a414053711d325a6",
+      "file_hash": "d85514aa554f6a7c",
+      "methods": []
+    }
+  ],
+  "ExportCreate": [
+    {
+      "file": "./backend/models/corpus.py",
+      "line": 182,
+      "impl_hash": "2f234a8b9979dc17",
+      "file_hash": "9cc8f123b9f5686a",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/dataset_versions.py",
+      "line": 44,
+      "impl_hash": "0a61b48092e67f3f",
+      "file_hash": "d85514aa554f6a7c",
+      "methods": []
+    }
+  ],
+  "CreateSessionRequest": [
+    {
+      "file": "./backend/models/mini_brain_language_intelligence.py",
+      "line": 9,
+      "impl_hash": "43c966445410a124",
+      "file_hash": "322f6455fc93d3ac",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_evaluation_center.py",
+      "line": 8,
+      "impl_hash": "f58526dbf7f7a54c",
+      "file_hash": "3621bac2b4399839",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_pipeline_coordinator.py",
+      "line": 8,
+      "impl_hash": "c518aa62f1550325",
+      "file_hash": "cd9c0324e557696e",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_training_pipeline.py",
+      "line": 8,
+      "impl_hash": "f58526dbf7f7a54c",
+      "file_hash": "d6a42ff2a2982b26",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_external_ai_gateway.py",
+      "line": 8,
+      "impl_hash": "f072d49fd16f3591",
+      "file_hash": "af404d21f40a691f",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_dataset_evolution.py",
+      "line": 8,
+      "impl_hash": "43c966445410a124",
+      "file_hash": "805e5811c2a36b4b",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_multimodal_dataset_generator.py",
+      "line": 8,
+      "impl_hash": "9bd9b17f8d0f2e33",
+      "file_hash": "ebaf5eb3a75294aa",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_vision_rag.py",
+      "line": 10,
+      "impl_hash": "67bc340b334f4ea7",
+      "file_hash": "afbbbb2efc834541",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_research_center.py",
+      "line": 8,
+      "impl_hash": "c518aa62f1550325",
+      "file_hash": "2c434c452aacb924",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_vision_intelligence.py",
+      "line": 11,
+      "impl_hash": "fabdf17a9390e064",
+      "file_hash": "fa01b52e99e30871",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_release_governance.py",
+      "line": 8,
+      "impl_hash": "f58526dbf7f7a54c",
+      "file_hash": "829a1b6a9150dcb4",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_vision_model.py",
+      "line": 11,
+      "impl_hash": "01f4a7ec2d91630a",
+      "file_hash": "f54cf19b3f5d110a",
+      "methods": []
+    }
+  ],
+  "CollectDatasetsRequest": [
+    {
+      "file": "./backend/models/mini_brain_evaluation_center.py",
+      "line": 12,
+      "impl_hash": "3994e4407882aef6",
+      "file_hash": "3621bac2b4399839",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_training_pipeline.py",
+      "line": 12,
+      "impl_hash": "3994e4407882aef6",
+      "file_hash": "d6a42ff2a2982b26",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_release_governance.py",
+      "line": 12,
+      "impl_hash": "3994e4407882aef6",
+      "file_hash": "829a1b6a9150dcb4",
+      "methods": []
+    }
+  ],
+  "ReviewActionRequest": [
+    {
+      "file": "./backend/models/semantic_chunks.py",
+      "line": 100,
+      "impl_hash": "59eb0e95c5b1c9a2",
+      "file_hash": "932c499239fe61e3",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/documents.py",
+      "line": 84,
+      "impl_hash": "cf901f10aa12907a",
+      "file_hash": "eeebe8ce325f5dbe",
+      "methods": []
+    }
+  ],
+  "UsageCheckRequest": [
+    {
+      "file": "./backend/models/semantic_chunks.py",
+      "line": 121,
+      "impl_hash": "71daddd64e5bfc37",
+      "file_hash": "932c499239fe61e3",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/manual_data.py",
+      "line": 160,
+      "impl_hash": "71daddd64e5bfc37",
+      "file_hash": "acd7538fd03d0b4b",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/data_sources.py",
+      "line": 175,
+      "impl_hash": "71daddd64e5bfc37",
+      "file_hash": "bf7969bfbadd1297",
+      "methods": []
+    }
+  ],
+  "AssignmentPatch": [
+    {
+      "file": "./backend/models/inference_runtime.py",
+      "line": 66,
+      "impl_hash": "a3eebe1308f6440a",
+      "file_hash": "a7fa4fdf90fde8ed",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/tokenizers.py",
+      "line": 74,
+      "impl_hash": "1fc3cfcaa91c5020",
+      "file_hash": "74aa93afa70a6248",
+      "methods": []
+    }
+  ],
+  "DiagnosticGenerateRequest": [
+    {
+      "file": "./backend/models/inference_runtime.py",
+      "line": 88,
+      "impl_hash": "0c5f8dea8c734fcc",
+      "file_hash": "a7fa4fdf90fde8ed",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/instruction_tuning.py",
+      "line": 53,
+      "impl_hash": "cb63398b65c61671",
+      "file_hash": "82bd1fa4a8229e0e",
+      "methods": []
+    }
+  ],
+  "AuthorizeRequest": [
+    {
+      "file": "./backend/models/mini_brain_external_ai_gateway.py",
+      "line": 15,
+      "impl_hash": "e5bc3472481240bb",
+      "file_hash": "af404d21f40a691f",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_training_engine.py",
+      "line": 25,
+      "impl_hash": "a7ede96224746797",
+      "file_hash": "0d0c4eb56f1e0967",
+      "methods": []
+    }
+  ],
+  "RetrievalProfileCreate": [
+    {
+      "file": "./backend/models/conversation_memory.py",
+      "line": 86,
+      "impl_hash": "30499a16ce17cb8b",
+      "file_hash": "0f8c438c8a65cfea",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/rag.py",
+      "line": 77,
+      "impl_hash": "8435207a1c9fbe1b",
+      "file_hash": "70d9a1e20f5f0aa6",
+      "methods": []
+    }
+  ],
+  "RetrievalProfilePatch": [
+    {
+      "file": "./backend/models/conversation_memory.py",
+      "line": 100,
+      "impl_hash": "63f3ddcd163f778a",
+      "file_hash": "0f8c438c8a65cfea",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/rag.py",
+      "line": 96,
+      "impl_hash": "1e3c01dfff59cfd7",
+      "file_hash": "70d9a1e20f5f0aa6",
+      "methods": []
+    }
+  ],
+  "EvaluationSuiteCreate": [
+    {
+      "file": "./backend/models/conversation_memory.py",
+      "line": 114,
+      "impl_hash": "f7f55b70bc6f8c1d",
+      "file_hash": "0f8c438c8a65cfea",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/rag.py",
+      "line": 142,
+      "impl_hash": "c5e1cabfbedfcd1f",
+      "file_hash": "70d9a1e20f5f0aa6",
+      "methods": []
+    }
+  ],
+  "EvaluationFixtureCreate": [
+    {
+      "file": "./backend/models/conversation_memory.py",
+      "line": 119,
+      "impl_hash": "e85b724b68ad5972",
+      "file_hash": "0f8c438c8a65cfea",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/rag.py",
+      "line": 148,
+      "impl_hash": "57b9e0a4ae3a0d6b",
+      "file_hash": "70d9a1e20f5f0aa6",
+      "methods": []
+    }
+  ],
+  "EvaluationRunCreate": [
+    {
+      "file": "./backend/models/conversation_memory.py",
+      "line": 134,
+      "impl_hash": "e7610866d9211af3",
+      "file_hash": "0f8c438c8a65cfea",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/rag.py",
+      "line": 161,
+      "impl_hash": "86ed57e342b65981",
+      "file_hash": "70d9a1e20f5f0aa6",
+      "methods": []
+    }
+  ],
+  "LoadModelRequest": [
+    {
+      "file": "./backend/models/mini_brain_runtime.py",
+      "line": 17,
+      "impl_hash": "e6d77b4419919abe",
+      "file_hash": "c721bea8594beb04",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_runtime_manager.py",
+      "line": 19,
+      "impl_hash": "76e2df46cb8afee3",
+      "file_hash": "219f20481ff7aa37",
+      "methods": []
+    }
+  ],
+  "RagAdminReviewRequest": [
+    {
+      "file": "./backend/models/mini_brain_dataset_evolution.py",
+      "line": 16,
+      "impl_hash": "62813fd0bb29e2c6",
+      "file_hash": "805e5811c2a36b4b",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_research_center.py",
+      "line": 39,
+      "impl_hash": "62813fd0bb29e2c6",
+      "file_hash": "2c434c452aacb924",
+      "methods": []
+    }
+  ],
+  "RunRagEvaluationRequest": [
+    {
+      "file": "./backend/models/mini_brain_dataset_evolution.py",
+      "line": 20,
+      "impl_hash": "382b4c4f297d4918",
+      "file_hash": "805e5811c2a36b4b",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_learning_supervisor.py",
+      "line": 23,
+      "impl_hash": "382b4c4f297d4918",
+      "file_hash": "454bf1829d7f6818",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_research_center.py",
+      "line": 43,
+      "impl_hash": "382b4c4f297d4918",
+      "file_hash": "2c434c452aacb924",
+      "methods": []
+    }
+  ],
+  "DiagnosticsResponse": [
+    {
+      "file": "./backend/models/mini_brain_provider_settings.py",
+      "line": 73,
+      "impl_hash": "0dc1943f7cb3dff7",
+      "file_hash": "765679f9a4743a89",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/mini_brain_llm_runtime.py",
+      "line": 148,
+      "impl_hash": "418608854f35974c",
+      "file_hash": "fee9218b3b498909",
+      "methods": []
+    }
+  ],
+  "HumanReviewCreate": [
+    {
+      "file": "./backend/models/feedback.py",
+      "line": 70,
+      "impl_hash": "63f898daeddbf666",
+      "file_hash": "c6df1acdd5858ed0",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/model_evaluation.py",
+      "line": 61,
+      "impl_hash": "f685ef8676c186cc",
+      "file_hash": "e7c85eae3c47f566",
+      "methods": []
+    }
+  ],
+  "RegressionRunCreate": [
+    {
+      "file": "./backend/models/feedback.py",
+      "line": 123,
+      "impl_hash": "d7b1c4880e13559b",
+      "file_hash": "c6df1acdd5858ed0",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/production_readiness.py",
+      "line": 152,
+      "impl_hash": "f946fefe15a175fa",
+      "file_hash": "8e9eeb835f4861c2",
+      "methods": []
+    }
+  ],
+  "RollbackPlanCreate": [
+    {
+      "file": "./backend/models/model_release.py",
+      "line": 70,
+      "impl_hash": "f5c5d5a4e9645dbc",
+      "file_hash": "8e8acc34c218c632",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/production_readiness.py",
+      "line": 138,
+      "impl_hash": "425272ae5b9d07d6",
+      "file_hash": "8e9eeb835f4861c2",
+      "methods": []
+    }
+  ],
+  "ReviewRequest": [
+    {
+      "file": "./backend/models/datasets.py",
+      "line": 57,
+      "impl_hash": "577057cf24a04d53",
+      "file_hash": "061172478325d901",
+      "methods": []
+    },
+    {
+      "file": "./backend/models/manual_data.py",
+      "line": 132,
+      "impl_hash": "5aa716cd701c30c5",
+      "file_hash": "acd7538fd03d0b4b",
+      "methods": []
+    }
+  ],
+  "DatasetVersionCreate": [
+    {
+      "file": "./backend/models/domain.py",
+      "line": 263,
+      "impl_hash": "316203e74e2e0edf",
+      "file_hash": "8e19e4ce1c624649",
+      "methods": [
+        "valid_version"
+      ]
+    },
+    {
+      "file": "./backend/models/dataset_versions.py",
+      "line": 10,
+      "impl_hash": "d81d18470924140e",
+      "file_hash": "d85514aa554f6a7c",
+      "methods": []
+    }
+  ],
+  "AdminApprovalRecord": [
+    {
+      "file": "./backend/models/domain.py",
+      "line": 496,
+      "impl_hash": "8a7bfc520a02c3be",
+      "file_hash": "8e19e4ce1c624649",
+      "methods": []
+    },
+    {
+      "file": "./core_model/release/phase43_promotion_governance.py",
+      "line": 35,
+      "impl_hash": "eb6623992ac05f4a",
+      "file_hash": "677906db8fcc0bf6",
+      "methods": [
+        "to_dict"
+      ]
+    }
+  ],
+  "ConversationTurn": [
+    {
+      "file": "./backend/models/manual_data.py",
+      "line": 71,
+      "impl_hash": "4418eb2b3ff1c0cf",
+      "file_hash": "acd7538fd03d0b4b",
+      "methods": []
+    },
+    {
+      "file": "./core_model/inference_runtime/context_builder.py",
+      "line": 23,
+      "impl_hash": "5d03aafb0b66feb4",
+      "file_hash": "e7c2f96b02d81b23",
+      "methods": []
+    }
+  ],
+  "SplitConfiguration": [
+    {
+      "file": "./backend/models/dataset_versions.py",
+      "line": 22,
+      "impl_hash": "0456c6162c959df0",
+      "file_hash": "d85514aa554f6a7c",
+      "methods": []
+    },
+    {
+      "file": "./core_model/pipeline_integration/split_policy.py",
+      "line": 18,
+      "impl_hash": "d65a456d6e2a7c12",
+      "file_hash": "e5d32b689a854c36",
+      "methods": []
+    }
+  ],
+  "CompareRequest": [
+    {
+      "file": "./backend/models/tokenizers.py",
+      "line": 68,
+      "impl_hash": "f1748c27de1c515a",
+      "file_hash": "74aa93afa70a6248",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/incremental_training.py",
+      "line": 114,
+      "impl_hash": "a626b99d3f36deb3",
+      "file_hash": "86fac62308ced0a2",
+      "methods": []
+    }
+  ],
+  "VoiceAudioDecodeError": [
+    {
+      "file": "./backend/api/routes/public_voice_runtime.py",
+      "line": 43,
+      "impl_hash": "959caf095490a056",
+      "file_hash": "ec6dbc8dd7eca69f",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "file": "./backend/api/routes/mini_brain_voice_runtime.py",
+      "line": 38,
+      "impl_hash": "959caf095490a056",
+      "file_hash": "dfbbeeacb203df5c",
+      "methods": [
+        "__init__"
+      ]
+    }
+  ],
+  "ExpiryRequest": [
+    {
+      "file": "./backend/api/routes/production_readiness.py",
+      "line": 79,
+      "impl_hash": "037edd0e115ab501",
+      "file_hash": "8e9eeb835f4861c2",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/incremental_training.py",
+      "line": 110,
+      "impl_hash": "037edd0e115ab501",
+      "file_hash": "86fac62308ced0a2",
+      "methods": []
+    }
+  ],
+  "ApprovalRequestRequest": [
+    {
+      "file": "./backend/api/routes/rag_sandbox.py",
+      "line": 60,
+      "impl_hash": "92a766578a9aff8e",
+      "file_hash": "53cbfa72bafacb21",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/dataset_sample_import.py",
+      "line": 102,
+      "impl_hash": "b12a481e37669264",
+      "file_hash": "edde1fae92e001b5",
+      "methods": []
+    }
+  ],
+  "ApprovalDecisionRequest": [
+    {
+      "file": "./backend/api/routes/rag_sandbox.py",
+      "line": 74,
+      "impl_hash": "326f7479efbb0e12",
+      "file_hash": "53cbfa72bafacb21",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/dataset_sample_import.py",
+      "line": 114,
+      "impl_hash": "3e5332c34f16d070",
+      "file_hash": "edde1fae92e001b5",
+      "methods": []
+    }
+  ],
+  "ApprovalRejectRequest": [
+    {
+      "file": "./backend/api/routes/rag_sandbox.py",
+      "line": 78,
+      "impl_hash": "e0d59fa0d8dbc188",
+      "file_hash": "53cbfa72bafacb21",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/dataset_sample_import.py",
+      "line": 122,
+      "impl_hash": "e2fdbffa25c41722",
+      "file_hash": "edde1fae92e001b5",
+      "methods": []
+    }
+  ],
+  "AcceptanceDecisionRequest": [
+    {
+      "file": "./backend/api/routes/rag_sandbox.py",
+      "line": 133,
+      "impl_hash": "dd2c608d83d11b58",
+      "file_hash": "53cbfa72bafacb21",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/incremental_training.py",
+      "line": 139,
+      "impl_hash": "a2d444ceb7b7b2c6",
+      "file_hash": "86fac62308ced0a2",
+      "methods": []
+    }
+  ],
+  "DeletionRequestRequest": [
+    {
+      "file": "./backend/api/routes/rag_sandbox.py",
+      "line": 140,
+      "impl_hash": "7ba77cbdd22a869c",
+      "file_hash": "53cbfa72bafacb21",
+      "methods": []
+    },
+    {
+      "file": "./backend/api/routes/dataset_sample_import.py",
+      "line": 144,
+      "impl_hash": "9b7c05ac03c0fc0e",
+      "file_hash": "edde1fae92e001b5",
+      "methods": []
+    }
+  ],
+  "FeedbackRepository": [
+    {
+      "file": "./backend/database/repositories/phase2.py",
+      "line": 711,
+      "impl_hash": "de7583c5d1124d88",
+      "file_hash": "632c1b4308be737e",
+      "methods": [
+        "create",
+        "get_by_public_id"
+      ]
+    },
+    {
+      "file": "./backend/database/repositories/feedback.py",
+      "line": 52,
+      "impl_hash": "c7fdbef4e0ff04d6",
+      "file_hash": "fb5be667695d2ba0",
+      "methods": [
+        "create_policy",
+        "policy",
+        "list_policies",
+        "update_policy",
+        "create_subject",
+        "subject",
+        "create_event",
+        "event",
+        "list_events",
+        "update_event",
+        "create_classification",
+        "classifications_for_event",
+        "create_attachment",
+        "record_privacy_finding",
+        "record_safety_finding",
+        "findings_for_event",
+        "create_queue",
+        "queue",
+        "list_queues",
+        "create_assignment",
+        "assignments_for_queue",
+        "update_assignment",
+        "count_active_assignments",
+        "create_human_review",
+        "reviews_for_event",
+        "create_corrected_response",
+        "corrected_response",
+        "corrected_responses_for_event",
+        "update_corrected_response",
+        "create_candidate",
+        "candidate",
+        "list_candidates",
+        "update_candidate",
+        "create_candidate_version",
+        "candidate_version",
+        "versions_for_candidate",
+        "record_candidate_issue",
+        "issues_for_candidate",
+        "record_candidate_approval",
+        "approvals_for_candidate",
+        "record_quality_assessment",
+        "quality_assessments_for_candidate",
+        "create_regression_suite",
+        "regression_suite",
+        "list_regression_suites",
+        "update_regression_suite",
+        "create_regression_fixture",
+        "fixtures_for_suite",
+        "fixture",
+        "create_regression_run",
+        "regression_run",
+        "update_regression_run",
+        "count_active_regression_runs",
+        "record_regression_result",
+        "results_for_run",
+        "create_comparison",
+        "comparison",
+        "create_improvement_report",
+        "improvement_report",
+        "create_manifest",
+        "latest_manifest_for_policy"
+      ]
+    }
+  ],
+  "RoutingDecision": [
+    {
+      "file": "./core_model/release/phase44_runtime_canary.py",
+      "line": 32,
+      "impl_hash": "7a32fb8e818cbbda",
+      "file_hash": "ba693607c17817a7",
+      "methods": [
+        "to_dict"
+      ]
+    },
+    {
+      "file": "./core_model/capabilities/smart_router.py",
+      "line": 51,
+      "impl_hash": "054693967a676e8a",
+      "file_hash": "b5932fe5b9675db2",
+      "methods": []
+    }
+  ],
+  "ResourceGuard": [
+    {
+      "file": "./core_model/training/phase48_training_worker.py",
+      "line": 49,
+      "impl_hash": "8dbf6b4fbb669c18",
+      "file_hash": "5ddeabb6d8fbd501",
+      "methods": [
+        "__init__",
+        "check"
+      ]
+    },
+    {
+      "file": "./core_model/training/phase47_long_run_orchestrator.py",
+      "line": 28,
+      "impl_hash": "b68bd6ddb9306fc0",
+      "file_hash": "6c96c75e02d9d62b",
+      "methods": [
+        "__init__",
+        "check"
+      ]
+    }
+  ],
+  "GuardAction": [
+    {
+      "file": "./core_model/training/phase54_memorization_guard.py",
+      "line": 21,
+      "impl_hash": "3fa6cc41e238acb7",
+      "file_hash": "8fe26adccecc6358",
+      "methods": []
+    },
+    {
+      "file": "./core_model/training/phase53_memorization_guard.py",
+      "line": 18,
+      "impl_hash": "0c3bfd021f843c66",
+      "file_hash": "6ae2b941f8588bb0",
+      "methods": []
+    },
+    {
+      "file": "./core_model/training/phase56_memorization_guard.py",
+      "line": 40,
+      "impl_hash": "3fa6cc41e238acb7",
+      "file_hash": "b2577d6daca8e87c",
+      "methods": []
+    }
+  ],
+  "RecordExposureTelemetry": [
+    {
+      "file": "./core_model/training/phase54_memorization_guard.py",
+      "line": 29,
+      "impl_hash": "9ceb47361e35a812",
+      "file_hash": "8fe26adccecc6358",
+      "methods": []
+    },
+    {
+      "file": "./core_model/training/phase56_memorization_guard.py",
+      "line": 48,
+      "impl_hash": "9ceb47361e35a812",
+      "file_hash": "b2577d6daca8e87c",
+      "methods": []
+    }
+  ],
+  "GovernedRecord": [
+    {
+      "file": "./core_model/corpus/phase52_corpus_quality_engine.py",
+      "line": 21,
+      "impl_hash": "f057c37d2c10e31e",
+      "file_hash": "965f44cc77706d5c",
+      "methods": [
+        "to_dict"
+      ]
+    },
+    {
+      "file": "./core_model/corpus/phase53_corpus_expander.py",
+      "line": 22,
+      "impl_hash": "443e117b2dc981d8",
+      "file_hash": "482fb36b3f947895",
+      "methods": []
+    }
+  ],
+  "TamilNormalizationError": [
+    {
+      "file": "./core_model/corpus/phase47_corpus_expander.py",
+      "line": 30,
+      "impl_hash": "ead9d5a4bdae94c9",
+      "file_hash": "1addbdee556e7fec",
+      "methods": []
+    },
+    {
+      "file": "./core_model/corpus/phase46_corpus_scaler.py",
+      "line": 45,
+      "impl_hash": "52c7a4d733f92417",
+      "file_hash": "88dd4b512af3ec19",
+      "methods": []
+    }
+  ],
+  "CheckpointCapabilitySnapshot": [
+    {
+      "file": "./core_model/evaluation/phase46_capability_evaluator.py",
+      "line": 35,
+      "impl_hash": "28d60fd9ac4e6266",
+      "file_hash": "5e050c358d88f1d9",
+      "methods": [
+        "to_dict"
+      ]
+    },
+    {
+      "file": "./core_model/evaluation/phase42_capability_progression.py",
+      "line": 30,
+      "impl_hash": "655203b739b930d3",
+      "file_hash": "a8966d0076521732",
+      "methods": [
+        "to_dict"
+      ]
+    }
+  ],
+  "OpenDomainStatus": [
+    {
+      "file": "./core_model/evaluation/phase51_capability_evaluator.py",
+      "line": 27,
+      "impl_hash": "098a7a5479ed6508",
+      "file_hash": "83bb1648124220dc",
+      "methods": []
+    },
+    {
+      "file": "./core_model/evaluation/phase50_capability_evaluator.py",
+      "line": 49,
+      "impl_hash": "fc0aec9d1e840bf9",
+      "file_hash": "171fb92022aa6e3a",
+      "methods": []
+    }
+  ],
+  "CausalityVerdict": [
+    {
+      "file": "./core_model/evaluation/phase51_capability_evaluator.py",
+      "line": 34,
+      "impl_hash": "7ffa051069386fe9",
+      "file_hash": "83bb1648124220dc",
+      "methods": []
+    },
+    {
+      "file": "./core_model/evaluation/phase50_capability_evaluator.py",
+      "line": 57,
+      "impl_hash": "7ffa051069386fe9",
+      "file_hash": "171fb92022aa6e3a",
+      "methods": []
+    }
+  ]
+}

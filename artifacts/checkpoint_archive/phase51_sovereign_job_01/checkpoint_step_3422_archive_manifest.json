@@ -1,0 +1,18 @@
+{
+  "checkpoint_id": "checkpoint_step_3422",
+  "job_id": "phase51_sovereign_job_01",
+  "archive_file": "/home/dhurai/Projects/brud-ai/artifacts/checkpoint_archive/phase51_sovereign_job_01/checkpoint_step_3422.tar.gz",
+  "archive_sha256": "32620bcc5a671e7cae9fc25ebbcf79c36d5ffcfc7046010355b5dbe6338a2f68",
+  "file_count": 8,
+  "component_hashes": {
+    "config.json": "eab0ddbc62a81d21f7361323b14366e9e7683c00d36bf0511ac4c02602a255f8",
+    "manifest.json": "f6c705a3e001bff5950fe4413494fc03f9284ff4685d421d953b868cb94db731",
+    "model_state.pt": "65cdff67ee9ac39dbc9229d1771172e5b6758b1563c1191f988403c65c059034",
+    "optimizer_state.pt": "584c2b5b65e702bb7d266ee83e21108f8947991dba67abfddfe7d91309c6af4d",
+    "references.json": "95f19fe044f6901abb89559b31ff8bb4116c67b8e4664723105e6b118cd78015",
+    "rng_state.pt": "2e8c4ae1ff7f46d694cd896662ac949fe5ecf088e659338e5e68053a806bb7df",
+    "scheduler_state.pt": "86eba69407bd9c2d2d18d2ba09b2c2e7db86dae13c39e696f013e204d4771792",
+    "trainer_state.json": "b25fa6735bafee6375d22a1268e16a3c9f5a065cfb62ce5cd47cf03725b7f408"
+  },
+  "created_at": 1788012353.6891441
+}

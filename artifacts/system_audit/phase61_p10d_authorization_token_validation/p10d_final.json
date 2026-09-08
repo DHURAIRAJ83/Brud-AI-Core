@@ -1,0 +1,6 @@
+{
+  "verdict": "P10D_AUTHORIZATION_INFRASTRUCTURE_VERIFIED",
+  "authorization_package_readiness": "BLOCKED_PENDING_HUMAN_SIGNATURE",
+  "production_activation": "NOT_EXECUTED",
+  "production_state": "UNTOUCHED_AND_LOCKED"
+}

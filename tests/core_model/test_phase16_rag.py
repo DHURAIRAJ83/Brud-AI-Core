@@ -13,7 +13,8 @@ from core_model.rag.chunk_validation import (
     assess_chunk_quality,
     detect_duplicate_and_near_duplicate,
 )
-from core_model.rag.chunking import ChunkingConfig, chunk_text
+from core_model.rag.chunking import ChunkingConfig, chunk_text, estimate_token_count
+from core_model.rag.context_budget import ContextBudget, select_chunks_within_budget
 from core_model.rag.citation_builder import (
     build_citation_map,
     extract_cited_labels,
@@ -234,6 +235,176 @@ def test_citation_map_and_resolution() -> None:
     resolved = resolve_citations(cited, citation_map)
     assert {entry["citation_label"] for entry in resolved["resolved"]} == {"S1"}
     assert "S9" in resolved["unknown_labels"]
+
+
+# -- Phase 2.3A regression tests: build_citation_map() must retain every
+# field its only real caller (rag_generation_service.py's evidence_blocks
+# construction) reads back out, including `normalized_text`. Phase 2.3
+# found this dropped silently, causing an unconditional KeyError on every
+# grounded-answer call that retrieved at least one chunk.
+
+_TWO_CHUNK_EVIDENCE = [
+    {
+        "chunk_public_id": "chunk-1",
+        "source_public_id": "source-1",
+        "source_version_public_id": "version-1",
+        "content_checksum_sha256": "abc123",
+        "title": "Doc A",
+        "location": {},
+        "rank": 1,
+        "normalized_text": "first chunk text",
+        "estimated_token_count": 10,
+        "combined_score": 0.9,
+    },
+    {
+        "chunk_public_id": "chunk-2",
+        "source_public_id": "source-2",
+        "source_version_public_id": "version-2",
+        "content_checksum_sha256": "def456",
+        "title": "Doc B",
+        "location": {},
+        "rank": 2,
+        "normalized_text": "second chunk text",
+        "estimated_token_count": 8,
+        "combined_score": 0.6,
+    },
+]
+
+
+def test_build_citation_map_retains_normalized_text() -> None:
+    citation_map = build_citation_map(_TWO_CHUNK_EVIDENCE)
+    assert citation_map["S1"]["normalized_text"] == "first chunk text"
+    assert citation_map["S2"]["normalized_text"] == "second chunk text"
+
+
+def test_build_citation_map_evidence_blocks_construction_no_keyerror() -> None:
+    """Reproduces the exact expression that crashed in
+    rag_generation_service.py's _generate_and_persist(): building
+    evidence_blocks by reading `entry["normalized_text"]` out of every
+    citation_map entry. Must not raise KeyError."""
+
+    citation_map = build_citation_map(_TWO_CHUNK_EVIDENCE)
+    evidence_blocks = [
+        {
+            "citation_label": label,
+            "title": entry["title"],
+            "location": entry["location"],
+            "text": entry["normalized_text"],
+        }
+        for label, entry in citation_map.items()
+    ]
+    assert evidence_blocks[0]["text"] == "first chunk text"
+    assert evidence_blocks[1]["text"] == "second chunk text"
+
+
+def test_build_citation_map_zero_chunks() -> None:
+    assert build_citation_map([]) == {}
+
+
+def test_build_citation_map_ordering_and_identifiers_preserved() -> None:
+    citation_map = build_citation_map(_TWO_CHUNK_EVIDENCE)
+    assert list(citation_map.keys()) == ["S1", "S2"]
+    assert citation_map["S1"]["chunk_public_id"] == "chunk-1"
+    assert citation_map["S1"]["source_public_id"] == "source-1"
+    assert citation_map["S1"]["source_version_public_id"] == "version-1"
+    assert citation_map["S2"]["chunk_public_id"] == "chunk-2"
+    assert citation_map["S2"]["rank"] == 2
+
+
+def test_build_citation_map_existing_metadata_fields_unaffected() -> None:
+    """Confirms the fix is additive only -- every field the map already
+    carried before Phase 2.3A is still present and unchanged."""
+
+    citation_map = build_citation_map(_TWO_CHUNK_EVIDENCE)
+    entry = citation_map["S1"]
+    assert entry["citation_label"] == "S1"
+    assert entry["title"] == "Doc A"
+    assert entry["location"] == {}
+    assert entry["content_checksum_sha256"] == "abc123"
+    # Fields present on the input evidence but never part of this map's
+    # contract (consumed directly from `selected`, not from citation_map,
+    # by rag_generation_service.py) correctly remain absent here.
+    assert "estimated_token_count" not in entry
+    assert "combined_score" not in entry
+
+
+# -- Phase 2.3C regression tests: estimate_token_count() must not be so
+# optimistic that select_chunks_within_budget() admits content the real
+# tokenizer then rejects as prompt_too_long. Root cause (confirmed by
+# direct measurement against a real trained sentencepiece tokenizer this
+# session): the previous len//4 heuristic underestimated real token counts
+# by ~2.8x-3.5x for this project's actual (small-vocabulary, multilingual)
+# tokenizers -- e.g. a 1798-character real grounded-answer prompt that
+# estimated at 354 tokens actually tokenized to 1233 real tokens. len//2
+# is a deliberately conservative (not exactly-calibrated-to-one-tokenizer)
+# correction, consistent with core_model/rag/context_budget.py's own
+# stated fail-closed design intent.
+
+
+def test_estimate_token_count_uses_conservative_two_chars_per_token() -> None:
+    """Locks in the Phase 2.3C calibration -- a future accidental revert to
+    the old len//4 heuristic must fail this test immediately."""
+
+    assert estimate_token_count("") == 0
+    assert estimate_token_count("ab") == 1
+    assert estimate_token_count("a" * 100) == 50
+    assert estimate_token_count("a" * 491) == 245  # exact real Phase 2.3C repro case
+
+
+def test_select_chunks_within_budget_drops_chunks_the_old_estimate_would_have_admitted() -> None:
+    """Direct reproduction, at the ContextBudget level, of the exact Phase
+    2.3C failure: three ~400-character real evidence chunks whose combined
+    OLD estimate (len//4, ~288 tokens) fit comfortably under a 512-token
+    budget, but whose real tokenizer output (measured directly against a
+    real trained checkpoint this session: 1233 tokens) hugely exceeded it.
+    With the corrected estimator, the same budget must now correctly
+    recognize it cannot admit all three chunks -- proving the fix changes
+    real selection behavior, not just the reported number."""
+
+    chunk_text_a = (
+        "Phase 2.3A RAG generation verification document. The official "
+        "Phase 2.3A verification token is BRUD-RAG-VERIFY-EXAMPLE. This "
+        "token exists only to prove that retrieval finds a specific "
+        "planted fact and that grounded-answer synthesis can be exercised "
+        "end to end. Brud AI is a Tamil-English multilingual model project."
+    )
+    ranked_chunks = [
+        {"chunk_public_id": f"chunk-{i}", "estimated_token_count": estimate_token_count(chunk_text_a)}
+        for i in range(3)
+    ]
+    budget = ContextBudget(
+        maximum_model_context=512, prompt_template_tokens=94, query_tokens=38,
+        reserved_output_tokens=64, safety_margin_tokens=10,
+    )
+    result = select_chunks_within_budget(ranked_chunks, budget)
+    # available_for_evidence = 512-94-38-64-10 = 306; each chunk now
+    # estimates at len(chunk_text_a)//2 = 158 tokens, so at most one fits
+    # (158 <= 306, but 158+158=316 > 306) -- at least one chunk must be
+    # dropped, unlike the pre-fix behavior where all three were admitted.
+    assert result["dropped_count"] >= 1
+    assert len(result["selected"]) < len(ranked_chunks)
+    assert result["fits"] is True  # at least the highest-ranked chunk still fits
+
+
+def test_select_chunks_within_budget_still_admits_genuinely_small_evidence() -> None:
+    """The corrected estimator must not become so conservative that it
+    rejects content that genuinely fits -- this is the exact small-evidence
+    scenario that, live against a real checkpoint this session, reached
+    real generation (non-empty runtime_milliseconds) after the fix,
+    whereas it previously would have reached prompt_too_long."""
+
+    small_chunk = {
+        "chunk_public_id": "chunk-tiny",
+        "estimated_token_count": estimate_token_count("The verification code is BRUD-RAG-VERIFY-EXAMPLE."),
+    }
+    budget = ContextBudget(
+        maximum_model_context=512, prompt_template_tokens=94, query_tokens=15,
+        reserved_output_tokens=64, safety_margin_tokens=10,
+    )
+    result = select_chunks_within_budget([small_chunk], budget)
+    assert result["dropped_count"] == 0
+    assert result["selected"] == [small_chunk]
+    assert result["fits"] is True
 
 
 def test_validate_citation_rejects_unknown_and_out_of_context() -> None:

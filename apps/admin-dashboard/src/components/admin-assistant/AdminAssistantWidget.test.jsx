@@ -107,7 +107,7 @@ describe('AdminAssistantWidget', () => {
     renderWidget({ admin: null })
     await user.click(screen.getByRole('button', { name: 'Open Admin Assistant' }))
     await user.click(await screen.findByRole('button', { name: 'How do I use this page?' }))
-    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith(null, 'How do I use this page?'))
+    await waitFor(() => expect(api.lrChat).toHaveBeenCalledWith(null, 'How do I use this page?', expect.anything()))
     expect(await screen.findByText('Datasets: Manage datasets.')).toBeInTheDocument()
   })
 
@@ -120,7 +120,7 @@ describe('AdminAssistantWidget', () => {
     await user.click(await screen.findByLabelText('Use knowledge base'))
     await user.click(screen.getByRole('button', { name: 'How do I use this page?' }))
     await waitFor(() => expect(api.miniBrainDefaultRetrievalProfile).toHaveBeenCalled())
-    await waitFor(() => expect(api.sendMiniBrainGroundedMessage).toHaveBeenCalledWith(null, 'How do I use this page?', 'profile-1'))
+    await waitFor(() => expect(api.sendMiniBrainGroundedMessage).toHaveBeenCalledWith(null, 'How do I use this page?', 'profile-1', expect.anything(), expect.anything()))
     expect(await screen.findByText('Grounded answer.')).toBeInTheDocument()
   })
 

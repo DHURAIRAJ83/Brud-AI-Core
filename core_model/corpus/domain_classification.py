@@ -39,7 +39,11 @@ _DOMAIN_KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
-def classify_domain(text: str) -> dict[str, Any]:
+def classify_domain(
+    text: str,
+    llm_suggestion: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Classify domain taxonomy combining heuristic rules + LLM reasoning."""
     lowered = text.lower()
     evidence: dict[str, list[str]] = {}
     for domain, keywords in _DOMAIN_KEYWORDS.items():
@@ -47,24 +51,50 @@ def classify_domain(text: str) -> dict[str, Any]:
         if hits:
             evidence[domain] = hits
 
-    if not evidence:
+    if not evidence and not llm_suggestion:
         return {
             "primary_domain": "general",
             "secondary_domains": [],
             "rule_evidence": {},
             "confidence": 0.3,
+            "review_required": True,
             "classifier_version": CLASSIFIER_VERSION,
+            "method": "heuristic_default"
         }
 
-    ranked = sorted(evidence.items(), key=lambda item: len(item[1]), reverse=True)
-    primary_domain = ranked[0][0]
-    secondary_domains = [domain for domain, _ in ranked[1:4]]
-    confidence = min(1.0, 0.4 + 0.15 * len(ranked[0][1]))
+    if evidence:
+        ranked = sorted(evidence.items(), key=lambda item: len(item[1]), reverse=True)
+        primary_domain = ranked[0][0]
+        secondary_domains = [domain for domain, _ in ranked[1:4]]
+        confidence = min(1.0, 0.4 + 0.15 * len(ranked[0][1]))
+        method = "heuristic"
+    else:
+        primary_domain = llm_suggestion.get("primary_domain", "general") if llm_suggestion else "general"
+        secondary_domains = llm_suggestion.get("secondary_domains", []) if llm_suggestion else []
+        confidence = float(llm_suggestion.get("confidence", 0.7)) if llm_suggestion else 0.5
+        method = "llm_advisor"
+
+    # Merge LLM advisory suggestion if available
+    if llm_suggestion and evidence:
+        llm_domain = llm_suggestion.get("primary_domain")
+        if llm_domain and llm_domain == primary_domain:
+            confidence = min(1.0, confidence + 0.15)
+            method = "heuristic+llm_consensus"
+        elif llm_domain and llm_domain in secondary_domains:
+            method = "heuristic+llm_partial"
+        else:
+            confidence = max(0.4, confidence - 0.1)
+            method = "heuristic+llm_disagreement"
+
+    review_required = confidence < 0.80
 
     return {
         "primary_domain": primary_domain,
         "secondary_domains": secondary_domains,
         "rule_evidence": evidence,
-        "confidence": confidence,
+        "confidence": round(confidence, 2),
+        "review_required": review_required,
+        "review_reason": "Low confidence classification (<0.80)" if review_required else None,
         "classifier_version": CLASSIFIER_VERSION,
+        "method": method,
     }

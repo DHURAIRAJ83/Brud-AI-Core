@@ -1,0 +1,7 @@
+{
+  "p10i_status": "COMPLETE",
+  "deployment_package_integrity": "VERIFIED",
+  "production_deployment_readiness": "VERIFIED_PENDING_HUMAN_AUTHORIZATION",
+  "production_state": "LOCKED",
+  "system_mutation": "NONE"
+}

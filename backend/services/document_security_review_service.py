@@ -42,6 +42,19 @@ _ADDRESS_PATTERN = re.compile(
 )
 _GOVERNMENT_ID_PATTERN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b|\b\d{4}\s?\d{4}\s?\d{4}\b")
 _BANK_PATTERN = re.compile(r"\b[A-Z]{4}0[A-Z0-9]{6}\b|\b\d{9,18}\b")
+# No existing detector in the repository covers markup/query injection
+# payloads (as opposed to natural-language prompt injection) -- this is a
+# genuine gap, not a duplicate of anything. Kept intentionally narrow
+# (unambiguous attack-shaped syntax only) to avoid false positives on
+# ordinary Tamil/English/Tanglish prose that merely mentions databases or
+# scripts.
+_XSS_PATTERN = re.compile(
+    r"<script\b|javascript:\s*\S|on(?:error|load|click|mouseover|focus)\s*=", re.IGNORECASE
+)
+_SQL_INJECTION_PATTERN = re.compile(
+    r";\s*(?:DROP|DELETE\s+FROM|TRUNCATE)\s+TABLE\b|\bUNION\s+SELECT\b|'\s*OR\s*'1'\s*=\s*'1|--\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 _ACTION_BY_FINDING_TYPE = {
     "prompt_injection": "exclude_from_sft",
@@ -52,6 +65,8 @@ _ACTION_BY_FINDING_TYPE = {
     "pii_bank": "require_review",
     "pii_secret": "block_export",
     "pii_path": "block_export",
+    "xss_payload": "block_export",
+    "sql_injection_payload": "block_export",
 }
 _CONFIDENCE_BY_FINDING_TYPE = {
     "prompt_injection": "medium",
@@ -62,6 +77,8 @@ _CONFIDENCE_BY_FINDING_TYPE = {
     "pii_bank": "low",
     "pii_secret": "high",
     "pii_path": "high",
+    "xss_payload": "high",
+    "sql_injection_payload": "high",
 }
 
 
@@ -93,7 +110,91 @@ def _findings_for_text(text: str) -> list[tuple[str, str, str]]:
         digits = re.sub(r"\D", "", match.group(0))
         if len(digits) >= 7:
             results.append(("pii_phone", match.group(0), "phone_pattern_detected"))
+    for match in _XSS_PATTERN.finditer(text):
+        results.append(("xss_payload", match.group(0), "xss_payload_detected"))
+    for match in _SQL_INJECTION_PATTERN.finditer(text):
+        results.append(("sql_injection_payload", match.group(0), "sql_injection_payload_detected"))
     return results
+
+
+# Priority order for the single primary reason code returned by
+# `assess_text_safety` when multiple categories match -- most severe /
+# most unambiguous attack shape first. Checked as an exact category-name
+# prefix, never a loose substring match, so e.g. "pii_secret" (a
+# credential found by this module's own document-scoped scan) is never
+# mistaken for the generic "pii_*" categories `detect_pii` reports.
+_REASON_CODE_PRIORITY: list[tuple[str, str]] = [
+    ("prompt_injection", "PROMPT_INJECTION_DETECTED"),
+    ("pii_secret", "SECRET_DETECTED"),
+    ("pii_path", "SECRET_DETECTED"),
+    ("password", "SECRET_DETECTED"),
+    ("api_key", "SECRET_DETECTED"),
+    ("access_token", "SECRET_DETECTED"),
+    ("private_key", "SECRET_DETECTED"),
+    ("payment_card", "SECRET_DETECTED"),
+    ("bank_account", "SECRET_DETECTED"),
+    ("authentication_cookie", "SECRET_DETECTED"),
+    ("session_id", "SECRET_DETECTED"),
+    ("database_credentials", "SECRET_DETECTED"),
+    ("xss_payload", "MALICIOUS_PAYLOAD_DETECTED"),
+    ("sql_injection_payload", "MALICIOUS_PAYLOAD_DETECTED"),
+    ("pii_", "PII_DETECTED"),
+]
+
+
+def assess_text_safety(text: str) -> dict[str, Any]:
+    """Deterministic, non-persisting content-safety assessment for a single
+    piece of candidate training text (Phase 2.7B). Reuses this module's own
+    document-scoped pattern set (`_findings_for_text` -- prompt injection,
+    secrets/absolute paths, and the XSS/SQL-injection payload patterns added
+    this phase) plus the project's canonical, already-widely-reused corpus
+    detectors (`core_model.corpus.pii_detection.detect_pii`,
+    `core_model.corpus.secret_detection.detect_secrets`,
+    `core_model.corpus.safety_filter.assess_safety`). Introduces no new
+    classifier and calls no external service or model. Never returns or
+    persists matched substrings -- only category labels -- so callers can
+    audit/store the result without exposing the underlying sensitive text.
+
+    Policy for this gate specifically (documented in the Phase 2.7B report):
+    any detected secret, prompt-injection phrase, XSS/SQL-injection payload,
+    or `assess_safety`-classified operational-harmful content blocks
+    outright. Any detected PII blocks outright too -- a deliberately
+    stricter choice than `decide_pii_action`'s general-purpose
+    redact/quarantine default, appropriate for training-data approval
+    specifically. `assess_safety` findings classified as merely descriptive/
+    educational/historical/preventive (not operational_harmful) do NOT
+    block, preserving that detector's own nuance.
+    """
+
+    from core_model.corpus.pii_detection import detect_pii
+    from core_model.corpus.safety_filter import assess_safety
+    from core_model.corpus.secret_detection import detect_secrets
+
+    categories: set[str] = set()
+    for finding_type, _matched_text, _reason_code in _findings_for_text(text):
+        categories.add(finding_type)
+
+    secrets_result = detect_secrets(text)
+    if secrets_result["status"] in ("blocked", "requires_review"):
+        categories.update(secrets_result["matched_categories"])
+
+    pii_result = detect_pii(text)
+    if pii_result["findings"]:
+        categories.update(f"pii_{key}" for key in pii_result["findings"])
+
+    safety_result = assess_safety(text)
+    if safety_result["status"] == "blocked":
+        categories.update(finding["category"] for finding in safety_result["findings"])
+
+    if not categories:
+        return {"status": "passed", "categories": [], "reason_code": None}
+
+    reason_code = "CONTENT_SAFETY_FAILED"
+    for prefix, code in _REASON_CODE_PRIORITY:
+        if any(category.startswith(prefix) for category in categories):
+            reason_code = code
+            break
+    return {"status": "blocked", "categories": sorted(categories), "reason_code": reason_code}
 
 
 class DocumentSecurityReviewService:

@@ -1,0 +1,37 @@
+{
+  "audit_date": "2026-09-01",
+  "hardware_limits": {
+    "cpu_threads": 2,
+    "ram_ceiling_mb": 2048,
+    "swap_target_mb": 0,
+    "execution_device": "CPU"
+  },
+  "e4_context_scaling_feasibility": {
+    "parameters": 528128,
+    "context_length": 512,
+    "batch_size": 8,
+    "model_state_mb": 8.4,
+    "peak_activations_mb": 160.0,
+    "pytorch_overhead_mb": 210.0,
+    "estimated_peak_rss_mb": 378.4,
+    "ram_utilization_pct": 18.5,
+    "ram_margin_mb": 1669.6,
+    "swap_pressure_mb": 0,
+    "estimated_epoch_seconds": 30
+  },
+  "e5_architecture_scaling_feasibility": {
+    "parameters": 3159040,
+    "context_length": 512,
+    "batch_size": 4,
+    "model_state_mb": 50.56,
+    "peak_activations_mb": 335.2,
+    "pytorch_overhead_mb": 240.0,
+    "estimated_peak_rss_mb": 625.76,
+    "ram_utilization_pct": 30.6,
+    "ram_margin_mb": 1422.24,
+    "swap_pressure_mb": 0,
+    "estimated_epoch_seconds": 50
+  },
+  "e5_resource_risk": false,
+  "verdict": "FEASIBLE_WITHIN_HARDWARE_LIMITS"
+}

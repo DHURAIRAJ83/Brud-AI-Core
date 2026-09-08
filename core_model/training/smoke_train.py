@@ -9,6 +9,11 @@ import torch
 
 from core_model.architecture.model import BrudForCausalLM
 from core_model.training.batch import pad_sequences
+from core_model.training.signed_training_gate import (
+    SignedTrainingAuthorizationToken,
+    SignedTrainingGateEngine,
+    TrainingAuthorizationError,
+)
 
 
 def tiny_overfit(
@@ -19,7 +24,12 @@ def tiny_overfit(
     steps: int,
     max_steps: int,
     lr: float = 3e-3,
+    signed_token: SignedTrainingAuthorizationToken | None = None,
+    authorized: bool = False,
 ) -> dict[str, Any]:
+    gate = SignedTrainingGateEngine(runtime_authorized_flag=authorized)
+    gate.verify_authorization(signed_token)
+
     if steps < 1 or steps > max_steps:
         raise ValueError("smoke steps outside configured bounds")
     input_ids, attention_mask, labels = pad_sequences(

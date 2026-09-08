@@ -574,6 +574,7 @@ class ChatOrchestrationService:
         if answer_text is not None:
             response_turn = self.session_service.create_turn(
                 session["public_id"], role="assistant", content=answer_text, admin_id=admin_id,
+                connection=connection,
             )
             response_turn_id = self.repository.turn(connection, response_turn["public_id"])["id"]
 

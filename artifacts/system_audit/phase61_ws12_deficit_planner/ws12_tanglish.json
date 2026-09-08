@@ -1,0 +1,6 @@
+{
+  "tanglish_strategy": {
+    "native_tanglish": "Acquire naturally occurring Latin-script Tamil",
+    "derived_tanglish": "Governed transliteration via TanglishTransliterationEngine"
+  }
+}

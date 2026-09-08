@@ -1,0 +1,28 @@
+{
+  "books": [
+    {
+      "book_id": "NEW-TAMIL-BOOK-001",
+      "title": "New Tamil Book Collection Vol 1",
+      "pages": 53,
+      "license": "Public Domain"
+    },
+    {
+      "book_id": "NEW-TAMIL-BOOK-002",
+      "title": "New Tamil Book Collection Vol 2",
+      "pages": 53,
+      "license": "Public Domain"
+    },
+    {
+      "book_id": "NEW-TAMIL-BOOK-003",
+      "title": "New Tamil Book Collection Vol 3",
+      "pages": 53,
+      "license": "Public Domain"
+    },
+    {
+      "book_id": "NEW-TAMIL-BOOK-004",
+      "title": "New Tamil Book Collection Vol 4",
+      "pages": 53,
+      "license": "Public Domain"
+    }
+  ]
+}

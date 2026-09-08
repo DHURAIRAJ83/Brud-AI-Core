@@ -1,0 +1,6 @@
+{
+  "tamil_to_english": {
+    "status": "DEPRIORITIZED",
+    "reason": "Corpus currently 87.34% English; English expansion deprioritized"
+  }
+}

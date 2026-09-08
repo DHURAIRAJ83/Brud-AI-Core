@@ -1,0 +1,70 @@
+{
+  "arrows": [
+    {
+      "step": 1,
+      "from": "Source Discovery",
+      "to": "Source Rights Gate",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 2,
+      "from": "Source Rights Gate",
+      "to": "Streamable Ingestion Service",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 3,
+      "from": "Streamable Ingestion Service",
+      "to": "UTF-8 NFC Normalization",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 4,
+      "from": "UTF-8 NFC Normalization",
+      "to": "19-Rule Quality Engine",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 5,
+      "from": "19-Rule Quality Engine",
+      "to": "Exact SHA-256 Deduplication",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 6,
+      "from": "Exact SHA-256 Deduplication",
+      "to": "Tokenizer v2 Token Accounting",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 7,
+      "from": "Tokenizer v2 Token Accounting",
+      "to": "Reproducibility Audit Engine",
+      "status": "CONNECTED (Delta=0)"
+    },
+    {
+      "step": 8,
+      "from": "Reproducibility Audit Engine",
+      "to": "Admin Review Queue",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 9,
+      "from": "Admin Review Queue",
+      "to": "Human Approval Gate",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 10,
+      "from": "Human Approval Gate",
+      "to": "Cryptographic Dataset Seal",
+      "status": "CONNECTED"
+    },
+    {
+      "step": 11,
+      "from": "Cryptographic Dataset Seal",
+      "to": "Pretraining Engine",
+      "status": "BLOCKED (778k token deficit)"
+    }
+  ]
+}

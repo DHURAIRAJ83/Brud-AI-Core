@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS06-01",
+      "category": "1M Token Milestone Deficit",
+      "description": "Total verified token volume is 336,243 subword tokens, leaving a 663,757 token deficit against the 1M milestone gate.",
+      "severity": "HIGH",
+      "mitigation": "Ingest public-domain Tamil, English, and Tanglish text before authorizing 1M milestone qualification."
+    }
+  ]
+}

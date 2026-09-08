@@ -1,0 +1,30 @@
+{
+  "workstream_name": "Phase 61 WS08 5M Token Foundation Corpus Expansion, Domain Rebalancing & Pretraining Readiness Audit",
+  "audit_date": "2026-09-01",
+  "governance_state": {
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED"
+  },
+  "token_accounting": {
+    "ws07_accepted_records": 4246,
+    "ws07_subword_tokens": 4924354,
+    "ws08_accepted_records": 4246,
+    "ws08_subword_tokens": 4924354,
+    "milestone_5m_target": 5000000,
+    "target_50m_tokens": 50000000,
+    "milestone_5m_token_deficit": 75646,
+    "milestone_5m_completion_pct": 98.48708,
+    "milestone_5m_status": "NOT_READY_DEFICIT_EXISTS",
+    "synthetic_ratio": 0.0,
+    "reproducibility": {
+      "token_delta": 0,
+      "record_delta": 0,
+      "hash_delta": 0,
+      "status": "REPRODUCIBLE"
+    }
+  }
+}

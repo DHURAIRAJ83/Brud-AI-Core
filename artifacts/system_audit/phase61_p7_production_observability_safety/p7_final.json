@@ -1,0 +1,13 @@
+{
+  "verdict": "P7_FORENSICALLY_COMPLETE",
+  "training_executed": false,
+  "training_authorization": false,
+  "production_promotion": "BLOCKED",
+  "production_merge": "BLOCKED",
+  "public_chat_eligible": false,
+  "candidate_traffic_share": 0.0,
+  "optimizer_stepping": false,
+  "tokenizer_mutation": false,
+  "model_weight_mutation": false,
+  "production_data_mutation": false
+}

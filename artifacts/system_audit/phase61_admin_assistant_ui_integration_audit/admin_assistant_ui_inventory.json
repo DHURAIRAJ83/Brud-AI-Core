@@ -1,0 +1,14 @@
+{
+  "widget_component": "apps/admin-dashboard/src/components/admin-assistant/AdminAssistantWidget.jsx",
+  "page_component": "apps/admin-dashboard/src/pages/AdminAssistantPage.jsx",
+  "chat_component": "apps/admin-dashboard/src/components/chat/ChatPanel.jsx",
+  "api_service": "apps/admin-dashboard/src/services/api.js",
+  "modes": [
+    "guide",
+    "data",
+    "governance",
+    "rag",
+    "model",
+    "system"
+  ]
+}

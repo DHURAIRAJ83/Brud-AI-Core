@@ -104,6 +104,10 @@ def test_public_chat_routing_events_is_append_only(tmp_path: Path) -> None:
 
 
 def test_public_chat_routing_events_rejects_invalid_route(tmp_path: Path) -> None:
+    # `trusted_web` was mistakenly used here as an "invalid" value before
+    # migration 071 (see test_phase71_public_chat_routing_events_resolved_
+    # route_fix.py) -- it is a legitimate, application-assigned resolved_route
+    # value and must NOT be rejected. Use a genuinely invalid value instead.
     db_path = tmp_path / "fresh.db"
     initialize_database(db_path)
     connection = sqlite3.connect(db_path)
@@ -113,7 +117,7 @@ def test_public_chat_routing_events_rejects_invalid_route(tmp_path: Path) -> Non
                 """INSERT INTO public_chat_routing_events(
                     public_id, request_id, input_hash, recommended_route, resolved_route,
                     route_status, evidence_status, detected_language, safety_status
-                ) VALUES ('p2', 'r2', 'h2', 'core_model', 'trusted_web',
+                ) VALUES ('p2', 'r2', 'h2', 'core_model', 'invalid_test_route',
                     'executable', 'model_only', 'en', 'safe')"""
             )
     finally:

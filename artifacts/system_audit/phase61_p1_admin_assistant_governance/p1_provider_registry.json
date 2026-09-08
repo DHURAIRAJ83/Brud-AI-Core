@@ -1,0 +1,10 @@
+{
+  "providers": [
+    "openrouter",
+    "openai",
+    "claude",
+    "ollama",
+    "groq",
+    "gemini"
+  ]
+}

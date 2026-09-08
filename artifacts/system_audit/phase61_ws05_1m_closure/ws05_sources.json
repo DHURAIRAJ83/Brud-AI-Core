@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "source_id": "SRC-WS05-FULL-COLLECTION",
+      "source_name": "Workspace Multilingual Dataset & Prose Reference Collection (843 JSONL + 6,040 TXT Files)",
+      "status": "APPROVED",
+      "license": "CC-BY-4.0 / Public Domain / CC-BY-SA-4.0",
+      "accepted_records": 2931,
+      "subword_tokens": 244793
+    }
+  ]
+}

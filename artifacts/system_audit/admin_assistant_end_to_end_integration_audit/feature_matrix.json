@@ -1,0 +1,10 @@
+{
+  "admin_assistant_page": "END_TO_END_CONNECTED",
+  "governance_status": "END_TO_END_CONNECTED",
+  "rag_grounded_chat": "END_TO_END_CONNECTED",
+  "dataset_management": "END_TO_END_CONNECTED",
+  "document_ingestion": "END_TO_END_CONNECTED",
+  "model_registry": "END_TO_END_CONNECTED",
+  "training_dashboard": "END_TO_END_CONNECTED",
+  "chat_tool_execution": "BACKEND_ONLY_UI_BYPASSED"
+}

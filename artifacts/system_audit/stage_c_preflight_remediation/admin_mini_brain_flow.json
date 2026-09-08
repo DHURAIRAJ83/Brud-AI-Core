@@ -1,0 +1,37 @@
+{
+  "audit_date": "2026-09-01",
+  "total_arrows": 24,
+  "summary": {
+    "connected": 14,
+    "partial": 4,
+    "manual_trigger": 1,
+    "safely_degraded": 1,
+    "blocked_by_governance": 4
+  },
+  "arrows": [
+    {"arrow_id": 1, "from": "Admin User", "to": "Sample Import", "status": "CONNECTED", "code": "backend/api/routes/manual_data.py"},
+    {"arrow_id": 2, "from": "Mini Brain", "to": "Translate English", "status": "PARTIAL", "code": "TAMIL_ENGLISH_LEXICON in dataset_expansion_engine.py"},
+    {"arrow_id": 3, "from": "Mini Brain", "to": "Transliterate Tanglish", "status": "CONNECTED", "code": "tanglish_normalizer.py"},
+    {"arrow_id": 4, "from": "Mini Brain", "to": "Phrase Expansion", "status": "CONNECTED", "code": "dataset_expansion_engine.py"},
+    {"arrow_id": 5, "from": "Mini Brain", "to": "Sentence Expansion", "status": "CONNECTED", "code": "dataset_expansion_engine.py"},
+    {"arrow_id": 6, "from": "Mini Brain", "to": "Conversation Expansion", "status": "CONNECTED", "code": "dataset_expansion_engine.py"},
+    {"arrow_id": 7, "from": "Mini Brain", "to": "Instruction Expansion", "status": "CONNECTED", "code": "dataset_expansion_engine.py"},
+    {"arrow_id": 8, "from": "Mini Brain", "to": "External Provider Request", "status": "PARTIAL", "code": "OpenRouterProviderClient (is_available=False)"},
+    {"arrow_id": 9, "from": "Candidate Data", "to": "Quality Validation", "status": "CONNECTED", "code": "DatasetExpansionValidator"},
+    {"arrow_id": 10, "from": "Validated Data", "to": "Admin Review Queue", "status": "CONNECTED", "code": "AdminAssistantDatasetExpansionService"},
+    {"arrow_id": 11, "from": "Review Queue", "to": "Human Approval Gate", "status": "CONNECTED", "code": "review_proposal (Two-Person Rule)"},
+    {"arrow_id": 12, "from": "Human Approval", "to": "Dataset Sealing SHA-256", "status": "CONNECTED", "code": "seal_dataset"},
+    {"arrow_id": 13, "from": "Sealed Dataset", "to": "Training Sandbox", "status": "MANUAL_TRIGGER", "code": "run_e3_experiments.py"},
+    {"arrow_id": 14, "from": "Training Sandbox", "to": "PyTorch CPU Model", "status": "CONNECTED", "code": "BrudSmallV2Model training loop"},
+    {"arrow_id": 15, "from": "PyTorch Model", "to": "Candidate Checkpoint", "status": "CONNECTED", "code": "atomic_save_checkpoint"},
+    {"arrow_id": 16, "from": "Checkpoint", "to": "Independent Evaluation", "status": "CONNECTED", "code": "run_capability_evaluation_ws06.py"},
+    {"arrow_id": 17, "from": "Evaluation", "to": "Human Promotion Signoff", "status": "CONNECTED", "code": "Audit logging"},
+    {"arrow_id": 18, "from": "Human Approval", "to": "Promotion Gate", "status": "BLOCKED_BY_GOVERNANCE", "code": "phase44_runtime_governance.py"},
+    {"arrow_id": 19, "from": "Promotion Gate", "to": "Canary Monitor", "status": "BLOCKED_BY_GOVERNANCE", "code": "candidate_traffic_share = 0.0"},
+    {"arrow_id": 20, "from": "Canary Monitor", "to": "Public Chat Runtime", "status": "BLOCKED_BY_GOVERNANCE", "code": "is_public_chat_eligible = false"},
+    {"arrow_id": 21, "from": "Public User", "to": "Public Chat UI", "status": "CONNECTED", "code": "POST /api/chat/message"},
+    {"arrow_id": 22, "from": "Public Chat", "to": "Chat Orchestrator", "status": "CONNECTED", "code": "PublicChatRoutingService"},
+    {"arrow_id": 23, "from": "Orchestrator", "to": "RAG / Memory / Tools", "status": "CONNECTED", "code": "Calculator, Unit converter, Date arithmetic"},
+    {"arrow_id": 24, "from": "Orchestrator", "to": "Neural Model Final Answer", "status": "SAFELY_DEGRADED", "code": "0 active assignments -> safe fallback"}
+  ]
+}

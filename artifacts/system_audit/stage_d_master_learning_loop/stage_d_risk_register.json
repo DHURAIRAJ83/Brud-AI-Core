@@ -1,0 +1,25 @@
+{
+  "risks": [
+    {
+      "id": "RISK-01",
+      "category": "Model Capability Ceiling",
+      "description": "E5 3.16M parameter model trained from scratch on 1,670 instruction records (855k tokens) achieves only 0/24 raw CAP pass rate due to undertraining and lack of foundation pretraining tokens.",
+      "severity": "HIGH",
+      "remediation": "Build a 50M+ token multilingual foundation pretraining corpus before instruction fine-tuning."
+    },
+    {
+      "id": "RISK-02",
+      "category": "Inference Decoding Configuration Drift",
+      "description": "InferenceRuntimeService defaults to raw greedy decoding unless theta=1.25 and 3-gram parameters are explicitly injected in GenerationConfig.",
+      "severity": "MEDIUM",
+      "remediation": "Update default GenerationConfig in backend/services/inference_runtime_service.py to theta=1.25."
+    },
+    {
+      "id": "RISK-03",
+      "category": "Codebase Duplicate Noise",
+      "description": "71 duplicate class names across 216 occurrences increase maintenance cognitive load.",
+      "severity": "LOW",
+      "remediation": "Maintain containment matrix; archive versioned phase snapshots post-release."
+    }
+  ]
+}

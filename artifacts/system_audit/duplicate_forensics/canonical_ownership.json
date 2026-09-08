@@ -1,0 +1,59 @@
+{
+  "audit_date": "2026-09-01",
+  "canonical_implementations": {
+    "model": {
+      "file": "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+      "class": "BrudSmallV2Model",
+      "note": "Local class — no shared module exists yet",
+      "impl_hash": "6aecf087c213d4506129",
+      "resolved": true
+    },
+    "inference_runtime": {
+      "file": "core_model/inference_runtime/generation_engine.py",
+      "class": "GenerationEngine",
+      "resolved": true
+    },
+    "dataset_engine": {
+      "file": "core_model/mini_brain/dataset_expansion/dataset_expansion_engine.py",
+      "class": "DatasetExpansionEngine",
+      "resolved": true
+    },
+    "translation_engine": {
+      "file": "core_model/mini_brain/dataset_expansion/dataset_expansion_engine.py",
+      "method": "_translate_to_english",
+      "resolved": true
+    },
+    "admin_assistant": {
+      "file": "backend/services/admin_assistant_service.py",
+      "class": "AdminAssistantService",
+      "resolved": true
+    },
+    "training_engine": {
+      "file": "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+      "function": "run_training_experiment",
+      "note": "No shared training module exists yet",
+      "resolved": true
+    },
+    "rag_engine": {
+      "file": "backend/services/rag_service.py",
+      "class": "RagService",
+      "resolved": true
+    },
+    "memory_engine": {
+      "file": "backend/services/conversation_memory_service.py",
+      "class": "ConversationMemoryService",
+      "resolved": true
+    },
+    "provider_gateway": {
+      "file": "backend/services/mini_brain_external_ai_gateway_service.py",
+      "class": "MiniBrainExternalAIGatewayService",
+      "resolved": true
+    },
+    "public_chat_orchestrator": {
+      "file": "backend/services/public_chat_routing_service.py",
+      "class": "PublicChatRoutingService",
+      "resolved": true
+    }
+  },
+  "unresolved": []
+}

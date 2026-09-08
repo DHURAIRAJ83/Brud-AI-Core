@@ -1,0 +1,23 @@
+{
+  "implemented_and_verified": [
+    "Canonical Ingestion Engine & Quality Validator",
+    "UTF-8 NFC Normalization & Unicode Sanitizer",
+    "Exact SHA-256 Hash Deduplication Engine",
+    "Tokenizer v2 Subword Accounting Engine",
+    "Streamable JSONL Storage Format Architecture",
+    "Reproducibility Audit Engine (Token Delta = 0, Hash Delta = 0)"
+  ],
+  "partial": [
+    "Admin Assistant Mini Brain Level 2 Governed Proposal Assistant",
+    "OpenRouter Provider Gateway Adapter with Safe Fallback"
+  ],
+  "missing": [
+    "767,153 Tokens Required to Reach 1M Milestone Gate",
+    "49.76M Tokens Required to Reach 50M Pretraining Target",
+    "Dense Vector Embedding Semantic Deduplication"
+  ],
+  "documented_only": [
+    "Autonomous Model Weight Self-Mutation",
+    "Autonomous Candidate Self-Promotion"
+  ]
+}

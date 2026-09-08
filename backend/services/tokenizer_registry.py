@@ -461,7 +461,7 @@ class TokenizerService:
             )
 
     def evaluate_suitability(
-        self, tokenizer_public_id: str, dataset_version_public_id: str
+        self, tokenizer_public_id: str, dataset_version_public_id: str, *, connection=None
     ) -> dict[str, Any]:
         """Evaluate a registered tokenizer against an arbitrary dataset version.
 
@@ -471,9 +471,17 @@ class TokenizerService:
         rather than duplicating it, but does not persist a
         ``tokenizer_evaluations`` row (that table is scoped to the tokenizer's
         own training dataset).
+
+        ``connection``: when supplied, runs directly on the caller's own
+        already-open transaction instead of opening a second, independent
+        one -- required for callers that already hold a transaction open
+        (see `TokenizerService.processor_for_version()`, Phase 7C-20, and
+        `ConversationSessionService.create_turn()`, Phase 7C-16, for the
+        identical precedent). Callers that do not pass a connection keep
+        today's exact behavior unchanged.
         """
 
-        with self.repository.transaction() as connection:
+        if connection is not None:
             version = self.repository.version(connection, tokenizer_public_id)
             processor = self._processor(version)
             dataset = connection.execute(
@@ -496,16 +504,21 @@ class TokenizerService:
             if token_frequency:
                 total_occurrences = sum(token_frequency.values())
                 top_token_share = max(token_frequency.values()) / total_occurrences
-        return {
-            "tokenizer_version_public_id": version["public_id"],
-            "dataset_version_public_id": dataset_version_public_id,
-            "vocabulary_size": vocabulary_size,
-            "vocabulary_utilization": vocabulary_utilization,
-            "token_frequency_concentration": top_token_share,
-            "record_count": len(rows),
-            "metrics": metrics,
-            "summary": summary,
-        }
+            return {
+                "tokenizer_version_public_id": version["public_id"],
+                "dataset_version_public_id": dataset_version_public_id,
+                "vocabulary_size": vocabulary_size,
+                "vocabulary_utilization": vocabulary_utilization,
+                "token_frequency_concentration": top_token_share,
+                "record_count": len(rows),
+                "metrics": metrics,
+                "summary": summary,
+            }
+
+        with self.repository.transaction() as connection:
+            return self.evaluate_suitability(
+                tokenizer_public_id, dataset_version_public_id, connection=connection
+            )
 
     def encode(self, public_id: str, text: str) -> dict[str, Any]:
         with self.repository.transaction() as connection:
@@ -538,12 +551,22 @@ class TokenizerService:
             "decoded_text": processor.decode(ids),
         }
 
-    def processor_for_version(self, public_id: str):
-        """Return a checksum-verified SentencePiece processor for a registered version."""
+    def processor_for_version(self, public_id: str, *, connection=None):
+        """Return a checksum-verified SentencePiece processor for a registered version.
 
-        with self.repository.transaction() as connection:
+        ``connection``: when supplied, runs directly on the caller's own
+        already-open transaction instead of opening a second, independent
+        one -- required for callers that already hold a transaction open
+        (see `ConversationSessionService.create_turn()`'s `connection=`
+        parameter, Phase 7C-16, for the identical precedent). Callers that
+        do not pass a connection keep today's exact behavior unchanged."""
+
+        if connection is not None:
             version = self.repository.version(connection, public_id)
             return self._processor(version)
+
+        with self.repository.transaction() as connection:
+            return self.processor_for_version(public_id, connection=connection)
 
     def compare(self, left_id: str, right_id: str, text: str) -> dict[str, Any]:
         return {"left": self.encode(left_id, text), "right": self.encode(right_id, text)}
@@ -553,7 +576,16 @@ class TokenizerService:
             version = self.repository.version(connection, public_id)
             if version["lifecycle_status"] not in {"staging", "retired"}:
                 raise ValidationError("only staging or retired tokenizer versions can activate")
-            self._verify_artifacts(version)
+            verification = self._verify_artifacts(version)
+            if not verification["verified"]:
+                # Phase 2.7J: `_verify_artifacts()` already recomputes both real
+                # SHA-256 checksums and compares them to the DB-recorded values --
+                # its `verified` result was previously discarded here (the same
+                # gap Phase 2.7I fixed in `_processor()`), so a tokenizer whose
+                # files no longer match their recorded checksums could still be
+                # activated. This check runs before any lifecycle mutation below,
+                # so a rejected activation leaves lifecycle_status untouched.
+                raise ValidationError("tokenizer artifact checksum verification failed")
             if not loads_json(version["metrics_summary_json"], default={}).get("overall", {}).get("ready"):
                 raise ValidationError("completed passing evaluation is required before activation")
             connection.execute(
@@ -630,7 +662,17 @@ class TokenizerService:
             version = self.repository.version(connection, public_id)
             if version["lifecycle_status"] not in {"staging", "active", "retired"}:
                 raise ValidationError("only trained tokenizer versions can be exported")
-            self._verify_artifacts(version)
+            verification = self._verify_artifacts(version)
+            if not verification["verified"]:
+                # Phase 2.7J: same gap as `activate()` above -- `export()`'s own
+                # checksum computation (`_checksum_files()`, below) only proves
+                # the exported *copy* matches whatever bytes were on disk at
+                # export time; it never compares against the DB-recorded
+                # checksum, so a corrupted source would previously export
+                # "successfully". This check runs before `target.mkdir()` and
+                # before any file is copied, so a rejected export leaves no
+                # export directory and no `tokenizer_exports` row behind.
+                raise ValidationError("tokenizer artifact checksum verification failed")
             safe = f"{_safe_component(version['family_name'])}_{_safe_component(version['version'])}_{uuid4().hex[:8]}"
             target = self.settings.resolved_tokenizer_export_dir / safe
             if target.exists():
@@ -825,7 +867,18 @@ class TokenizerService:
         if spm is None:
             raise ValidationError("SentencePiece is not available")
         model_path = self._artifact_dir(version) / "tokenizer.model"
-        self._verify_artifacts(version)
+        verification = self._verify_artifacts(version)
+        if not verification["verified"]:
+            # Phase 2.7I: `_verify_artifacts()` already recomputes both real
+            # SHA-256 checksums and compares them to the DB-recorded values --
+            # its `verified` result was previously discarded here, so a
+            # tokenizer.model/tokenizer.vocab file physically present but no
+            # longer matching the recorded checksum (corruption, tampering, a
+            # stale artifact left behind by a failed re-export) was silently
+            # loaded and used for real tokenization instead of being rejected.
+            # No new checksum logic is introduced -- this only starts using
+            # the verification result the method already computed.
+            raise ValidationError("tokenizer artifact checksum verification failed")
         processor = spm.SentencePieceProcessor(model_file=str(model_path))
         self._cache[key] = processor
         while len(self._cache) > 4:

@@ -1,0 +1,4 @@
+{
+  "hmac_sha256_continuity": true,
+  "secret_non_disclosure": true
+}

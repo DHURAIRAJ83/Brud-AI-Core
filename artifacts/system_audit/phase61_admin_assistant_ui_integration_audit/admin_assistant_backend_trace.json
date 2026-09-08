@@ -1,0 +1,7 @@
+{
+  "overview_endpoint": "GET /api/admin/assistant/overview",
+  "chat_endpoint": "POST /api/admin/mini-brain/llm-runtime/chat",
+  "proposals_endpoint": "POST /api/admin/assistant/proposals",
+  "upload_endpoint": "POST /api/admin/assistant/upload",
+  "p1_p10g_backend_connected": false
+}

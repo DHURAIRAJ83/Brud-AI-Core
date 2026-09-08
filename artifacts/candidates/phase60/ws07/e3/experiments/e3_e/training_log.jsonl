@@ -1,0 +1,4 @@
+{"step": 25, "epoch": 1, "train_loss": 6.2737, "val_loss": 6.354, "rss_mb": 512.77}
+{"step": 50, "epoch": 1, "train_loss": 5.8945, "val_loss": 6.0471, "rss_mb": 512.77}
+{"step": 75, "epoch": 1, "train_loss": 5.5481, "val_loss": 5.8235, "rss_mb": 512.77}
+{"step": 100, "epoch": 1, "train_loss": 5.234, "val_loss": 5.5874, "rss_mb": 512.77}

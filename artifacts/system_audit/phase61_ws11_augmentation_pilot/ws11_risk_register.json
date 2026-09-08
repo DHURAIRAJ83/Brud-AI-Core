@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS11-01",
+      "category": "Candidate Dataset Isolation",
+      "description": "Candidate pilot dataset must remain in data/candidate/ and never merged into pretraining corpus without explicit human approval.",
+      "severity": "LOW",
+      "mitigation": "Enforce isolated dataset paths and runtime governance locks."
+    }
+  ]
+}

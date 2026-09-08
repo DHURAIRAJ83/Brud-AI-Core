@@ -103,6 +103,13 @@ class MiniBrainProviderSettingsService:
             admin_id=admin_id, changed_fields=changed_fields,
         )
         self.repository.create_audit_event(connection, **record)
+        try:
+            from backend.services.mini_brain_dashboard_context_service import (
+                MiniBrainDashboardContextService,
+            )
+            MiniBrainDashboardContextService.invalidate_cache(f"provider_{action}")
+        except Exception:
+            pass
 
     def _memory(self, connection, *, provider_key: str, setting_public_id: str, event_type: str, recorded_by: str) -> None:
         self.repository.create_memory(

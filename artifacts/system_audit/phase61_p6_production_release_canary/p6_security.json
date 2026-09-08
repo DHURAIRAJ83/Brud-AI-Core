@@ -1,0 +1,5 @@
+{
+  "duplicate_gates": 0,
+  "bypass_paths": 0,
+  "concurrency_safe": true
+}

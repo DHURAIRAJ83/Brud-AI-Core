@@ -7,7 +7,11 @@ prefix. No public routes exist in this phase.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+import json
+import time
+from uuid import uuid4
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
 from backend.api.auth import CsrfDependency, require_admin
 from backend.api.dependencies import SettingsDependency
@@ -26,6 +30,7 @@ from backend.models.mini_brain_llm_runtime import (
     SessionListResponse,
     SessionResponse,
     SetDefaultRetrievalProfileRequest,
+    StreamChatRequest,
     SummarizeRegressionRequest,
     SummarizeReportRequest,
     WidgetHealthResponse,
@@ -44,17 +49,125 @@ def service(settings) -> MiniBrainLlmRuntimeService:
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(payload: ChatRequest, settings: SettingsDependency, admin: CsrfDependency):
-    return service(settings).chat(session_id=payload.session_id, message=payload.message, admin_id=admin.admin.public_id)
+async def chat(
+    payload: ChatRequest,
+    request: Request,
+    response: Response,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+):
+    trace_id = request.headers.get("X-Trace-Id") or payload.trace_id or f"trc_{uuid4().hex[:16]}"
+    response.headers["X-Trace-Id"] = trace_id
+    res = service(settings).chat(
+        session_id=payload.session_id,
+        message=payload.message,
+        admin_id=admin.admin.public_id,
+        execution_mode=payload.execution_mode or "auto",
+        provider_key=payload.provider_key,
+        model_override=payload.model_override,
+        trace_id=trace_id,
+    )
+    res["trace_id"] = trace_id
+    return res
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    payload: StreamChatRequest,
+    request: Request,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+):
+    """Real Server-Sent Events (SSE) streaming endpoint for Admin Assistant chat.
+    Emits start, metadata (model, citations), token, done, and error events.
+    Guarantees distributed tracing (X-Trace-Id), backpressure handling, client disconnect cleanup, and single-turn memory persistence.
+    """
+    trace_id = request.headers.get("X-Trace-Id") or payload.trace_id or f"trc_{uuid4().hex[:16]}"
+    svc = service(settings)
+
+    async def event_generator():
+        last_event_time = time.perf_counter()
+        try:
+            event_stream = svc.stream_chat(
+                session_id=payload.session_id,
+                message=payload.message,
+                admin_id=admin.admin.public_id,
+                execution_mode=payload.execution_mode or "auto",
+                provider_key=payload.provider_key,
+                model_override=payload.model_override,
+                grounded=payload.grounded,
+                retrieval_profile_public_id=payload.retrieval_profile_public_id,
+                top_k=payload.top_k,
+                trace_id=trace_id,
+            )
+            for item in event_stream:
+                if await request.is_disconnected():
+                    try:
+                        with svc.repository.transaction() as conn:
+                            svc.repository.create_event(
+                                conn,
+                                session_id=payload.session_id,
+                                event_type="stream_aborted",
+                                backend_type=None,
+                                admin_id=admin.admin.public_id,
+                                detail={"reason": "client_disconnected", "trace_id": trace_id},
+                            )
+                    except Exception:
+                        pass
+                    break
+
+                now = time.perf_counter()
+                if now - last_event_time >= 2.5:
+                    yield ": keep-alive\n\n"
+                    last_event_time = now
+
+                event_name = item.get("event", "message")
+                data_dict = item.get("data", {})
+                if "trace_id" not in data_dict and trace_id:
+                    data_dict["trace_id"] = trace_id
+                data_json = json.dumps(data_dict, ensure_ascii=False)
+                yield f"event: {event_name}\ndata: {data_json}\n\n"
+                last_event_time = time.perf_counter()
+        except Exception as exc:  # noqa: BLE001
+            err_data = json.dumps({"code": "STREAM_INTERNAL_ERROR", "message": str(exc), "retryable": False, "trace_id": trace_id})
+            yield f"event: error\ndata: {err_data}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Trace-Id": trace_id,
+        },
+    )
 
 
 @router.post("/grounded-chat", response_model=GroundedChatResponse)
-async def grounded_chat(payload: GroundedChatRequest, settings: SettingsDependency, admin: CsrfDependency):
-    return service(settings).grounded_chat(
-        session_id=payload.session_id, message=payload.message,
+async def grounded_chat(
+    payload: GroundedChatRequest,
+    request: Request,
+    response: Response,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+):
+    trace_id = request.headers.get("X-Trace-Id") or payload.trace_id or f"trc_{uuid4().hex[:16]}"
+    response.headers["X-Trace-Id"] = trace_id
+    res = service(settings).grounded_chat(
+        session_id=payload.session_id,
+        message=payload.message,
         retrieval_profile_public_id=payload.retrieval_profile_public_id,
-        top_k=payload.top_k, admin_id=admin.admin.public_id,
+        top_k=payload.top_k,
+        admin_id=admin.admin.public_id,
+        execution_mode=payload.execution_mode or "auto",
+        provider_key=payload.provider_key,
+        model_override=payload.model_override,
+        trace_id=trace_id,
     )
+    res["trace_id"] = trace_id
+    return res
+
 
 
 @router.get("/grounded-chat/default-retrieval-profile", response_model=DefaultRetrievalProfileResponse)

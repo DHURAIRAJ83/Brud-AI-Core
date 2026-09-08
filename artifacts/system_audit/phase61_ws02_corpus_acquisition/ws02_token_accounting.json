@@ -1,0 +1,37 @@
+{
+  "measured_token_breakdown": {
+    "tamil": {
+      "current_tokens": 67606,
+      "target_tokens": 17500000,
+      "deficit": 17432394,
+      "pct_complete": 0.3863
+    },
+    "english": {
+      "current_tokens": 57948,
+      "target_tokens": 15000000,
+      "deficit": 14942052,
+      "pct_complete": 0.3863
+    },
+    "tanglish": {
+      "current_tokens": 28974,
+      "target_tokens": 7500000,
+      "deficit": 7471026,
+      "pct_complete": 0.3863
+    },
+    "mixed": {
+      "current_tokens": 19316,
+      "target_tokens": 5000000,
+      "deficit": 4980684,
+      "pct_complete": 0.3863
+    },
+    "structured": {
+      "current_tokens": 19316,
+      "target_tokens": 5000000,
+      "deficit": 4980684,
+      "pct_complete": 0.3863
+    }
+  },
+  "total_measured_tokens": 193160,
+  "target_tokens": 50000000,
+  "remaining_deficit": 49806840
+}

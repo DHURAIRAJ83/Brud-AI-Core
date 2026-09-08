@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,18 @@ from core_model.release.manifest import verify_manifest_checksum
 # one-model-at-a-time slot for a given database.
 _LOADED_MODELS: dict[tuple[str, str], dict[str, Any]] = {}
 
+# One in-process lock per (database, instance) pair -- mirrors the
+# _RUN_LOCKS/_RUN_LOCKS_GUARD pattern in production_regression_service.py --
+# so two concurrent requests can never both observe an empty process-local
+# cache for the same instance and both perform a real load at once.
+_LOAD_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+_LOAD_LOCKS_GUARD = threading.Lock()
+
+
+def _load_lock(key: tuple[str, str]) -> threading.Lock:
+    with _LOAD_LOCKS_GUARD:
+        return _LOAD_LOCKS.setdefault(key, threading.Lock())
+
 
 def _read_available_memory_bytes() -> tuple[int, str]:
     """Returns (bytes, label). Falls back to an unmeasurable-but-safe zero
@@ -81,6 +94,20 @@ class InferenceRuntimeService:
 
     def _loaded_key(self, instance_public_id: str) -> tuple[str, str]:
         return (str(self.repository.database_path), instance_public_id)
+
+    def is_loaded_in_process(self, instance_public_id: str, release_public_id: str) -> bool:
+        """True only if THIS process's in-memory cache actually holds a
+        model for this instance, loaded from this exact release. The
+        database's status="ready"/loaded_release_public_id fields are
+        necessary but not sufficient evidence: they are set by whichever
+        process performed the load and persist across process restarts,
+        while `_LOADED_MODELS` is process-local and does not."""
+
+        loaded = _LOADED_MODELS.get(self._loaded_key(instance_public_id))
+        return bool(loaded) and loaded.get("release_public_id") == release_public_id
+
+    def instance_load_lock(self, instance_public_id: str) -> threading.Lock:
+        return _load_lock(self._loaded_key(instance_public_id))
 
     # --- runtime profiles -----------------------------------------------------
 
@@ -395,7 +422,7 @@ class InferenceRuntimeService:
     def _resolve_processor(self, connection, tokenizer_version_public_id: str):
         return TokenizerService(
             TokenizerRepository(self.repository.database_path), self.settings
-        ).processor_for_version(tokenizer_version_public_id)
+        ).processor_for_version(tokenizer_version_public_id, connection=connection)
 
     def load_instance(
         self, instance_public_id: str, release_public_id: str, admin_id: str

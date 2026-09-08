@@ -1,0 +1,7 @@
+{
+  "generic_llm_chat": true,
+  "rag_grounded_chat": true,
+  "file_upload_ingestion": true,
+  "deterministic_pending_work": true,
+  "tool_calling_agent": false
+}

@@ -1,0 +1,4 @@
+{
+  "ws12_status": "PLANNING_QUALIFIED",
+  "single_next_action": "EXECUTE STAGE 1 (5M -> 10M) NATIVE-FIRST DEFICIT-DRIVEN DATA ACQUISITION"
+}

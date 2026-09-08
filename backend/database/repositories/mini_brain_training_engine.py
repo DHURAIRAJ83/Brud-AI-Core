@@ -17,7 +17,7 @@ from typing import Any
 from uuid import uuid4
 
 from backend.core.json_utils import dumps_json, loads_json
-from backend.database.repositories.base import BaseRepository, NotFoundError
+from backend.database.repositories.base import BaseRepository, ConflictError, NotFoundError
 
 _JOB_INTERNAL = {"id"}
 JOB_JSON_FIELDS = (
@@ -80,20 +80,33 @@ class MiniBrainTrainingEngineRepository(BaseRepository):
     def create_job(
         self, connection: sqlite3.Connection, *, training_package_session_public_id: str,
         release_governance_session_public_id: str, topic: str, execution_mode: str,
-        created_by_admin_public_id: str,
+        created_by_admin_public_id: str, core_model_version_public_id: str | None = None,
+        dataset_version_public_id: str | None = None,
     ) -> str:
         public_id = str(uuid4())
         connection.execute(
             """INSERT INTO mini_brain_training_jobs(
                 public_id, training_package_session_public_id, release_governance_session_public_id,
-                topic, execution_mode, created_by_admin_public_id
-            ) VALUES (?, ?, ?, ?, ?, ?)""",
+                topic, execution_mode, created_by_admin_public_id, core_model_version_public_id,
+                dataset_version_public_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 public_id, training_package_session_public_id, release_governance_session_public_id,
-                topic, execution_mode, created_by_admin_public_id,
+                topic, execution_mode, created_by_admin_public_id, core_model_version_public_id,
+                dataset_version_public_id,
             ),
         )
         return public_id
+
+    def dataset_version(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row | None:
+        """Phase 2.7F: read-only lookup against `dataset_versions` -- a
+        table MB-22 does not own, but reading it to validate a real,
+        admin-supplied dataset identity is a different, safe category from
+        the write-service imports (`DatasetService`) MB-22's own service
+        file is forbidden from ever using."""
+        return connection.execute(
+            "SELECT * FROM dataset_versions WHERE public_id=?", (public_id,)
+        ).fetchone()
 
     def get_job(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
         row = connection.execute(
@@ -114,7 +127,25 @@ class MiniBrainTrainingEngineRepository(BaseRepository):
 
     def update_job(
         self, connection: sqlite3.Connection, public_id: str, fields: dict[str, Any],
+        *, expected_status: str | tuple[str, ...] | None = None,
     ) -> sqlite3.Row:
+        """Phase 2.8F: `expected_status`, when given, turns this write
+        into a real, atomic compare-and-swap -- `AND status IN (...)` is
+        added to the WHERE clause of the single `UPDATE` statement
+        itself, so SQLite (not application code) is what actually
+        decides whether the job's status still matches what the caller
+        observed before doing its (possibly expensive) work. If another
+        process already changed the status in the meantime, this
+        `UPDATE` affects zero rows and `ConflictError` is raised --
+        never a silent, stale write. This is the minimal fix for the
+        exact multi-process race Phase 2.8F reproduced directly: two
+        independent OS processes both reading `status='paused'` (or
+        `'running'`) before either commits, then both writing as if
+        their own stale read were still true. A plain (non-CAS) call
+        with `expected_status=None` is byte-for-byte the original,
+        unconditional `UPDATE ... WHERE public_id=?` every pre-2.8F
+        caller already relied on."""
+
         self.get_job(connection, public_id)
         set_clauses = []
         values: list[Any] = []
@@ -124,10 +155,20 @@ class MiniBrainTrainingEngineRepository(BaseRepository):
             values.append(dumps_json(value) if column in json_columns else value)
         set_clauses.append('"updated_at"=CURRENT_TIMESTAMP')
         values.append(public_id)
-        connection.execute(
-            f'UPDATE mini_brain_training_jobs SET {", ".join(set_clauses)} WHERE public_id=?',
+        where = 'public_id=?'
+        if expected_status is not None:
+            statuses = (expected_status,) if isinstance(expected_status, str) else tuple(expected_status)
+            where += f' AND status IN ({",".join("?" for _ in statuses)})'
+            values.extend(statuses)
+        cursor = connection.execute(
+            f'UPDATE mini_brain_training_jobs SET {", ".join(set_clauses)} WHERE {where}',
             values,
         )
+        if expected_status is not None and cursor.rowcount == 0:
+            raise ConflictError(
+                f"job {public_id} status changed concurrently -- no longer "
+                f"{'/'.join(statuses)}, cannot apply this update"
+            )
         return self.get_job(connection, public_id)
 
     # -- checkpoints ----------------------------------------------------------
@@ -135,16 +176,17 @@ class MiniBrainTrainingEngineRepository(BaseRepository):
     def create_checkpoint(
         self, connection: sqlite3.Connection, *, job_id: int, step: int, epoch: int, checkpoint_name: str,
         relative_path: str, sha256: str, file_size_bytes: int, is_metadata_only: bool,
+        core_model_version_public_id: str | None = None,
     ) -> str:
         public_id = str(uuid4())
         connection.execute(
             """INSERT INTO mini_brain_training_checkpoints(
                 public_id, job_id, step, epoch, checkpoint_name, relative_path, sha256,
-                file_size_bytes, is_metadata_only
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                file_size_bytes, is_metadata_only, core_model_version_public_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 public_id, job_id, step, epoch, checkpoint_name, relative_path, sha256,
-                file_size_bytes, int(is_metadata_only),
+                file_size_bytes, int(is_metadata_only), core_model_version_public_id,
             ),
         )
         return public_id
@@ -156,6 +198,23 @@ class MiniBrainTrainingEngineRepository(BaseRepository):
             "SELECT * FROM mini_brain_training_checkpoints WHERE job_id=? ORDER BY step",
             (job_id,),
         ).fetchall()
+
+    def get_checkpoint(self, connection: sqlite3.Connection, public_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM mini_brain_training_checkpoints WHERE public_id=?", (public_id,)
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"training checkpoint not found: {public_id}")
+        return row
+
+    def mark_checkpoint_registered(
+        self, connection: sqlite3.Connection, checkpoint_id: int, pretraining_checkpoint_public_id: str,
+    ) -> None:
+        connection.execute(
+            """UPDATE mini_brain_training_checkpoints SET pretraining_checkpoint_public_id=?
+            WHERE id=?""",
+            (pretraining_checkpoint_public_id, checkpoint_id),
+        )
 
     # -- metrics (append-only) -------------------------------------------------
 

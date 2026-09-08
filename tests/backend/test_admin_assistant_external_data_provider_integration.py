@@ -9,10 +9,11 @@ from backend.services.admin_assistant_tools import run_tool
 from backend.services.external_data_provider_service import ExternalDataProviderService
 
 ADMIN_ID = "00000000-0000-0000-0000-000000000001"
+OTHER_ADMIN_ID = "00000000-0000-0000-0000-000000000002"
 
 
-def _approve(assistant, proposal_id):
-    return assistant.review(proposal_id, decision="approved", reviewed_by=ADMIN_ID, comment=None)
+def _approve(assistant, proposal_id, reviewer=ADMIN_ID):
+    return assistant.review(proposal_id, decision="approved", reviewed_by=reviewer, comment=None)
 
 
 @pytest.fixture
@@ -280,7 +281,8 @@ def test_configure_provider_credential_reference_requires_reason_and_never_leaks
         summary="Configure credential",
     )
     assert proposal.risk_level == "high"
-    _approve(assistant, proposal.public_id)
+    # High-risk action: reviewer must differ from the proposer (ADMIN_ID).
+    _approve(assistant, proposal.public_id, reviewer=OTHER_ADMIN_ID)
     executed = assistant.execute(proposal.public_id, executor_public_id=ADMIN_ID)
     assert set(executed.execution_result) == {
         "credential_type", "configured", "status", "last_rotated_at", "last_tested_at",

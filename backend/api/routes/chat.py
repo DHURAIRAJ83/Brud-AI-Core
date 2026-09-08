@@ -5,10 +5,18 @@ authentication requirement for normal public chat"). Every request is
 bounded, rate-limited, and routed through `PublicChatRoutingService`,
 which itself never duplicates model/RAG/memory/citation/language logic
 -- it only calls existing, already-tested services.
+
+Phase 17 observability hook: before delegating to the existing
+`PublicChatRoutingService`, the chat endpoint calls
+`evaluate_public_capability_gate()` and emits a structured audit event.
+The gate is a pure observation layer -- it never short-circuits the
+existing pipeline. Both the gate and the existing service run their own
+independent safety evaluations (defense-in-depth).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pydantic
@@ -31,7 +39,14 @@ from backend.services.public_memory_scope_resolver import PublicMemoryScopeResol
 from backend.services.public_model_assignment_resolver import PublicModelAssignmentResolver
 from backend.services.public_rag_scope_resolver import PublicRagScopeResolver
 from backend.services.trusted_web_answer_service import TrustedWebAnswerService
+from core_model.capabilities.clarification_intelligence import classify_knowledge_gap
+from core_model.capabilities.knowledge_gap import build_knowledge_gap_dict
+from core_model.capabilities.public_capability_gate import evaluate_public_capability_gate
+from core_model.capabilities.public_request_trace import build_public_request_trace
+from core_model.capabilities.public_runtime_policy import validate_request_bounds
 from core_model.public_chat.help_faq import HELP_FAQ_ENTRIES
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
@@ -85,7 +100,57 @@ async def chat(request: Request, settings: SettingsDependency) -> PublicChatResp
         raise ChatInvalidRequest("request body failed validation.") from exc
 
     service = PublicChatRoutingService(settings)
-    return service.handle_message(payload)
+
+    # Phase 18 — Runtime policy validation & lifecycle tracing (pre-flight observability).
+    gate = None
+    try:
+        bounds_check = validate_request_bounds(payload.message)
+        gate = evaluate_public_capability_gate(payload.message)
+        trace_payload = build_public_request_trace(
+            request_id=payload.client_request_id,
+            stage="gate_evaluated",
+            language=gate.nlp_result.detected_language,
+            language_confidence=gate.nlp_result.language_confidence,
+            capability_id=gate.routing_decision.selected_capability_id,
+            component=gate.routing_decision.selected_component,
+            gate_allowed=gate.allowed,
+            risk_level=gate.routing_decision.risk_level,
+            error_classification="none" if bounds_check.is_valid else "validation_error",
+            extra_metadata={
+                "bounds_valid": bounds_check.is_valid,
+                "denial_reason": gate.denial_reason,
+                "is_tanglish": gate.nlp_result.is_tanglish,
+                "is_technical": gate.nlp_result.is_technical_code,
+            },
+        )
+        logger.info("phase18_public_request_trace", extra=trace_payload)
+    except Exception:
+        logger.exception("phase18_trace_evaluation_failed")
+
+    # Authoritative PublicChatRoutingService execution (unchanged pipeline)
+    response = service.handle_message(payload)
+
+    # Phase 19 — Knowledge Gap Observation (post-response observation only).
+    # Pure observation layer — does NOT alter response generation or PublicChatResponse schema.
+    try:
+        if gate is not None:
+            gap = classify_knowledge_gap(
+                request_text=payload.message,
+                nlp_result=gate.nlp_result,
+                routing_decision=gate.routing_decision,
+                request_id=response.request_id,
+                gate_decision=gate,
+                route_used=response.route_used,
+                evidence_status=response.evidence_status,
+                route_reason_codes=response.route_reason_codes,
+            )
+            if gap.gap_type != "ANSWERABLE":
+                gap_dict = build_knowledge_gap_dict(gap)
+                logger.info("phase19_knowledge_gap_observation", extra=gap_dict)
+    except Exception:
+        logger.exception("phase19_knowledge_gap_observation_failed")
+
+    return response
 
 
 @router.get("/chat/capabilities", response_model=PublicChatCapabilities)

@@ -120,6 +120,22 @@ class RagGenerationService:
         *,
         session_public_id: str | None,
     ) -> dict[str, Any]:
+        # `ensure_instance_loaded()` opens its own independent transaction
+        # (a genuinely separate connection). Calling it while this
+        # function's own `transaction()` below is still open is exactly
+        # the nested-transaction case `BaseRepository.transaction()`'s
+        # docstring warns about: if the nested call performs a write (e.g.
+        # a cold model load updating `inference_runtime_instances`), that
+        # write commits *while* this function's own deferred-BEGIN read
+        # snapshot is still open, invalidating it before this function's
+        # own first write -- `sqlite3.OperationalError: database is
+        # locked` on that write, 100% reproducible on every fresh-process
+        # first request. `create_session()` elsewhere in this same file
+        # already resolves the instance before opening its transaction;
+        # this mirrors that established, safe pattern.
+        instance = self.assignment_service.ensure_instance_loaded(
+            assignment["public_id"], admin_id
+        )
         with self.repository.transaction() as connection:
             retrieval_run = self.repository.retrieval_run(
                 connection, retrieval_result["public_id"]
@@ -166,9 +182,6 @@ class RagGenerationService:
                 ).fetchone()
                 session_id = session_row["id"] if session_row else None
 
-            instance = self.assignment_service.ensure_instance_loaded(
-                assignment["public_id"], admin_id
-            )
             query_tokens = estimate_token_count(query)
             budget = ContextBudget(
                 maximum_model_context=instance["profile_maximum_context_length"],

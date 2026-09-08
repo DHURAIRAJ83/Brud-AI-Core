@@ -16,6 +16,7 @@ def connect(
     connection.execute("PRAGMA foreign_keys = ON")
     if wal_enabled:
         connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
     connection.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
     return connection
 

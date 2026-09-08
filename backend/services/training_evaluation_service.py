@@ -65,7 +65,7 @@ class TrainingEvaluationService:
             ).fetchall()
             processor = TokenizerService(
                 TokenizerRepository(self.repository.database_path), self.settings
-            ).processor_for_version(job["tokenizer_version_public_id"])
+            ).processor_for_version(job["tokenizer_version_public_id"], connection=connection)
             results: dict[str, Any] = {}
             for split in ("train", "valid"):
                 split_rows = _rows_for_split(rows, split)
@@ -134,7 +134,7 @@ class TrainingEvaluationService:
             ).fetchall()
             processor = TokenizerService(
                 TokenizerRepository(self.repository.database_path), self.settings
-            ).processor_for_version(job["tokenizer_version_public_id"])
+            ).processor_for_version(job["tokenizer_version_public_id"], connection=connection)
             verified_splits = {}
             for manifest in manifests:
                 split_rows = _rows_for_split(rows, manifest["split"])

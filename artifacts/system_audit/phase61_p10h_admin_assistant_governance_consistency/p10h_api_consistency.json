@@ -1,0 +1,8 @@
+{
+  "endpoint": "GET /api/admin/assistant/governance-status",
+  "service_method": "AdminAssistantService.get_governance_status",
+  "canonical_contract": "EnterpriseGovernanceDashboardContract",
+  "duplicated_logic": false,
+  "legacy_override": false,
+  "secret_exposure": false
+}

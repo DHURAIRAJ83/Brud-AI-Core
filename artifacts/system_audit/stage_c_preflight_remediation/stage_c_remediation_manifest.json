@@ -1,0 +1,43 @@
+{
+  "audit_id": "STAGE-C-REMEDIATION-2026-09-01",
+  "audit_date": "2026-09-01",
+  "repository_mutation": false,
+  "governance_invariants": {
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED"
+  },
+  "remediation_deliverables": {
+    "canonical_model_module": "core_model/architecture/brud_small_v2.py",
+    "canonical_training_engine": "core_model/training/brud_training_engine.py",
+    "unit_test_suite": "tests/core_model/test_phase60_ws07_stage_c_remediation.py"
+  },
+  "dry_run_results": {
+    "e4_dry_run": {
+      "completed": true,
+      "optimizer_step_called": false,
+      "parameter_count": 528128,
+      "context_length": 512,
+      "sample_loss": 7.0268
+    },
+    "e5_dry_run": {
+      "completed": true,
+      "optimizer_step_called": false,
+      "parameter_count": 3159040,
+      "context_length": 512,
+      "batch_size": 4,
+      "peak_rss_mb": 625.76,
+      "sample_loss": 7.1220
+    }
+  },
+  "test_execution": {
+    "test_suite": "tests/core_model/test_phase60_ws07_stage_c_remediation.py",
+    "total_tests": 6,
+    "passed": 6,
+    "failed": 0,
+    "duration_seconds": 5.28
+  }
+}

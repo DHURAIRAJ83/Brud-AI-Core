@@ -1,0 +1,32 @@
+{
+  "workstream_name": "Phase 61 WS06 1M Token Milestone Acceleration & Final Closure",
+  "audit_date": "2026-09-01",
+  "governance_state": {
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED"
+  },
+  "token_accounting": {
+    "ws05_accepted_records": 2931,
+    "ws05_subword_tokens": 244793,
+    "ws06_accepted_records": 3004,
+    "ws06_subword_tokens": 336243,
+    "net_records_added": 73,
+    "net_tokens_added": 91450,
+    "milestone_1m_target": 1000000,
+    "target_50m_tokens": 50000000,
+    "milestone_1m_token_deficit": 663757,
+    "milestone_1m_completion_pct": 33.6243,
+    "milestone_1m_status": "NOT_READY_DEFICIT_EXISTS",
+    "synthetic_ratio": 0.0,
+    "reproducibility": {
+      "token_delta": 0,
+      "record_delta": 0,
+      "hash_delta": 0,
+      "status": "REPRODUCIBLE"
+    }
+  }
+}

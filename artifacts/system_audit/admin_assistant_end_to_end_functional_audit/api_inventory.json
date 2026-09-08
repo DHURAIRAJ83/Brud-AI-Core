@@ -1,0 +1,5 @@
+{
+  "route_modules": 94,
+  "endpoints": 140,
+  "governance_route": "/api/admin/assistant/governance-status"
+}

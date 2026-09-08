@@ -1,0 +1,26 @@
+{
+  "fully_complete": [
+    "Canonical Shared Model Architecture (core_model/architecture/brud_small_v2.py)",
+    "Canonical Training Engine & Refusal Path (core_model/training/brud_training_engine.py)",
+    "Safe Checkpoint Loader & PE Filtering (load_checkpoint_safely)",
+    "Isolated Training Sandbox & Two-Phase Atomic Writing",
+    "Inference Decoding Controls (theta=1.25, 3-gram no-repeat)",
+    "E3-A through E3-E Sealed Multilingual Dataset Matrix",
+    "E4 Context Scaling Candidate (T=512, 528k params)",
+    "E5 Architecture Scaling Candidate (T=512, 3.16M params)",
+    "Automated Test Suite Execution & Governance Enforcer"
+  ],
+  "partially_complete": [
+    "Public Chat Runtime Service Decoding Control Integration (theta=1.25 wiring in InferenceRuntimeService)",
+    "Admin Assistant Mini Brain Data Intelligence & Proposal Pipeline",
+    "RAG Context Integration (N-gram BM25 hashing operational, needs vector embeddings)",
+    "Memory Context Ingestion & User Consent Gateway",
+    "OpenRouter Provider Gateway Adapter (Operational, requires API key configuration)"
+  ],
+  "not_implemented": [
+    "Large-Scale Pretraining Corpus Ingestion Pipeline (50M+ Tokens)",
+    "Autonomous Mini Brain Self-Approved Training & Promotion",
+    "Direct Model Weight Auto-Mutation",
+    "Production Automated Traffic Promotion Engine"
+  ]
+}

@@ -67,7 +67,6 @@ from backend.database.repositories.model_release import ModelReleaseRepository
 from backend.database.repositories.pretraining import PretrainingRepository
 from backend.database.repositories.tokenizers import TokenizerRepository
 from backend.models.model_release import (
-    ApprovalCreate,
     ModelCardOverrides,
     ModelReleaseCandidateCreate,
     ModelReleaseCreate,
@@ -641,6 +640,20 @@ class MiniBrainReleasePipelineService:
         self, session_public_id: str, *, version: str, prerelease_label: str | None = None,
         admin_id: str,
     ) -> dict[str, Any]:
+        """Prepares the candidate for release: verifies artifacts, generates
+        and validates the model card, assesses eligibility, and generates
+        the manifest. Deliberately does NOT submit an approval or create the
+        release itself (GOV-26/GOV-33): a single caller-supplied `admin_id`
+        can never legitimately satisfy the minimum-distinct-approvers floor,
+        and -- since that identity is, by construction, the candidate's own
+        creator (stamped at `create_session()`) -- it can no longer
+        self-approve under any configuration either. The session
+        deliberately stays at `version_registration`; real, distinct,
+        non-creator admins must separately call the standard
+        `ModelReleaseService.submit_approval()` (unchanged, unmodified) the
+        required number of times before `finalize_release_version()` below
+        can succeed."""
+
         session_data = self.session(session_public_id)
         if session_data["stage"] != "version_registration":
             raise ValidationError(
@@ -661,10 +674,38 @@ class MiniBrainReleasePipelineService:
         self.model_release.validate_model_card(candidate_public_id, admin_id)
         self.model_release.assess_eligibility(candidate_public_id, admin_id)
         self.model_release.generate_manifest(candidate_public_id, admin_id)
-        self.model_release.submit_approval(
-            candidate_public_id, ApprovalCreate(role="release", decision="approve", comment="MB-07 release pipeline"),
-            admin_id,
-        )
+
+        with self.repository.transaction() as connection:
+            session_row = self.repository.session(connection, session_public_id)
+            self._event(
+                connection, session_row["id"], "manifest_ready_awaiting_approvals",
+                stage="version_registration",
+                message=(
+                    "candidate manifest generated; awaiting the required number of "
+                    "distinct, non-creator admin approvals before finalize_release_version()"
+                ),
+                metadata={"version": version, "candidate_public_id": candidate_public_id},
+            )
+            return public_row(self.repository.session(connection, session_public_id))
+
+    def finalize_release_version(
+        self, session_public_id: str, *, version: str, prerelease_label: str | None = None,
+        admin_id: str,
+    ) -> dict[str, Any]:
+        """Creates the actual release, once real, distinct, non-creator
+        approvals already exist on the candidate (submitted separately via
+        `ModelReleaseService.submit_approval()`). This method itself never
+        submits an approval on anyone's behalf -- `create_release()`'s own
+        `is_policy_satisfied()` check (GOV-26/GOV-26b, unmodified) is the
+        sole, authoritative gate, exactly as it is for every other release
+        in the system."""
+
+        session_data = self.session(session_public_id)
+        if session_data["stage"] != "version_registration":
+            raise ValidationError(
+                f"session is at stage '{session_data['stage']}', not 'version_registration'"
+            )
+        candidate_public_id = session_data["model_release_candidate_public_id"]
         release = self.model_release.create_release(
             ModelReleaseCreate(
                 candidate_public_id=candidate_public_id, version=version, prerelease_label=prerelease_label,

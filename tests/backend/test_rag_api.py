@@ -497,6 +497,186 @@ async def test_grounded_answer_and_chat_lab_lifecycle(api_app: FastAPI) -> None:
         await client.aclose()
 
 
+# -- Phase 2.3B regression test: grounded generation must not deadlock on a --
+# cold (process-local-cache-empty) model load. `_build_eligible_rag_assignment`
+# above pre-warms the model via an explicit `/instances/{id}/load` call, so
+# by the time `grounded_answer()` runs, `_ensure_loaded()`'s nested
+# `transaction()` call (inside `ensure_instance_loaded()`) takes the
+# already-loaded fast path and never writes -- which is exactly why this
+# suite never previously caught the confirmed bug: `_generate_and_persist()`
+# opened its own transaction, read several rows, then (pre-fix) called
+# `ensure_instance_loaded()` *from inside that still-open transaction*. If
+# that nested call ever needs to perform a write (a genuine cold load, as
+# happens on the first request in a real fresh process), that write commits
+# on its own separate connection while the outer transaction's read
+# snapshot is still open -- invalidating it before the outer transaction's
+# own first write, raising `sqlite3.OperationalError: database is locked`
+# on that write (`record_context_assembly`'s INSERT). Reproduced directly
+# via real HTTP in an isolated sandbox (deploy/rag-generation-lock-fix/)
+# before this fix; confirmed absent after. This test forces the same cold
+# condition here by clearing the process-local cache immediately before the
+# grounded-answer call, rather than relying on the fixture's own warm state.
+async def test_grounded_answer_does_not_lock_on_cold_model_load(api_app: FastAPI) -> None:
+    client, headers = await authenticated_client(api_app)
+    try:
+        built = await _build_indexed_space(client, headers, slug="coldload", content=TAMIL_CONTENT)
+        refs = _fixture_refs(api_app)
+        release_id, _family_id, _run_id = await _build_release(
+            client, headers, api_app, refs,
+            label="test_only_runtime_fixture", notes="not_chat_capable", slug="coldload",
+        )
+        profile_id = await _create_profile(client, headers)
+        instance_id = await _create_instance(client, headers, profile_id)
+        loaded = await client.post(
+            f"/api/admin/inference-runtime/instances/{instance_id}/load",
+            headers=headers,
+            json={"release_public_id": release_id},
+        )
+        assert loaded.status_code == 200, loaded.text
+
+        assignment = await client.post(
+            "/api/admin/inference-runtime/assignments",
+            headers=headers,
+            json={
+                "scope": "admin_diagnostic",
+                "release_public_id": release_id,
+                "runtime_profile_public_id": profile_id,
+            },
+        )
+        assert assignment.status_code == 200, assignment.text
+        assignment_id = assignment.json()["public_id"]
+        await client.post(
+            f"/api/admin/inference-runtime/assignments/{assignment_id}/validate", headers=headers
+        )
+        await client.post(
+            f"/api/admin/inference-runtime/assignments/{assignment_id}/approve",
+            headers=headers,
+            json={"role": "release", "decision": "approve", "comment": "ok"},
+        )
+        activated = await client.post(
+            f"/api/admin/inference-runtime/assignments/{assignment_id}/activate",
+            headers=headers,
+            json={},
+        )
+        assert activated.status_code == 200, activated.text
+
+        from backend.services import inference_runtime_service as irs_module
+
+        settings: Settings = api_app.state.settings
+        key = (str(settings.resolved_database_path), instance_id)
+        assert key in irs_module._LOADED_MODELS  # the explicit /load call above populated it
+        del irs_module._LOADED_MODELS[key]  # simulate a fresh process's empty cache
+
+        answer = await client.post(
+            "/api/admin/rag/grounded-answer",
+            headers=headers,
+            json={
+                "retrieval_profile_public_id": built["profile_id"],
+                "assignment_public_id": assignment_id,
+                "query": "பொங்கல் எப்போது கொண்டாடப்படுகிறது",
+            },
+        )
+        assert answer.status_code == 200, answer.text
+        body = answer.json()
+        assert body["grounded_request"]["status"] in {
+            "completed", "insufficient_evidence", "generation_failed", "blocked_evidence",
+        }
+        # The model must have genuinely reloaded (not silently skipped) --
+        # this both proves Phase 2.2A's process-local reconciliation still
+        # engages correctly here, and rules out a false pass where the
+        # request "succeeded" without actually exercising the cold path.
+        assert key in irs_module._LOADED_MODELS
+    finally:
+        await client.aclose()
+
+
+async def test_grounded_answer_budget_and_real_tokenizer_stay_consistent(
+    api_app: FastAPI,
+) -> None:
+    """Phase 2.3C regression. Root-cause invariant, not a fixed-value
+    assertion (robust regardless of this fixture's exact context length):
+    if select_chunks_within_budget() decided all retrieved evidence fits
+    (dropped_chunk_count == 0), the real tokenizer at generation time must
+    agree -- stop_reason must never be "prompt_too_long" in that case. Pre-
+    fix, this was reproducibly false (confirmed live against a real
+    checkpoint this session: budget said 0 dropped / fits, real tokenizer
+    then rejected the assembled prompt outright)."""
+
+    client, headers = await authenticated_client(api_app)
+    try:
+        built = await _build_indexed_space(client, headers, slug="promptlen", content=TAMIL_CONTENT)
+        refs = _fixture_refs(api_app)
+        release_id, _family_id, _run_id = await _build_release(
+            client, headers, api_app, refs,
+            label="test_only_runtime_fixture", notes="not_chat_capable", slug="promptlen",
+        )
+        profile_id = await _create_profile(client, headers)
+        instance_id = await _create_instance(client, headers, profile_id)
+        loaded = await client.post(
+            f"/api/admin/inference-runtime/instances/{instance_id}/load",
+            headers=headers,
+            json={"release_public_id": release_id},
+        )
+        assert loaded.status_code == 200, loaded.text
+
+        assignment = await client.post(
+            "/api/admin/inference-runtime/assignments",
+            headers=headers,
+            json={
+                "scope": "admin_diagnostic",
+                "release_public_id": release_id,
+                "runtime_profile_public_id": profile_id,
+            },
+        )
+        assert assignment.status_code == 200, assignment.text
+        assignment_id = assignment.json()["public_id"]
+        await client.post(
+            f"/api/admin/inference-runtime/assignments/{assignment_id}/validate", headers=headers
+        )
+        await client.post(
+            f"/api/admin/inference-runtime/assignments/{assignment_id}/approve",
+            headers=headers,
+            json={"role": "release", "decision": "approve", "comment": "ok"},
+        )
+        activated = await client.post(
+            f"/api/admin/inference-runtime/assignments/{assignment_id}/activate",
+            headers=headers,
+            json={},
+        )
+        assert activated.status_code == 200, activated.text
+
+        answer = await client.post(
+            "/api/admin/rag/grounded-answer",
+            headers=headers,
+            json={
+                "retrieval_profile_public_id": built["profile_id"],
+                "assignment_public_id": assignment_id,
+                "query": "பொங்கல் எப்போது கொண்டாடப்படுகிறது",
+            },
+        )
+        assert answer.status_code == 200, answer.text
+        body = answer.json()
+        stop_reason = body["answer"].get("stop_reason")
+
+        import sqlite3
+
+        settings: Settings = api_app.state.settings
+        con = sqlite3.connect(settings.resolved_database_path)
+        con.row_factory = sqlite3.Row
+        row = con.execute(
+            "SELECT dropped_chunk_count FROM rag_context_assemblies ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        con.close()
+        assert row is not None
+        if row["dropped_chunk_count"] == 0:
+            assert stop_reason != "prompt_too_long", (
+                "budget admitted all evidence (dropped_chunk_count=0) but the "
+                f"real tokenizer rejected the assembled prompt anyway: {body}"
+            )
+    finally:
+        await client.aclose()
+
+
 async def test_evaluation_suite_run_and_metrics(api_app: FastAPI) -> None:
     client, headers = await authenticated_client(api_app)
     try:

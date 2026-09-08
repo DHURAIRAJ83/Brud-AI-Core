@@ -1,0 +1,18 @@
+{
+  "checkpoint_id": "checkpoint_step_1880",
+  "job_id": "phase50_sovereign_job_01",
+  "archive_file": "artifacts/checkpoint_archive/phase50_sovereign_job_01/checkpoint_step_1880.tar.gz",
+  "archive_sha256": "5fa9e2261a9d362578dfe3585e6ecc977e1b55b7df8b1842dd6f781adcb65fa9",
+  "file_count": 8,
+  "component_hashes": {
+    "config.json": "eab0ddbc62a81d21f7361323b14366e9e7683c00d36bf0511ac4c02602a255f8",
+    "manifest.json": "cdac2bb84bccceab09f92e5f8413c1997da11cba00231f78f82505cfd23506d6",
+    "model_state.pt": "b921f1764330fc96765207c6cbac76886b73d80bc4a2f941ca5d974a3edd84d2",
+    "optimizer_state.pt": "fb730b5c4117c52e075d6146200b71973ae71aef317995162017c02313f088c5",
+    "references.json": "b6cc7f31aeb807e159faa11025c8b25f4d204bc79e877110391c935f3e6e2e5e",
+    "rng_state.pt": "2e8c4ae1ff7f46d694cd896662ac949fe5ecf088e659338e5e68053a806bb7df",
+    "scheduler_state.pt": "e22c4f01f9b22bd7e6120ed92d8b09b1bc7c6658a8d2fc0bbabd93335be0ee04",
+    "trainer_state.json": "5682f0cd6306529b5473d9d0586e8dc0095672706fa350a55aa0f5eac469ed99"
+  },
+  "created_at": 1788003130.7667756
+}

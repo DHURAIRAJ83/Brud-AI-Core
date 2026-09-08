@@ -1,0 +1,4 @@
+{
+  "admission_token_required": true,
+  "fails_closed": true
+}

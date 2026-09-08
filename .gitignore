@@ -1,4 +1,6 @@
 .env
+deploy/env/*.env
+!deploy/env/*.env.example
 .venv/
 venv/
 __pycache__/
@@ -23,26 +25,60 @@ data/core_models/pretraining/
 data/corpus_uploads/
 data/corpus_snapshots/
 data/corpus_exports/
-data/models/*.gguf
-models/checkpoints/*
-models/active/*
-models/exports/*
-!**/.gitkeep
-apps/admin-dashboard/e2e/.e2e-state.json
-apps/admin-dashboard/e2e/test-results/
-apps/admin-dashboard/playwright-report/
-apps/admin-dashboard/blob-report/
-
 # Local AI runtime artifacts
 models/*.gguf
-data/*.db
+**/*.gguf
+data/candidate/
+data/candidate_acquisitions/
+data/document_sft_exports/
+data/manual_verification_*/
+data/release_artifacts/
+data/voice_audio/
+data/approved/*.jsonl
+data/plugins/
+phase*_telemetry.jsonl
+phase*.jsonl
+phase*.json
+deploy/benchmarks/reports/*.json
+deploy/phase-*
+deploy/api-feature-inventory/
+deploy/baseline-freeze/
+deploy/corpus-dataset-audit/
+deploy/memory-validation*/
+deploy/model-*-audit/
+deploy/pre-training-gate/
+deploy/public-chat-activation/
+deploy/rag-generation-*/
+deploy/real-data-readiness/
+deploy/repository-audit/
+deploy/routing-event-*/
+deploy/sbom/
+deploy/training-*/
+
+# Databases & WAL
+*.db
+*.db-shm
+*.db-wal
+**/*.db
+**/*.db-shm
+**/*.db-wal
 *.sqlite
 *.sqlite3
+**/*.sqlite*
 
-# Temp / audit scratch
+# Temp & scratch scripts/artifacts
 .audit_tmp/
 tmp/
 temp/
+scratch/
+
+# Certificates, Keys & Secrets
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+*.cer
 
 # Test/build output
 test-results/
@@ -53,3 +89,4 @@ coverage/
 # OS cruft
 .DS_Store
 Thumbs.db
+

@@ -9,19 +9,6 @@ import {
   submitAssistantFeedback,
 } from '../../services/api.js'
 
-// UI filters over the one governed assistant backend -- never separate
-// bots (task rule: "assistant modes are UI filters, not separate
-// assistants"). Mirrors core_model.admin_assistant.dashboard_registry
-// .ASSISTANT_MODES exactly.
-const MODES = [
-  { key: 'guide', label: 'Guide' },
-  { key: 'data', label: 'Data' },
-  { key: 'governance', label: 'Governance' },
-  { key: 'rag', label: 'RAG' },
-  { key: 'model', label: 'Model' },
-  { key: 'system', label: 'System' },
-]
-
 // Mirrors backend.services.admin_assistant_language_service
 // .RESPONSE_LANGUAGES exactly -- the saved value stays this exact
 // machine enum; only the visible label is localized to the language
@@ -42,10 +29,10 @@ const NO_ADMIN_GREETING = 'Hello. Ask me anything about this dashboard, in Tamil
 // defensive-parse convention.
 const LAYOUT_STORAGE_KEY = 'brud-admin-assistant-widget-layout-v1'
 const LAYOUT_MODES = ['default', 'floating', 'docked-left', 'docked-right', 'fullscreen']
-const MIN_WIDTH = 320
+const MIN_WIDTH = 380
 const MAX_WIDTH = 900
-const MIN_HEIGHT = 320
-const DOCK_WIDTH = 380
+const MIN_HEIGHT = 400
+const DOCK_WIDTH = 480
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
@@ -75,10 +62,10 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
-  const [mode, setMode] = useState('guide')
   const [pagesByNavKey, setPagesByNavKey] = useState({})
   const [pagesLoaded, setPagesLoaded] = useState(false)
   const [llmAvailable, setLlmAvailable] = useState(null)
+  const [healthInfo, setHealthInfo] = useState({ available: null, backend_type: 'auto', current_model: null })
   const [language, setLanguage] = useState('auto')
   const [languageLoaded, setLanguageLoaded] = useState(false)
   const [languageSaving, setLanguageSaving] = useState(false)
@@ -92,7 +79,7 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
     x: storedLayout?.x ?? null,
     y: storedLayout?.y ?? null,
     width: storedLayout?.width ?? DOCK_WIDTH,
-    height: storedLayout?.height ?? 560,
+    height: storedLayout?.height ?? 640,
   })
   const rectRef = useRef(rect)
   const dragStateRef = useRef(null)
@@ -185,19 +172,20 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
   function widgetStyle() {
     let base
     if (layoutMode === 'fullscreen') {
-      base = { top: '5vh', left: '5vw', right: 'auto', bottom: 'auto', width: '90vw', height: '90vh', maxHeight: '90vh' }
+      base = { top: '3vh', left: '3vw', right: 'auto', bottom: 'auto', width: '94vw', height: '94vh', maxHeight: '94vh', zIndex: 1000 }
     } else if (layoutMode === 'docked-left') {
-      base = { top: 0, left: 0, right: 'auto', bottom: 'auto', width: rect.width || DOCK_WIDTH, height: '100vh', maxHeight: '100vh', borderRadius: 0 }
+      base = { top: 0, left: 0, right: 'auto', bottom: 0, width: rect.width || DOCK_WIDTH, height: '100vh', maxHeight: '100vh', borderRadius: 0, zIndex: 1000 }
     } else if (layoutMode === 'docked-right') {
-      base = { top: 0, right: 0, left: 'auto', bottom: 'auto', width: rect.width || DOCK_WIDTH, height: '100vh', maxHeight: '100vh', borderRadius: 0 }
+      base = { top: 0, right: 0, left: 'auto', bottom: 0, width: rect.width || DOCK_WIDTH, height: '100vh', maxHeight: '100vh', borderRadius: 0, zIndex: 1000 }
     } else if (layoutMode === 'floating' && rect.x != null) {
-      base = { top: rect.y, left: rect.x, right: 'auto', bottom: 'auto', width: rect.width, height: rect.height, maxHeight: rect.height }
+      base = { top: rect.y, left: rect.x, right: 'auto', bottom: 'auto', width: rect.width, height: rect.height, maxHeight: rect.height, zIndex: 1000 }
     } else {
-      return undefined
+      // Default: Right-side full-height workspace drawer
+      base = { top: 0, right: 0, bottom: 0, height: '100vh', maxHeight: '100vh', width: 'min(480px, 92vw)', borderRadius: 0, zIndex: 1000 }
     }
     if (minimized) {
       const { height, maxHeight, ...rest } = base
-      return rest
+      return { ...rest, top: 'auto', bottom: '24px', right: '24px', width: '320px', height: 'auto', borderRadius: '12px' }
     }
     return base
   }
@@ -212,11 +200,20 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
       })
       .catch(() => {})
       .finally(() => setPagesLoaded(true))
-    // MB-45: reads the same runtime-resolution state that actually
-    // answers /chat and /grounded-chat, instead of the old Phase-8
-    // health check (a different, unrelated backend) -- see docs/audit
-    // /MB45_WIDGET_BACKEND_CONSOLIDATION_2026_08_11.md.
-    miniBrainWidgetHealth().then((data) => setLlmAvailable(data.available)).catch(() => setLlmAvailable(false))
+
+    miniBrainWidgetHealth()
+      .then((data) => {
+        setLlmAvailable(data.available)
+        setHealthInfo({
+          available: data.available,
+          backend_type: data.backend_type || 'auto',
+          current_model: data.current_model || null,
+        })
+      })
+      .catch(() => {
+        setLlmAvailable(false)
+        setHealthInfo({ available: false, backend_type: 'unavailable', current_model: null })
+      })
   }, [open, pagesLoaded])
 
   useEffect(() => {
@@ -242,11 +239,6 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
     }
   }
 
-  // The launcher button only exists in the DOM while the card is closed,
-  // so `launcherRef` cannot be focused synchronously inside the handler
-  // that closes the card (the button hasn't been (re)rendered yet at that
-  // point) -- this effect runs after the close has actually committed,
-  // and `hasOpenedRef` keeps it from stealing focus on first mount.
   const hasOpenedRef = useRef(false)
   useEffect(() => {
     if (open) {
@@ -264,7 +256,7 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
         return
       }
       if (event.key === 'Tab' && cardRef.current) {
-        const focusable = cardRef.current.querySelectorAll('button, input, textarea, [tabindex]:not([tabindex="-1"])')
+        const focusable = cardRef.current.querySelectorAll('button, input, textarea, select, [tabindex]:not([tabindex="-1"])')
         if (!focusable.length) return
         const first = focusable[0]
         const last = focusable[focusable.length - 1]
@@ -297,7 +289,7 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
         aria-label="Open Admin Assistant"
         onClick={() => { setOpen(true); setMinimized(false) }}
       >
-        Assistant
+        <span style={{ marginRight: '6px' }}>🧠</span> Assistant
       </button>
     )
   }
@@ -317,92 +309,133 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
           onPointerMove={onDragMove}
           onPointerUp={endDrag}
         >
-          <strong>Brud AI Assistant</strong>
+          <div className="assistant-header-icon-box" aria-hidden="true">🧠</div>
+          <div className="assistant-header-brand">
+            <div className="assistant-header-title-row">
+              <strong className="assistant-header-title">Brud AI Assistant</strong>
+              <span
+                className={`assistant-runtime-badge status-${
+                  llmAvailable === false
+                    ? 'offline'
+                    : healthInfo.backend_type === 'local'
+                    ? 'local'
+                    : healthInfo.backend_type === 'external'
+                    ? 'provider'
+                    : 'auto'
+                }`}
+                title={healthInfo.current_model ? `Active Model: ${healthInfo.current_model}` : undefined}
+              >
+                <span className="assistant-runtime-dot" aria-hidden="true" />
+                {llmAvailable === false
+                  ? 'Offline'
+                  : healthInfo.backend_type === 'local'
+                  ? 'Local LLM'
+                  : healthInfo.backend_type === 'external'
+                  ? 'Provider'
+                  : 'Auto Routing'}
+              </span>
+            </div>
+            <span className="assistant-header-subtitle">Mini Brain • Admin Intelligence Layer</span>
+          </div>
         </div>
         <div className="assistant-card-header-actions">
           <button
             type="button"
+            className="assistant-win-btn"
             aria-label="Dock left"
             aria-pressed={layoutMode === 'docked-left'}
             onClick={dockLeft}
-          >⇤</button>
+            title="Dock left"
+          >
+            <span className="assistant-win-icon" aria-hidden="true">⇤</span>
+          </button>
           <button
             type="button"
+            className="assistant-win-btn"
             aria-label="Dock right"
             aria-pressed={layoutMode === 'docked-right'}
             onClick={dockRight}
-          >⇥</button>
+            title="Dock right"
+          >
+            <span className="assistant-win-icon" aria-hidden="true">⇥</span>
+          </button>
           <button
             type="button"
+            className="assistant-win-btn"
             aria-label={layoutMode === 'fullscreen' ? 'Exit large chat mode' : 'Enter large chat mode'}
             aria-pressed={layoutMode === 'fullscreen'}
             onClick={toggleFullScreen}
-          >⛶</button>
+            title={layoutMode === 'fullscreen' ? 'Exit large chat mode' : 'Enter large chat mode'}
+          >
+            <span className="assistant-win-icon" aria-hidden="true">⛶</span>
+          </button>
           <button
             type="button"
+            className="assistant-win-btn"
             aria-label={minimized ? 'Restore Admin Assistant' : 'Minimize Admin Assistant'}
             aria-expanded={!minimized}
             onClick={() => setMinimized((value) => !value)}
-          >{minimized ? '▢' : '_'}</button>
+            title={minimized ? 'Restore Admin Assistant' : 'Minimize Admin Assistant'}
+          >
+            <span className="assistant-win-icon" aria-hidden="true">{minimized ? '▢' : '—'}</span>
+          </button>
           <button
             type="button"
+            className="assistant-win-btn assistant-win-btn-close"
             aria-label="Close Admin Assistant"
             onClick={() => setOpen(false)}
-          >×</button>
+            title="Close Assistant"
+          >
+            <span className="assistant-win-icon" aria-hidden="true">✕</span>
+          </button>
         </div>
       </header>
 
-      {!minimized && <>
-        <nav className="assistant-mode-row" aria-label="Assistant mode filter">
-          {MODES.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={mode === item.key ? 'active' : ''}
-              aria-pressed={mode === item.key}
-              onClick={() => setMode(item.key)}
-            >{item.label}</button>
-          ))}
-        </nav>
-
-        <div className="assistant-language-row">
-          <label htmlFor="assistant-response-language">Reply language</label>
-          <select
-            id="assistant-response-language"
-            value={language}
-            disabled={!languageLoaded || languageSaving}
-            onChange={(event) => changeLanguage(event.target.value)}
-          >
-            {LANGUAGE_OPTIONS.map((item) => (
-              <option key={item.key} value={item.key}>{item.label}</option>
-            ))}
-          </select>
-        </div>
-        {languageError && (
-          <div className="notice error-notice assistant-language-error">{languageError}</div>
-        )}
-
-        {onOpenMiniBrainAssistant && (
-          <div className="assistant-mini-brain-link-row">
-            <button type="button" className="assistant-mini-brain-link" onClick={onOpenMiniBrainAssistant}>
-              Open Mini Brain Assistant / Mini Brain Assistant திற
-            </button>
+      {!minimized && (
+        <>
+          <div className="assistant-language-row">
+            <label htmlFor="assistant-response-language">Reply language</label>
+            <select
+              id="assistant-response-language"
+              className="assistant-lang-select"
+              value={language}
+              disabled={!languageLoaded || languageSaving}
+              onChange={(event) => changeLanguage(event.target.value)}
+            >
+              {LANGUAGE_OPTIONS.map((item) => (
+                <option key={item.key} value={item.key}>{item.label}</option>
+              ))}
+            </select>
           </div>
-        )}
 
-        {llmAvailable === false && (
-          <div className="assistant-llm-notice">
-            AI response generation is unavailable right now. Page help and pending-work
-            guidance still work.
-          </div>
-        )}
-      </>}
+          {languageError && (
+            <div className="notice error-notice assistant-language-error" style={{ margin: '4px 12px', fontSize: '0.75rem' }}>{languageError}</div>
+          )}
 
-      {/* Kept mounted (never conditionally removed) across minimize/restore,
-          hidden with CSS instead -- ChatPanel owns its own session/message
-          state now, so unmounting it on minimize would silently discard an
-          in-progress conversation the moment an admin collapses the card. */}
-      <div style={minimized ? { display: 'none' } : undefined}>
+          {onOpenMiniBrainAssistant && (
+            <div className="assistant-mini-brain-link-row">
+              <button
+                type="button"
+                className="assistant-mini-brain-link"
+                onClick={onOpenMiniBrainAssistant}
+              >
+                <span>Mini Brain Assistant / Mini Brain Assistant திற</span>
+                <span className="assistant-mini-brain-arrow" aria-hidden="true">↗</span>
+              </button>
+            </div>
+          )}
+
+          {llmAvailable === false && (
+            <div className="assistant-llm-notice">
+              <span className="assistant-notice-icon" aria-hidden="true">⚠️</span>
+              <span>AI response generation is unavailable right now. Page help and pending-work guidance still work.</span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Main Workspace: kept mounted to preserve conversation state across minimize */}
+      <div style={{ flex: 1, minHeight: 0, display: minimized ? 'none' : 'flex', flexDirection: 'column' }}>
         <ChatPanel
           variant="compact"
           admin={admin}
@@ -410,6 +443,7 @@ export default function AdminAssistantWidget({ active, onNavigate, onOpenMiniBra
           toast={toast}
           suggestions={SUGGESTIONS}
           emptyGreeting={NO_ADMIN_GREETING}
+          onNavigate={onNavigate}
         />
       </div>
 

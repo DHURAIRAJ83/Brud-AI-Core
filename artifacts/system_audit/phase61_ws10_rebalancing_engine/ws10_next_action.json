@@ -1,0 +1,9 @@
+{
+  "single_next_action": "EXECUTE DEFICIT-DRIVEN STAGED CORPUS EXPANSION TARGETING THE 10M TOKEN MILESTONE WHILE MAINTAINING STRICT GOVERNANCE",
+  "rationale": "The 5M Token Milestone is 100% QUALIFIED (5,140,476 subword tokens). Pretraining remains BLOCKED until explicit human authorization is granted.",
+  "what_not_to_do": [
+    "Do NOT authorize pretraining without explicit human instruction.",
+    "Do NOT scale model parameters to E6.",
+    "Do NOT enable Public Chat candidate traffic."
+  ]
+}

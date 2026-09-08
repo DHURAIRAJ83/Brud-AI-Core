@@ -1,0 +1,360 @@
+{
+  "_FakeUploadFile": [
+    "tests/backend/test_mini_brain_vision_model_service.py",
+    "tests/backend/test_mini_brain_external_ai_gateway_service.py",
+    "tests/backend/test_mini_brain_vision_rag_api.py",
+    "tests/backend/test_mini_brain_vision_intelligence_service.py",
+    "tests/backend/test_mini_brain_training_pipeline_api.py",
+    "tests/backend/test_mini_brain_vision_rag_service.py",
+    "tests/backend/test_mini_brain_training_engine_api.py",
+    "tests/backend/test_mini_brain_training_engine_service.py",
+    "tests/backend/test_mini_brain_training_pipeline_service.py",
+    "tests/backend/test_mini_brain_evaluation_center_service.py",
+    "tests/backend/test_mini_brain_multimodal_dataset_generator_service.py",
+    "tests/backend/test_mini_brain_multimodal_dataset_generator_api.py",
+    "tests/backend/test_mini_brain_evaluation_center_api.py",
+    "tests/backend/test_mini_brain_release_governance_api.py",
+    "tests/backend/test_mini_brain_vision_model_api.py",
+    "tests/backend/test_mini_brain_release_governance_service.py",
+    "tests/backend/test_mini_brain_vision_intelligence_api.py",
+    "apps/admin-dashboard/e2e/seed.py"
+  ],
+  "TestDeterminism": [
+    "tests/backend/test_mini_brain_dataset_pipeline.py",
+    "tests/backend/test_phase28a_training_readiness.py",
+    "tests/backend/test_phase28b_training_execution_recovery_integrity.py"
+  ],
+  "TestNegativeChecks": [
+    "tests/backend/test_mini_brain_dataset_pipeline.py",
+    "tests/backend/test_mini_brain_pretraining_checkpoint_handoff.py"
+  ],
+  "FakeUploadFile": [
+    "tests/backend/test_document_sft_vision_blocking.py",
+    "tests/backend/test_document_sft_workflow_service.py",
+    "tests/backend/test_document_sft_finalization_admin_assistant.py",
+    "tests/backend/test_semantic_chunk_service.py",
+    "tests/backend/test_structured_record_service.py",
+    "tests/backend/test_document_sft_workflow_admin_assistant.py",
+    "tests/backend/test_document_content_classification.py",
+    "tests/backend/test_document_security_review.py",
+    "tests/backend/test_admin_assistant_document_navigation.py",
+    "tests/backend/test_governance_service.py",
+    "tests/backend/test_document_workspace_service.py",
+    "tests/backend/test_document_sft_workflow_security.py",
+    "tests/backend/test_document_sft_dataset_handoff.py",
+    "tests/backend/test_document_sft_expanded_generators.py",
+    "deploy/phase-2.7B/sandbox/live_http_test.py"
+  ],
+  "_RecordingAdapter": [
+    "tests/backend/test_mini_brain_llm_runtime_service.py",
+    "tests/backend/test_pilot_metrics.py"
+  ],
+  "_StubRetrievalService": [
+    "tests/backend/test_mini_brain_llm_runtime_service.py",
+    "tests/backend/test_pilot_metrics.py"
+  ],
+  "TestTrainingQualification": [
+    "tests/backend/test_phase28a_training_readiness.py",
+    "tests/backend/test_phase27h_training_dataset_readiness.py"
+  ],
+  "TestAuthorityBoundary": [
+    "tests/backend/test_document_sft_workflow_admin_assistant.py",
+    "tests/backend/test_admin_assistant_document_navigation.py"
+  ],
+  "TestIdempotency": [
+    "tests/backend/test_phase28e_cross_request_training_runtime.py",
+    "tests/backend/test_phase28f_multi_worker_concurrency.py"
+  ],
+  "TestNoSilentSubstitution": [
+    "tests/backend/test_phase28n_checkpoint_destination_hard_isolation.py",
+    "tests/backend/test_phase28i_qualification_environment_hard_isolation.py"
+  ],
+  "TestRestartSurvival": [
+    "tests/backend/test_mini_brain_core_model_identity_integration.py",
+    "tests/backend/test_mini_brain_pretraining_checkpoint_handoff.py"
+  ],
+  "TestFreshProcessRecovery": [
+    "tests/backend/test_phase28g_real_model_training_qualification.py",
+    "tests/backend/test_phase28c_checkpoint_resume_recovery.py"
+  ],
+  "FakeInferenceBackend": [
+    "tests/backend/test_mini_brain_runtime_service.py",
+    "tests/backend/test_mini_brain_prompt_optimization_service.py",
+    "tests/backend/test_mini_brain_quality_service.py"
+  ],
+  "_FailingStepAdapter": [
+    "tests/backend/test_phase28b_training_execution_recovery_integrity.py",
+    "tests/backend/test_phase28c_checkpoint_resume_recovery.py"
+  ],
+  "BrudSmallV2StandardModel": [
+    "tests/evaluation/test_phase59_ws07_runtime_isolation.py",
+    "tests/evaluation/test_phase59_ws08_release_readiness.py",
+    "tests/evaluation/test_phase59_ws06_model_initialization.py"
+  ],
+  "Out": [
+    "tests/evaluation/test_phase59_ws07_runtime_isolation.py",
+    "tests/evaluation/test_phase59_ws08_release_readiness.py"
+  ],
+  "BrudSmallV2Model": [
+    "tests/evaluation/test_phase60_ws06_capability_evaluation.py",
+    "tests/evaluation/test_phase59_ws05_training_safety.py",
+    "tests/evaluation/test_phase60_ws07_remediation.py",
+    "tests/evaluation/test_phase60_ws04_training_preparation.py",
+    "tests/evaluation/test_phase60_ws05_controlled_training.py",
+    "core_model/architecture/brud_small_v2.py",
+    "artifacts/candidates/phase60/run_capability_evaluation_ws06.py",
+    "artifacts/candidates/phase60/run_controlled_training_ws05.py",
+    "artifacts/candidates/phase60/ws07/run_ws07_stage_a_diagnostics.py",
+    "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py"
+  ],
+  "M": [
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase56_controlled_training.py",
+    "tests/evaluation/test_phase58_tokenizer_repair.py"
+  ],
+  "TinyM": [
+    "tests/evaluation/test_phase58_tokenizer_repair.py",
+    "tests/evaluation/test_phase58_tokenizer_repair.py"
+  ],
+  "RecordMemoryRequest": [
+    "backend/models/mini_brain_continuous_learning_center.py",
+    "backend/models/mini_brain_research_center.py"
+  ],
+  "ProviderOutput": [
+    "backend/models/mini_brain_continuous_learning_center.py",
+    "backend/models/mini_brain_research_center.py"
+  ],
+  "IngestProviderResultsRequest": [
+    "backend/models/mini_brain_continuous_learning_center.py",
+    "backend/models/mini_brain_research_center.py"
+  ],
+  "AdminReviewRequest": [
+    "backend/models/mini_brain_continuous_learning_center.py",
+    "backend/models/mini_brain_language_intelligence.py",
+    "backend/models/mini_brain_evaluation_center.py",
+    "backend/models/mini_brain_training_pipeline.py",
+    "backend/models/mini_brain_external_ai_gateway.py",
+    "backend/models/mini_brain_release_pipeline.py",
+    "backend/models/mini_brain_dataset_evolution.py",
+    "backend/models/mini_brain_continuous_learning.py",
+    "backend/models/mini_brain_learning_supervisor.py",
+    "backend/models/mini_brain_multimodal_dataset_generator.py",
+    "backend/models/mini_brain_vision_rag.py",
+    "backend/models/mini_brain_vision_intelligence.py",
+    "backend/models/mini_brain_release_governance.py",
+    "backend/models/mini_brain_vision_model.py"
+  ],
+  "RuntimeEventRequest": [
+    "backend/models/mini_brain_plugin_governance.py",
+    "backend/models/mini_brain_plugin_runtime.py"
+  ],
+  "BilingualLabel": [
+    "backend/models/local_setup.py",
+    "backend/models/mini_brain_health.py",
+    "backend/models/mini_brain_runtime_manager.py"
+  ],
+  "HardwareProbeResponse": [
+    "backend/models/local_setup.py",
+    "backend/models/mini_brain_runtime_manager.py"
+  ],
+  "QualityAssessRequest": [
+    "backend/models/corpus.py",
+    "backend/models/dataset_quality.py"
+  ],
+  "BuildCreate": [
+    "backend/models/corpus.py",
+    "backend/models/dataset_versions.py"
+  ],
+  "ExportCreate": [
+    "backend/models/corpus.py",
+    "backend/models/dataset_versions.py"
+  ],
+  "CreateSessionRequest": [
+    "backend/models/mini_brain_language_intelligence.py",
+    "backend/models/mini_brain_evaluation_center.py",
+    "backend/models/mini_brain_pipeline_coordinator.py",
+    "backend/models/mini_brain_training_pipeline.py",
+    "backend/models/mini_brain_external_ai_gateway.py",
+    "backend/models/mini_brain_dataset_evolution.py",
+    "backend/models/mini_brain_multimodal_dataset_generator.py",
+    "backend/models/mini_brain_vision_rag.py",
+    "backend/models/mini_brain_research_center.py",
+    "backend/models/mini_brain_vision_intelligence.py",
+    "backend/models/mini_brain_release_governance.py",
+    "backend/models/mini_brain_vision_model.py"
+  ],
+  "CollectDatasetsRequest": [
+    "backend/models/mini_brain_evaluation_center.py",
+    "backend/models/mini_brain_training_pipeline.py",
+    "backend/models/mini_brain_release_governance.py"
+  ],
+  "ReviewActionRequest": [
+    "backend/models/semantic_chunks.py",
+    "backend/models/documents.py"
+  ],
+  "UsageCheckRequest": [
+    "backend/models/semantic_chunks.py",
+    "backend/models/manual_data.py",
+    "backend/models/data_sources.py"
+  ],
+  "AssignmentPatch": [
+    "backend/models/inference_runtime.py",
+    "backend/models/tokenizers.py"
+  ],
+  "DiagnosticGenerateRequest": [
+    "backend/models/inference_runtime.py",
+    "backend/models/instruction_tuning.py"
+  ],
+  "AuthorizeRequest": [
+    "backend/models/mini_brain_external_ai_gateway.py",
+    "backend/models/mini_brain_training_engine.py"
+  ],
+  "RetrievalProfileCreate": [
+    "backend/models/conversation_memory.py",
+    "backend/models/rag.py"
+  ],
+  "RetrievalProfilePatch": [
+    "backend/models/conversation_memory.py",
+    "backend/models/rag.py"
+  ],
+  "EvaluationSuiteCreate": [
+    "backend/models/conversation_memory.py",
+    "backend/models/rag.py"
+  ],
+  "EvaluationFixtureCreate": [
+    "backend/models/conversation_memory.py",
+    "backend/models/rag.py"
+  ],
+  "EvaluationRunCreate": [
+    "backend/models/conversation_memory.py",
+    "backend/models/rag.py"
+  ],
+  "LoadModelRequest": [
+    "backend/models/mini_brain_runtime.py",
+    "backend/models/mini_brain_runtime_manager.py"
+  ],
+  "RagAdminReviewRequest": [
+    "backend/models/mini_brain_dataset_evolution.py",
+    "backend/models/mini_brain_research_center.py"
+  ],
+  "RunRagEvaluationRequest": [
+    "backend/models/mini_brain_dataset_evolution.py",
+    "backend/models/mini_brain_learning_supervisor.py",
+    "backend/models/mini_brain_research_center.py"
+  ],
+  "DiagnosticsResponse": [
+    "backend/models/mini_brain_provider_settings.py",
+    "backend/models/mini_brain_llm_runtime.py"
+  ],
+  "HumanReviewCreate": [
+    "backend/models/feedback.py",
+    "backend/models/model_evaluation.py"
+  ],
+  "RegressionRunCreate": [
+    "backend/models/feedback.py",
+    "backend/api/routes/production_readiness.py"
+  ],
+  "RollbackPlanCreate": [
+    "backend/models/model_release.py",
+    "backend/api/routes/production_readiness.py"
+  ],
+  "ReviewRequest": [
+    "backend/models/datasets.py",
+    "backend/models/manual_data.py"
+  ],
+  "DatasetVersionCreate": [
+    "backend/models/domain.py",
+    "backend/models/dataset_versions.py"
+  ],
+  "AdminApprovalRecord": [
+    "backend/models/domain.py",
+    "core_model/release/phase43_promotion_governance.py"
+  ],
+  "ConversationTurn": [
+    "backend/models/manual_data.py",
+    "core_model/inference_runtime/context_builder.py"
+  ],
+  "SplitConfiguration": [
+    "backend/models/dataset_versions.py",
+    "core_model/pipeline_integration/split_policy.py"
+  ],
+  "CompareRequest": [
+    "backend/models/tokenizers.py",
+    "backend/api/routes/incremental_training.py"
+  ],
+  "VoiceAudioDecodeError": [
+    "backend/api/routes/public_voice_runtime.py",
+    "backend/api/routes/mini_brain_voice_runtime.py"
+  ],
+  "ExpiryRequest": [
+    "backend/api/routes/production_readiness.py",
+    "backend/api/routes/incremental_training.py"
+  ],
+  "ApprovalRequestRequest": [
+    "backend/api/routes/rag_sandbox.py",
+    "backend/api/routes/dataset_sample_import.py"
+  ],
+  "ApprovalDecisionRequest": [
+    "backend/api/routes/rag_sandbox.py",
+    "backend/api/routes/dataset_sample_import.py"
+  ],
+  "ApprovalRejectRequest": [
+    "backend/api/routes/rag_sandbox.py",
+    "backend/api/routes/dataset_sample_import.py"
+  ],
+  "AcceptanceDecisionRequest": [
+    "backend/api/routes/rag_sandbox.py",
+    "backend/api/routes/incremental_training.py"
+  ],
+  "DeletionRequestRequest": [
+    "backend/api/routes/rag_sandbox.py",
+    "backend/api/routes/dataset_sample_import.py"
+  ],
+  "FeedbackRepository": [
+    "backend/database/repositories/phase2.py",
+    "backend/database/repositories/feedback.py"
+  ],
+  "RoutingDecision": [
+    "core_model/release/phase44_runtime_canary.py",
+    "core_model/capabilities/smart_router.py"
+  ],
+  "ResourceGuard": [
+    "core_model/training/phase48_training_worker.py",
+    "core_model/training/phase47_long_run_orchestrator.py"
+  ],
+  "GuardAction": [
+    "core_model/training/phase54_memorization_guard.py",
+    "core_model/training/phase53_memorization_guard.py",
+    "core_model/training/phase56_memorization_guard.py"
+  ],
+  "RecordExposureTelemetry": [
+    "core_model/training/phase54_memorization_guard.py",
+    "core_model/training/phase56_memorization_guard.py"
+  ],
+  "GovernedRecord": [
+    "core_model/corpus/phase52_corpus_quality_engine.py",
+    "core_model/corpus/phase53_corpus_expander.py"
+  ],
+  "TamilNormalizationError": [
+    "core_model/corpus/phase47_corpus_expander.py",
+    "core_model/corpus/phase46_corpus_scaler.py"
+  ],
+  "CheckpointCapabilitySnapshot": [
+    "core_model/evaluation/phase46_capability_evaluator.py",
+    "core_model/evaluation/phase42_capability_progression.py"
+  ],
+  "OpenDomainStatus": [
+    "core_model/evaluation/phase51_capability_evaluator.py",
+    "core_model/evaluation/phase50_capability_evaluator.py"
+  ],
+  "CausalityVerdict": [
+    "core_model/evaluation/phase51_capability_evaluator.py",
+    "core_model/evaluation/phase50_capability_evaluator.py"
+  ]
+}

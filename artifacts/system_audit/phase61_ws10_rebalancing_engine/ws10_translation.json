@@ -1,0 +1,12 @@
+{
+  "translation_modules": {
+    "dataset_expansion_engine": "core_model/admin_assistant/dataset_expansion_engine.py",
+    "tanglish_renderer": "core_model/admin_assistant/localization/tanglish_renderer.py",
+    "classes_verified": [
+      "DatasetExpansionEngine",
+      "BilingualTranslationEngine",
+      "TanglishTransliterationEngine",
+      "to_tanglish"
+    ]
+  }
+}

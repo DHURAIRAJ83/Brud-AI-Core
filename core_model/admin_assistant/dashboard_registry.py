@@ -812,9 +812,83 @@ DASHBOARD_PAGES: tuple[PageEntry, ...] = (
         ),
         related_page_ids=("admin_assistant", "production_readiness"),
         safety_note={
-            "en": "Training execution is simulation-only today -- real training backends deliberately raise an unavailable-backend error rather than silently claiming to have trained a model. Plugin execution has no container or process isolation; guards are cooperative, not adversarial.",
-            "ta": "Training execution தற்போது simulation-only -- real training backends ஒரு model-ஐ train செய்ததாக மறைமுகமாக claim செய்யாமல், வேண்டுமென்றே unavailable-backend error-ஐ raise செய்யும். Plugin execution-க்கு container அல்லது process isolation கிடையாது; guards cooperative-ஆகவே உள்ளன, adversarial அல்ல.",
+            "en": "Training execution: simulation and CPU modes never run real weights (CPU is a disclosed, always-unavailable stub). GPU mode drives the real trainer (Phase 2.7C) and requires an admin-selected, architecture-verified Core Model Version (Phase 2.7E) -- training never auto-releases, auto-activates, or auto-assigns that model to Public Chat; those remain separate, governed steps. Plugin execution has no container or process isolation; guards are cooperative, not adversarial.",
+            "ta": "Training execution: simulation மற்றும் CPU modes real weights-ஐ ஒருபோதும் run செய்யாது (CPU எப்போதும் unavailable-ஆக disclose செய்யப்பட்ட stub). GPU mode real trainer-ஐ (Phase 2.7C) இயக்குகிறது, மேலும் admin தேர்ந்தெடுத்த, architecture-verified Core Model Version தேவை (Phase 2.7E) -- training அந்த model-ஐ ஒருபோதும் தானாக release/activate/Public Chat-க்கு assign செய்யாது; அவை தனித்தனி, governed படிகளாகவே உள்ளன. Plugin execution-க்கு container அல்லது process isolation கிடையாது; guards cooperative-ஆகவே உள்ளன, adversarial அல்ல.",
         },
+    ),
+    # Phase 16.10 (F-3): 5 real, live production pages that existed in
+    # Sidebar.jsx/App.jsx but were never added here -- verified against
+    # each page's own component/NOTICE text, not invented.
+    PageEntry(
+        page_id="pilot_operations",
+        nav_key="Pilot Operations",
+        group=None,
+        implemented=True,
+        mode="system",
+        title={"en": "Pilot Operations", "ta": "Pilot Operations"},
+        purpose={
+            "en": "MB-48: a single, lightweight, read-only view of what an internal pilot admin needs to check first -- reuses the exact same endpoints the widget, RAG page, and System page already call. Adds no new backend surface.",
+            "ta": "MB-48: internal pilot admin ஒருவர் முதலில் சரிபார்க்க வேண்டியதற்கான ஒரு எளிய, read-only பார்வை -- widget, RAG பக்கம், System பக்கம் ஏற்கனவே அழைக்கும் அதே endpoints-ஐ மீண்டும் பயன்படுத்துகிறது. புதிய backend surface எதுவும் சேர்க்கவில்லை.",
+        },
+        related_page_ids=("system", "pilot_metrics"),
+        safety_note={"en": "Read-only.", "ta": "படிக்க மட்டுமே."},
+    ),
+    PageEntry(
+        page_id="pilot_metrics",
+        nav_key="Pilot Metrics",
+        group=None,
+        implemented=True,
+        mode="system",
+        title={"en": "Pilot Metrics", "ta": "Pilot Metrics"},
+        purpose={
+            "en": "MB-48: internal pilot usage telemetry -- every counter shown is a row already written to the existing audit_logs table (no external analytics service, no new table). Counts are cumulative since this database was created.",
+            "ta": "MB-48: internal pilot usage telemetry -- காட்டப்படும் ஒவ்வொரு counter-உம் ஏற்கனவே உள்ள audit_logs table-இல் எழுதப்பட்ட ஒரு row தான் (வெளி analytics service இல்லை, புதிய table இல்லை). இந்த database உருவாக்கப்பட்டதிலிருந்து counts cumulative-ஆக உள்ளன.",
+        },
+        related_page_ids=("system", "pilot_operations"),
+        safety_note={"en": "Read-only.", "ta": "படிக்க மட்டுமே."},
+    ),
+    PageEntry(
+        page_id="data_workspace_wizard",
+        nav_key="Data Workspace Wizard",
+        group="Data",
+        implemented=True,
+        mode="data",
+        title={"en": "Data Workspace Wizard", "ta": "Data Workspace Wizard"},
+        purpose={
+            "en": "Upload a document, run OCR and cleanup, generate chunks, review AI-suggested SFT candidates in the AI Review Studio, approve them, and take the first real step of RAG ingestion -- reusing the exact same APIs the Documents, Chunk & Record Studio, and Knowledge & RAG pages already use.",
+            "ta": "ஒரு document-ஐ upload செய்து, OCR மற்றும் cleanup இயக்கி, chunks உருவாக்கி, AI Review Studio-இல் AI-suggested SFT candidates-ஐ review செய்து, approve செய்து, RAG ingestion-இன் முதல் real படியை எடுக்கவும் -- Documents, Chunk & Record Studio, Knowledge & RAG பக்கங்கள் ஏற்கனவே பயன்படுத்தும் அதே APIs-ஐ மீண்டும் பயன்படுத்துகிறது.",
+        },
+        related_page_ids=("documents", "chunk_studio", "knowledge_rag"),
+    ),
+    PageEntry(
+        page_id="gateway_dataset_rag",
+        nav_key="Gateway → Dataset/RAG",
+        group="Data",
+        implemented=True,
+        mode="rag",
+        title={"en": "Gateway → Dataset/RAG", "ta": "Gateway → Dataset/RAG"},
+        purpose={
+            "en": "MB-40/41: exports an admin_accepted External AI Gateway session into Dataset Studio, and, if requested, on into a RAG knowledge space and vector index -- in the same call. This page is admin-only and never changes what the public chatbot serves.",
+            "ta": "MB-40/41: admin_accepted ஆன External AI Gateway session ஒன்றை Dataset Studio-க்கு export செய்கிறது, மேலும் கோரப்பட்டால், அதே call-இல் RAG knowledge space மற்றும் vector index-க்குள்ளும் export செய்கிறது. இந்தப் பக்கம் admin-only, public chatbot வழங்குவதை ஒருபோதும் மாற்றாது.",
+        },
+        related_page_ids=("knowledge_rag",),
+        safety_note={
+            "en": "Admin-only; never changes what the public chatbot serves.",
+            "ta": "Admin-only; public chatbot வழங்குவதை ஒருபோதும் மாற்றாது.",
+        },
+    ),
+    PageEntry(
+        page_id="prompt_optimization",
+        nav_key="Prompt Optimization",
+        group=None,
+        implemented=True,
+        mode="model",
+        title={"en": "Prompt Optimization", "ta": "Prompt Optimization"},
+        purpose={
+            "en": "MB-04A: Prompt & Context Optimization -- a deterministic pipeline (language detection, template selection, context budgeting) that runs in front of whichever local or external model is currently loaded. The template used for a given question is always chosen automatically by the analyzed question, never picked by hand.",
+            "ta": "MB-04A: Prompt & Context Optimization -- language detection, template selection, context budgeting ஆகியவற்றைக் கொண்ட ஒரு deterministic pipeline, தற்போது load ஆகியிருக்கும் local அல்லது external model-க்கு முன்பாக இயங்குகிறது. ஒரு கேள்விக்கான template எப்போதும் analyzed question-ஐ வைத்து தானாகவே தேர்ந்தெடுக்கப்படுகிறது, கையால் அல்ல.",
+        },
+        related_page_ids=(),
     ),
 )
 

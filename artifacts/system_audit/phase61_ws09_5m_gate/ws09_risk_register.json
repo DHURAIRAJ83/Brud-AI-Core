@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS09-01",
+      "category": "Pretraining Deficit to 50M Target",
+      "description": "While the 5M milestone is 100% qualified (5.14M tokens), a remaining deficit of 44.86M tokens exists before the 50M pretraining target is reached.",
+      "severity": "MEDIUM",
+      "mitigation": "Aggressively expand Tamil and English technical prose collections in upcoming workstreams."
+    }
+  ]
+}

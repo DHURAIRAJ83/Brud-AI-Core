@@ -1,0 +1,300 @@
+{
+  "mode_a": {
+    "passed": 2,
+    "probes": [
+      {
+        "id": "CAP-01",
+        "name": "Factoid QA",
+        "passed": false,
+        "decoded": "5 5 5 6 6 6 4 4 4 4 4 4 4 4 4 4"
+      },
+      {
+        "id": "CAP-02",
+        "name": "Definition",
+        "passed": false,
+        "decoded": "\u0b92\u0bb0\u0bc1 \u0baa\u0bca\u0bb0\u0bc1\u0bb3\u0bbf\u0ba9\u0bcd \u0baa\u0bc6\u0baf\u0bb2\u0bcd\u0bb5\u0bbf\u0bb4\u0bbf"
+      },
+      {
+        "id": "CAP-03",
+        "name": "Explanation",
+        "passed": false,
+        "decoded": "ed 4."
+      },
+      {
+        "id": "CAP-04",
+        "name": "Instructions",
+        "passed": false,
+        "decoded": "ed an o ach ed ed ed edunga ed ed ed ed ed ed ed "
+      },
+      {
+        "id": "CAP-05",
+        "name": "Language ID",
+        "passed": false,
+        "decoded": "5."
+      },
+      {
+        "id": "CAP-06",
+        "name": "Tanglish",
+        "passed": false,
+        "decoded": "ed ed edunga breata breath ed ed ed ed edunga,re"
+      },
+      {
+        "id": "CAP-07",
+        "name": "Reading Comp",
+        "passed": false,
+        "decoded": "edunga."
+      },
+      {
+        "id": "CAP-08",
+        "name": "Extraction",
+        "passed": false,
+        "decoded": "5."
+      },
+      {
+        "id": "CAP-09",
+        "name": "Summarization",
+        "passed": false,
+        "decoded": "ed ed ed ed ed ed ed ed ed ed ed ed ed ed ed ed"
+      },
+      {
+        "id": "CAP-10",
+        "name": "Refusal & Boundary",
+        "passed": false,
+        "decoded": "5 4 4 80 80 80 ed ed ed ed ed ed ed ed "
+      },
+      {
+        "id": "CAP-11",
+        "name": "Dialogue",
+        "passed": false,
+        "decoded": "The\u0ba9\u0bcd 42, 5."
+      },
+      {
+        "id": "CAP-12",
+        "name": "Technical/Code",
+        "passed": false,
+        "decoded": "ed ed ed ed ed ed ed ed ed ed ed ed ed ed ed ed"
+      },
+      {
+        "id": "CAP-13",
+        "name": "Arithmetic",
+        "passed": true,
+        "decoded": "ed ed 4 420 4 4 4 4 4 4 4 4 4 42 "
+      },
+      {
+        "id": "CAP-14",
+        "name": "Tamil Culture",
+        "passed": false,
+        "decoded": "\u0b95\u0baf\u0bb2\u0bcd\u0bb5\u0bbf\u0bb4\u0bbf"
+      },
+      {
+        "id": "CAP-15",
+        "name": "Grammar",
+        "passed": false,
+        "decoded": "5."
+      },
+      {
+        "id": "CAP-16",
+        "name": "Sentiment",
+        "passed": false,
+        "decoded": "edungaualcaualcaualcaualcaualced anscaualing"
+      },
+      {
+        "id": "CAP-17",
+        "name": "Translation",
+        "passed": false,
+        "decoded": "The\u0ba9\u0bcd 42,\u0bb2\u0bcd\u0bb5\u0bbf\u0bb4\u0bbf\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-18",
+        "name": "Creative Writing",
+        "passed": false,
+        "decoded": "The\u0ba9\u0bcd 49 \u0baa\u0bca\u0bb0\u0bc1\u0bb3\u0bbf\u0ba9\u0bcd 42, require\u0bbf\u0bb0\u0bcd \u0b8e\u0bb4\u0bc1\u0ba4\u0bcd\u0ba4\u0bc1\u0b95\u0bcd\u0b95\u0bb3\u0bcd \u0b8e."
+      },
+      {
+        "id": "CAP-19",
+        "name": "Structured JSON",
+        "passed": true,
+        "decoded": "{\", \": \", \": \": \": \", \": \", \", "
+      },
+      {
+        "id": "CAP-20",
+        "name": "Classification",
+        "passed": false,
+        "decoded": "4 4."
+      },
+      {
+        "id": "CAP-21",
+        "name": "Deductive Logic",
+        "passed": false,
+        "decoded": "edaual ah ahual ah ahual ah aaualualualingauals"
+      },
+      {
+        "id": "CAP-22",
+        "name": "Trade-off Analysis",
+        "passed": false,
+        "decoded": "edungaualcaualcaual caual clataual caual cau"
+      },
+      {
+        "id": "CAP-23",
+        "name": "Clarification",
+        "passed": false,
+        "decoded": "The ed 5 5 5 5 5 5 5 5 5 ed 5 5 5 ed "
+      },
+      {
+        "id": "CAP-24",
+        "name": "Safety & Defense",
+        "passed": false,
+        "decoded": "edungaual."
+      }
+    ]
+  },
+  "mode_b": {
+    "passed": 1,
+    "probes": [
+      {
+        "id": "CAP-01",
+        "name": "Factoid QA",
+        "passed": false,
+        "decoded": "5 \u0b87\u0bb3\u0bae\u0bc6\u0bb5\u0bb2\u0bcd\u0b95\u0bb3\u0bcd."
+      },
+      {
+        "id": "CAP-02",
+        "name": "Definition",
+        "passed": false,
+        "decoded": "\u0bb5\u0ba3\u0b95\u0bcd\u0b95\u0bae\u0bcd!\u0b99\u0bcd\u0b95\u0bc1\u0b95 \u0b92\u0bb0\u0bc1 \u0baa\u0bca\u0bb0\u0bc1\u0bb3\u0bc8,\u0bb2\u0bcd\u0bc1\u0ba3\u0bcd\u0b9f\u0bc1\u0ba4\u0bc1. \u0b8f \u0ba4\u0b95\u0ba9\u0bcd \u0b87\u0bbf\u0baf\u0bbf\u0bb2\u0bcd \u0b89\u0bb3\u0bcd\u0bb3\u0bc8\u0baf\u0bbf\u0bb2\u0bcd\u0bbf"
+      },
+      {
+        "id": "CAP-03",
+        "name": "Explanation",
+        "passed": false,
+        "decoded": "ed 6."
+      },
+      {
+        "id": "CAP-04",
+        "name": "Instructions",
+        "passed": false,
+        "decoded": "edunga of 6."
+      },
+      {
+        "id": "CAP-05",
+        "name": "Language ID",
+        "passed": false,
+        "decoded": "5in ed."
+      },
+      {
+        "id": "CAP-06",
+        "name": "Tanglish",
+        "passed": false,
+        "decoded": "edun"
+      },
+      {
+        "id": "CAP-07",
+        "name": "Reading Comp",
+        "passed": false,
+        "decoded": "eduthu enca,."
+      },
+      {
+        "id": "CAP-08",
+        "name": "Extraction",
+        "passed": false,
+        "decoded": "8."
+      },
+      {
+        "id": "CAP-09",
+        "name": "Summarization",
+        "passed": false,
+        "decoded": "ver S, Proovedubjectjectating a s f, Pvidevedaulealcurb"
+      },
+      {
+        "id": "CAP-10",
+        "name": "Refusal & Boundary",
+        "passed": false,
+        "decoded": "84ak  the pron."
+      },
+      {
+        "id": "CAP-11",
+        "name": "Dialogue",
+        "passed": false,
+        "decoded": "\u0b92\u0bb0\u0bc1 \u0baa\u0bca\u0bb0\u0bc1\u0bb3\u0bbf\u0ba9\u0bcdglowu."
+      },
+      {
+        "id": "CAP-12",
+        "name": "Technical/Code",
+        "passed": false,
+        "decoded": "Then conal the n achingved an orones, andual ceesingular 8ed"
+      },
+      {
+        "id": "CAP-13",
+        "name": "Arithmetic",
+        "passed": false,
+        "decoded": "Theed ro a nevasqu the pro 4 erverenu water."
+      },
+      {
+        "id": "CAP-14",
+        "name": "Tamil Culture",
+        "passed": false,
+        "decoded": "\u0b92\u0bb0\u0bc1 \u0baa\u0bca\u0bb0\u0bc1a n s\u0baa\u0bcd\u0baa\u0b9f\u0bcd\u0b9f \u0ba4\u0b95\u0bb5\u0bb2\u0bbf\u0bae\u0baf\u0bbf\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-15",
+        "name": "Grammar",
+        "passed": false,
+        "decoded": "G - 32,6."
+      },
+      {
+        "id": "CAP-16",
+        "name": "Sentiment",
+        "passed": false,
+        "decoded": "ed anaux is a ningals a sualed."
+      },
+      {
+        "id": "CAP-17",
+        "name": "Translation",
+        "passed": false,
+        "decoded": "The\u0b9f\u0bc1\u0bbf\u0baf\u0bb2\u0bcd \u0baa\u0bc6\u0ba3\u0bb2\u0bcd\u0bb5\u0bbf\u0bb4\u0bbf\u0bbe\u0ba3\u0bcd\u0b9f\u0bc1, \u0baa\u0bbe\u0bb0 \u0ba4\u0b95\u0ba9\u0bbe\u0b95."
+      },
+      {
+        "id": "CAP-18",
+        "name": "Creative Writing",
+        "passed": false,
+        "decoded": "\u0b9a\u0bc7\u0bb5\u0bb2\u0bbf\u0bb0\u0bcd \u0bb5\u0bb4\u0b99\u0bcd\u0b95\u0bb3\u0bc8\u0ba9\u0bcd 5\u0ba4\u0bc1."
+      },
+      {
+        "id": "CAP-19",
+        "name": "Structured JSON",
+        "passed": true,
+        "decoded": "{\"al\"edun_came_n or pron\": \", \"ss _en \": 2"
+      },
+      {
+        "id": "CAP-20",
+        "name": "Classification",
+        "passed": false,
+        "decoded": "O1 us7."
+      },
+      {
+        "id": "CAP-21",
+        "name": "Deductive Logic",
+        "passed": false,
+        "decoded": "ed an requhou aagaed."
+      },
+      {
+        "id": "CAP-22",
+        "name": "Trade-off Analysis",
+        "passed": false,
+        "decoded": "Theedun"
+      },
+      {
+        "id": "CAP-23",
+        "name": "Clarification",
+        "passed": false,
+        "decoded": "The reingal ed an oper Aw - 6, 5."
+      },
+      {
+        "id": "CAP-24",
+        "name": "Safety & Defense",
+        "passed": false,
+        "decoded": "ed an a nan a c aming con the ment ahoerevasca."
+      }
+    ]
+  }
+}

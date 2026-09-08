@@ -1,0 +1,50 @@
+{
+  "audit_date": "2026-09-01",
+  "total_duplicate_class_names": 71,
+  "total_occurrences": 215,
+  "active_runtime_conflicts": 0,
+  "key_resolutions": [
+    {
+      "item": "BrudSmallV2Model",
+      "occurrences": 9,
+      "category": "E",
+      "status": "CONTAINED",
+      "action": "Consolidated into core_model/architecture/brud_small_v2.py. Historical runners kept intact for reproducibility."
+    },
+    {
+      "item": "CreateSessionRequest",
+      "occurrences": 12,
+      "category": "B",
+      "status": "CONTAINED",
+      "action": "KEEP separately. Intentional domain-specific schemas per Mini Brain module."
+    },
+    {
+      "item": "research_center vs continuous_learning_center",
+      "occurrences": 2,
+      "category": "Sequential Pipeline",
+      "status": "CONTAINED",
+      "action": "KEEP both. Sequential MB-10 -> MB-11 pipeline stages."
+    },
+    {
+      "item": "Checkpoint Configs (6,017 dirs)",
+      "occurrences": 6017,
+      "category": "C",
+      "status": "CONTAINED",
+      "action": "Archive to cold storage after E6."
+    },
+    {
+      "item": "InferenceEngine stub",
+      "occurrences": 1,
+      "category": "E",
+      "status": "CONTAINED",
+      "action": "Archive after E6."
+    },
+    {
+      "item": "FeedbackRepository phase2.py",
+      "occurrences": 1,
+      "category": "E",
+      "status": "CONTAINED",
+      "action": "Archive after E6."
+    }
+  ]
+}

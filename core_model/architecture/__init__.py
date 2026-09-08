@@ -1,12 +1,15 @@
-"""Core model architecture contracts."""
+"""Core model architecture contracts and canonical implementations."""
 
 from dataclasses import dataclass
 from enum import StrEnum
 
 from core_model.architecture.config import BrudModelConfig, micro_preset, tiny_preset
+from core_model.architecture.brud_small_v2 import BrudSmallV2Model, BrudSmallScaledModel
 
 __all__ = [
     "BrudModelConfig",
+    "BrudSmallV2Model",
+    "BrudSmallScaledModel",
     "ModelConfig",
     "ModelStatus",
     "micro_preset",

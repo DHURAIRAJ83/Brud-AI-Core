@@ -1,0 +1,5 @@
+{
+  "candidate_dataset_path": "data/candidate/foundation_pilot_v001/candidate_augmentation_pilot.jsonl",
+  "records": 300,
+  "isolation_verified": true
+}

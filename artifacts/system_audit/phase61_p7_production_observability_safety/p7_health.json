@@ -1,0 +1,9 @@
+{
+  "fail_closed": true,
+  "evaluated_states": [
+    "HEALTHY",
+    "DEGRADED",
+    "CRITICAL",
+    "UNKNOWN"
+  ]
+}

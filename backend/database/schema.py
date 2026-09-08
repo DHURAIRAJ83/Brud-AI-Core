@@ -1,6 +1,6 @@
 """Initial SQLite schema for Brud AI Phase 1."""
 
-SCHEMA_VERSION = 70
+SCHEMA_VERSION = 78
 
 INITIAL_SCHEMA = """
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -10532,6 +10532,9 @@ CREATE TABLE IF NOT EXISTS document_sft_candidates (
     generation_method TEXT NOT NULL,
     content_hash TEXT NOT NULL,
     duplicate_of_public_id TEXT,
+    content_safety_status TEXT NOT NULL DEFAULT 'not_checked',
+    content_safety_findings_json TEXT,
+    content_safety_checked_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (document_source_id) REFERENCES document_sources(id) ON DELETE CASCADE,
@@ -13916,4 +13919,390 @@ CREATE TRIGGER IF NOT EXISTS mini_brain_runtime_memory_immutable_update
 CREATE TRIGGER IF NOT EXISTS mini_brain_runtime_memory_immutable_delete
     BEFORE DELETE ON mini_brain_runtime_memory
     BEGIN SELECT RAISE(ABORT, 'mini brain runtime memory is permanent and append-only'); END;
+"""
+
+MIGRATION_071_NAME = "071_public_chat_routing_events_resolved_route_fix"
+# `resolved_route`'s CHECK constraint was accidentally created (migration 040)
+# without 'trusted_web'/'tool', even though the sibling `recommended_route`
+# column already allowed both and the application legitimately assigns both
+# to `resolved_route` (see public_chat_routing_service.py). SQLite has no
+# ALTER TABLE for CHECK constraints, so this rebuilds the table with the
+# corrected constraint via the standard create-copy-drop-rename sequence,
+# preserving every row (including AUTOINCREMENT ids), all three indexes,
+# and both append-only triggers exactly as migration 040 defined them.
+PHASE71_SCHEMA = """
+CREATE TABLE public_chat_routing_events_v71 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    classification_decision_public_id TEXT,
+    recommended_route TEXT NOT NULL CHECK (recommended_route IN (
+        'core_model','approved_rag','memory','clarify','refuse','insufficient',
+        'trusted_web','tool'
+    )),
+    resolved_route TEXT NOT NULL CHECK (resolved_route IN (
+        'core_model','approved_rag','memory','clarify','refuse','insufficient',
+        'trusted_web','tool'
+    )),
+    route_status TEXT NOT NULL CHECK (route_status IN ('executable','unavailable','blocked')),
+    evidence_status TEXT NOT NULL CHECK (evidence_status IN (
+        'grounded','partially_grounded','insufficient','conflicting','model_only','none'
+    )),
+    detected_language TEXT NOT NULL,
+    answer_language TEXT,
+    safety_status TEXT NOT NULL CHECK (safety_status IN (
+        'safe','caution','refused','output_blocked','review_flagged'
+    )),
+    fallbacks_attempted_json TEXT NOT NULL DEFAULT '[]',
+    latency_ms INTEGER,
+    error_code TEXT,
+    conversation_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO public_chat_routing_events_v71 (
+    id, public_id, request_id, input_hash, classification_decision_public_id,
+    recommended_route, resolved_route, route_status, evidence_status,
+    detected_language, answer_language, safety_status, fallbacks_attempted_json,
+    latency_ms, error_code, conversation_id, created_at
+)
+SELECT
+    id, public_id, request_id, input_hash, classification_decision_public_id,
+    recommended_route, resolved_route, route_status, evidence_status,
+    detected_language, answer_language, safety_status, fallbacks_attempted_json,
+    latency_ms, error_code, conversation_id, created_at
+FROM public_chat_routing_events;
+
+DROP TABLE public_chat_routing_events;
+
+ALTER TABLE public_chat_routing_events_v71 RENAME TO public_chat_routing_events;
+
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_resolved_route
+    ON public_chat_routing_events(resolved_route);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_created_at
+    ON public_chat_routing_events(created_at);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_request_id
+    ON public_chat_routing_events(request_id);
+
+CREATE TRIGGER IF NOT EXISTS public_chat_routing_events_immutable_update
+    BEFORE UPDATE ON public_chat_routing_events
+    BEGIN SELECT RAISE(ABORT, 'public chat routing events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS public_chat_routing_events_immutable_delete
+    BEFORE DELETE ON public_chat_routing_events
+    BEGIN SELECT RAISE(ABORT, 'public chat routing events are append-only'); END;
+"""
+
+MIGRATION_072_NAME = "072_public_chat_routing_events_evidence_status_fix"
+# `evidence_status`'s CHECK constraint (migration 040, carried forward
+# unchanged by migration 071) was missing 'deterministic', even though
+# public_chat_routing_service.py legitimately assigns it for every
+# deterministic-tool-routed response (see _execute_tool_route). This was
+# masked until migration 071 fixed the sibling `resolved_route` constraint
+# for 'tool' -- only then did tool-routed INSERTs get far enough to hit
+# this second, independent constraint. Same rebuild pattern as migration
+# 071: preserves every row (including AUTOINCREMENT ids), all three
+# indexes, and both append-only triggers exactly as before.
+PHASE72_SCHEMA = """
+CREATE TABLE public_chat_routing_events_v72 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    public_id TEXT NOT NULL UNIQUE,
+    request_id TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    classification_decision_public_id TEXT,
+    recommended_route TEXT NOT NULL CHECK (recommended_route IN (
+        'core_model','approved_rag','memory','clarify','refuse','insufficient',
+        'trusted_web','tool'
+    )),
+    resolved_route TEXT NOT NULL CHECK (resolved_route IN (
+        'core_model','approved_rag','memory','clarify','refuse','insufficient',
+        'trusted_web','tool'
+    )),
+    route_status TEXT NOT NULL CHECK (route_status IN ('executable','unavailable','blocked')),
+    evidence_status TEXT NOT NULL CHECK (evidence_status IN (
+        'grounded','partially_grounded','insufficient','conflicting','model_only','none',
+        'deterministic'
+    )),
+    detected_language TEXT NOT NULL,
+    answer_language TEXT,
+    safety_status TEXT NOT NULL CHECK (safety_status IN (
+        'safe','caution','refused','output_blocked','review_flagged'
+    )),
+    fallbacks_attempted_json TEXT NOT NULL DEFAULT '[]',
+    latency_ms INTEGER,
+    error_code TEXT,
+    conversation_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO public_chat_routing_events_v72 (
+    id, public_id, request_id, input_hash, classification_decision_public_id,
+    recommended_route, resolved_route, route_status, evidence_status,
+    detected_language, answer_language, safety_status, fallbacks_attempted_json,
+    latency_ms, error_code, conversation_id, created_at
+)
+SELECT
+    id, public_id, request_id, input_hash, classification_decision_public_id,
+    recommended_route, resolved_route, route_status, evidence_status,
+    detected_language, answer_language, safety_status, fallbacks_attempted_json,
+    latency_ms, error_code, conversation_id, created_at
+FROM public_chat_routing_events;
+
+DROP TABLE public_chat_routing_events;
+
+ALTER TABLE public_chat_routing_events_v72 RENAME TO public_chat_routing_events;
+
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_resolved_route
+    ON public_chat_routing_events(resolved_route);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_created_at
+    ON public_chat_routing_events(created_at);
+CREATE INDEX IF NOT EXISTS ix_public_chat_routing_events_request_id
+    ON public_chat_routing_events(request_id);
+
+CREATE TRIGGER IF NOT EXISTS public_chat_routing_events_immutable_update
+    BEFORE UPDATE ON public_chat_routing_events
+    BEGIN SELECT RAISE(ABORT, 'public chat routing events are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS public_chat_routing_events_immutable_delete
+    BEFORE DELETE ON public_chat_routing_events
+    BEGIN SELECT RAISE(ABORT, 'public chat routing events are append-only'); END;
+"""
+
+MIGRATION_073_NAME = "073_document_sft_candidate_content_safety_gate"
+# Phase 2.7B: `document_sft_candidates` had no field recording whether a
+# candidate's own instruction/context/response text had ever been screened
+# by the project's real content-safety detectors (prompt injection, secret/
+# credential, PII, XSS/SQL-injection payload, harmful-content) before
+# `DocumentSftCandidateGenerationService.review()`/`bulk_approve()` allowed
+# it to become an approved training record -- approval was previously
+# gated on `rights_status` alone. These three columns let the approval path
+# persist the outcome of that screening (category labels only, never
+# matched substrings) so `quality_status='approved'` now provably implies
+# `content_safety_status='passed'`, and so the safety state is visible
+# through the existing candidate-listing APIs without a new endpoint.
+# Deliberately no CHECK constraint here (consistent with every other
+# incrementally-added column in this file, e.g. PHASE20_COLUMNS/
+# PHASE2_COLUMNS) -- valid-value enforcement lives in the service layer,
+# which is also where the actual gate logic lives.
+PHASE73_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "document_sft_candidates": [
+        ("content_safety_status", "TEXT NOT NULL DEFAULT 'not_checked'"),
+        ("content_safety_findings_json", "TEXT"),
+        ("content_safety_checked_at", "TEXT"),
+    ],
+}
+
+MIGRATION_074_NAME = "074_mini_brain_training_core_model_identity"
+# Phase 2.7E: closes the identity gap Phase 2.7D's own audit found --
+# `mini_brain_training_jobs` (MB-22's own job table) had no way to
+# reference which real `core_model_versions` row it trains, even though
+# `pretraining_jobs`/`pretraining_checkpoints` (the production job/worker
+# system) have required this exact reference (`core_model_version_id`)
+# since Phase 9. MB-22 gets its own soft `core_model_version_public_id`
+# reference on both its job and checkpoint rows, following this file's
+# own established convention for incrementally-added references (e.g.
+# PHASE10_COLUMNS' `best_checkpoint_public_id`, `latest_coverage_public_id`)
+# -- a plain nullable TEXT public_id, not an inline `REFERENCES` FK
+# (SQLite's `ALTER TABLE ADD COLUMN` handles FK constraints unreliably
+# across existing rows; validity is enforced service-side, exactly like
+# every other incrementally-added column in this file).
+#
+# Nullable, not required: every historical simulation/cpu-mode job
+# remains valid with no value here (this column means nothing for a
+# non-real training run). The service layer requires it -- and validates
+# the referenced Core Model Version is real and at least
+# `architecture_verified` -- only when `execution_mode='gpu'`, mirroring
+# the exact eligibility rule `PretrainingService._references()` already
+# enforces for the production job system, not a new invented rule.
+PHASE74_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "mini_brain_training_jobs": [
+        ("core_model_version_public_id", "TEXT"),
+    ],
+    "mini_brain_training_checkpoints": [
+        ("core_model_version_public_id", "TEXT"),
+    ],
+}
+
+MIGRATION_075_NAME = "075_mini_brain_pretraining_checkpoint_handoff"
+# Phase 2.7F: closes the governed-handoff gap Phase 2.7E documented --
+# an MB-22 checkpoint had real identity (Phase 2.7E) but no row in
+# `pretraining_checkpoints`, so `ModelReleaseService._resolve_checkpoint()`
+# could never find it. Closing that legitimately requires MB-22's real
+# training run to reference a real `dataset_versions` row (the same
+# eligibility rule `PretrainingService._references()` already enforces:
+# `status IN ('ready','archived')`) -- `pretraining_jobs.dataset_version_id`
+# is NOT NULL with no way to represent "no dataset," and this file's
+# convention is never to fabricate a required reference (see this
+# session's own Phase 2.7D/2.7E precedent: real rows built through real
+# service calls, or explicit, honestly-labeled fixtures -- never fake
+# production data).
+#
+# `mini_brain_training_jobs.dataset_version_public_id` -- same nullable-
+# TEXT-public_id convention as PHASE74_COLUMNS; required by the service
+# layer only for execution_mode='gpu', identical rule to Core Model
+# Version in migration 074.
+#
+# `mini_brain_training_jobs.pretraining_job_public_id` -- set once (by
+# the new handoff service, never by MB-22's own service file) when this
+# job's first checkpoint is legitimately registered into the real
+# `pretraining_jobs` table. This is the explicit cross-reference Phase
+# 2.7F's own mission text calls for instead of two contradictory job
+# identities: `mini_brain_training_jobs` remains MB-22's own real,
+# governed 14-stage workflow identity; the referenced `pretraining_jobs`
+# row is the real, existing table `pretraining_checkpoints`/
+# `ModelReleaseService` already require a checkpoint to belong to -- not
+# a second, competing "fake" job.
+#
+# `mini_brain_training_checkpoints.pretraining_checkpoint_public_id` --
+# set once per MB-22 checkpoint, the moment (and only once) that specific
+# checkpoint is registered into `pretraining_checkpoints`; doubles as the
+# duplicate-registration guard (a checkpoint with this already set is
+# never re-registered).
+PHASE75_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "mini_brain_training_jobs": [
+        ("dataset_version_public_id", "TEXT"),
+        ("pretraining_job_public_id", "TEXT"),
+    ],
+    "mini_brain_training_checkpoints": [
+        ("pretraining_checkpoint_public_id", "TEXT"),
+    ],
+}
+
+MIGRATION_076_NAME = "076_mini_brain_training_metrics_unique_step"
+# Phase 2.8F: closes a real, reproduced-with-genuinely-independent-OS-
+# processes multi-worker gap. `mini_brain_training_checkpoints` already
+# has a real UNIQUE index on (job_id, checkpoint_name) -- the DB itself,
+# not just application code, is what actually prevents two concurrent
+# workers from both inserting a checkpoint row for the same step. The
+# metrics table had no equivalent: `ix_mini_brain_training_metrics_job_step`
+# was a plain (non-unique) index, so two independent OS processes that
+# both reconstruct their own adapter from the same last checkpoint (each
+# has no way to see the other's in-flight work -- Phase 2.8E's registry
+# and per-job lock are both process-local, Phase 2.8F Part 5) and both
+# execute the same nominal step both successfully INSERT a metric row --
+# reproduced directly (two rows for the same (job, step, epoch), Phase
+# 2.8F report Section on Scenario A). This mirrors the checkpoint
+# table's own, already-proven pattern exactly -- the same fix shape,
+# not a new mechanism -- and lets `MiniBrainTrainingEngineService.
+# run_stream_metric_stage()` translate the resulting, real
+# `sqlite3.IntegrityError` (wrapped as `ConflictError` by
+# `BaseRepository.transaction()`) into a clear, typed rejection instead
+# of silently keeping both rows.
+PHASE76_SCHEMA = """
+CREATE UNIQUE INDEX IF NOT EXISTS ux_mini_brain_training_metrics_job_step_epoch
+    ON mini_brain_training_metrics(job_id, step, epoch);
+"""
+
+MIGRATION_077_NAME = "077_global_canonical_novelty_ledger"
+PHASE77_SCHEMA = """
+CREATE TABLE IF NOT EXISTS global_novelty_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_public_id TEXT UNIQUE NOT NULL,
+    source_id TEXT,
+    source_url TEXT,
+    source_type TEXT,
+    book_id TEXT,
+    page_id TEXT,
+    record_id TEXT,
+    dataset_id TEXT,
+    content_sha256 TEXT NOT NULL,
+    normalized_content_sha256 TEXT NOT NULL,
+    lineage_id TEXT NOT NULL,
+    parent_lineage_id TEXT,
+    rights_status TEXT NOT NULL DEFAULT 'RIGHTS_PENDING',
+    provenance_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
+    domain TEXT NOT NULL DEFAULT 'OTHER',
+    language TEXT NOT NULL DEFAULT 'ta',
+    native_or_synthetic TEXT NOT NULL DEFAULT 'NATIVE',
+    tokenizer_version TEXT NOT NULL DEFAULT 'v2',
+    token_count INTEGER NOT NULL DEFAULT 0,
+    native_token_count INTEGER NOT NULL DEFAULT 0,
+    synthetic_token_count INTEGER NOT NULL DEFAULT 0,
+    translated_token_count INTEGER NOT NULL DEFAULT 0,
+    derived_token_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    first_seen_dataset TEXT,
+    canonical_status TEXT NOT NULL DEFAULT 'ACTIVE',
+    novelty_status TEXT NOT NULL DEFAULT 'TRUE_GLOBAL_NEW',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_gnl_content_sha256 ON global_novelty_ledger(content_sha256);
+CREATE INDEX IF NOT EXISTS idx_gnl_norm_sha256 ON global_novelty_ledger(normalized_content_sha256);
+CREATE INDEX IF NOT EXISTS idx_gnl_lineage_id ON global_novelty_ledger(lineage_id);
+CREATE INDEX IF NOT EXISTS idx_gnl_novelty_status ON global_novelty_ledger(novelty_status);
+CREATE INDEX IF NOT EXISTS idx_gnl_record_public_id ON global_novelty_ledger(record_public_id);
+"""
+
+MIGRATION_078_NAME = "078_autonomous_tamil_book_acquisition_registry"
+PHASE78_SCHEMA = """
+CREATE TABLE IF NOT EXISTS book_acquisition_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id TEXT UNIQUE NOT NULL,
+    source_name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'DIGITAL_LIBRARY',
+    language TEXT NOT NULL DEFAULT 'ta',
+    publisher TEXT,
+    rights_policy_url TEXT,
+    licence_type TEXT NOT NULL DEFAULT 'PUBLIC_DOMAIN',
+    training_permission TEXT NOT NULL DEFAULT 'PERMITTED',
+    robots_status TEXT NOT NULL DEFAULT 'ALLOWED',
+    terms_status TEXT NOT NULL DEFAULT 'VERIFIED',
+    discovery_method TEXT NOT NULL DEFAULT 'CONFIGURED',
+    trust_level TEXT NOT NULL DEFAULT 'HIGH',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS book_acquisition_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    book_id TEXT UNIQUE NOT NULL,
+    source_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL DEFAULT 'Unknown',
+    year TEXT,
+    language TEXT NOT NULL DEFAULT 'ta',
+    domain TEXT NOT NULL DEFAULT 'LITERATURE',
+    source_url TEXT NOT NULL,
+    rights_url TEXT,
+    download_url TEXT NOT NULL,
+    metadata_url TEXT,
+    file_format TEXT NOT NULL DEFAULT 'pdf',
+    download_status TEXT NOT NULL DEFAULT 'DISCOVERED',
+    rights_status TEXT NOT NULL DEFAULT 'LICENSE_UNKNOWN',
+    rights_evidence_text TEXT,
+    checksum_sha256 TEXT,
+    local_artifact_path TEXT,
+    confidence_score REAL NOT NULL DEFAULT 1.0,
+    discovery_reason TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS admin_review_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id TEXT UNIQUE NOT NULL,
+    book_id TEXT NOT NULL,
+    dataset_version_id TEXT,
+    rights_status TEXT NOT NULL,
+    quality_status TEXT NOT NULL,
+    provenance_status TEXT NOT NULL,
+    novelty_status TEXT NOT NULL,
+    token_accounting_status TEXT NOT NULL,
+    admin_decision TEXT NOT NULL DEFAULT 'PENDING_REVIEW',
+    admin_notes TEXT,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bas_source_id ON book_acquisition_sources(source_id);
+CREATE INDEX IF NOT EXISTS idx_bar_book_id ON book_acquisition_registry(book_id);
+CREATE INDEX IF NOT EXISTS idx_bar_source_id ON book_acquisition_registry(source_id);
+CREATE INDEX IF NOT EXISTS idx_bar_download_status ON book_acquisition_registry(download_status);
+CREATE INDEX IF NOT EXISTS idx_bar_rights_status ON book_acquisition_registry(rights_status);
+CREATE INDEX IF NOT EXISTS idx_arq_review_id ON admin_review_queue(review_id);
+CREATE INDEX IF NOT EXISTS idx_arq_book_id ON admin_review_queue(book_id);
+CREATE INDEX IF NOT EXISTS idx_arq_admin_decision ON admin_review_queue(admin_decision);
 """

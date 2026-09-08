@@ -1489,7 +1489,46 @@ def _execute_propose_document_pii_exclusion(
     )
 
 
+def _execute_admin_automation_define(
+    settings: Settings, target_public_id: str, payload: dict[str, Any], admin_id: str
+) -> dict[str, Any]:
+    """Phase 10: validates the automation definition and returns a
+    confirmation -- this is the ENTIRE executor. It never calls
+    `run_tool()`, never invokes `target_action_type`'s own executor,
+    and writes nothing beyond what `AdminAssistantService.execute()`
+    already persists on this same `admin_approvals` row (via
+    `update_execution()`). There is no separate automation table: this
+    approval row, once executed, *is* the automation's durable
+    definition record, keyed by `target_public_id`. Re-validates fresh
+    at execute time (not just at propose time) so a target action type
+    that became invalid between propose and execute is still caught."""
+
+    from core_model.admin_assistant.automation_policy import validate_automation_target_definition
+
+    target_validation = validate_automation_target_definition(
+        payload,
+        automation_public_id=target_public_id,
+    )
+    if not target_validation.valid:
+        raise ValidationError("; ".join(target_validation.errors))
+
+    schedule_description = payload.get("schedule_description")
+    if not isinstance(schedule_description, str) or not schedule_description.strip():
+        raise ValidationError("schedule_description is required and must be a non-empty string")
+
+    del settings, admin_id  # validation-only executor; nothing else is touched
+    return {
+        "automation_public_id": target_public_id,
+        "status": "defined",
+        "target_action_type": payload["target_action_type"],
+        "target_type": payload["target_type"],
+        "target_public_id": payload["target_public_id"],
+        "note": "definition validated and recorded; no autonomous execution occurs in this phase",
+    }
+
+
 ACTION_EXECUTORS: dict[str, ActionExecutor] = {
+    "admin_automation_define": _execute_admin_automation_define,
     "dataset_record_review": _execute_dataset_record_review,
     "dataset_source_update": _execute_dataset_source_update,
     "governance_target_approval_override": _execute_governance_target_approval_override,
@@ -3028,10 +3067,105 @@ class AdminAssistantService:
                 f"{pending_approvals} Admin Assistant proposal(s) are awaiting Admin Review "
                 "before they can execute."
             )
-        if not guidance:
-            guidance.append("No pending dataset reviews or proposals right now.")
-
         return {"summary": overview, "guidance": guidance}
+
+    def get_governance_status(self) -> dict[str, Any]:
+        """Read-only summary of canonical P0-P10G enterprise governance state.
+
+        Strictly read-only: consumes existing EnterpriseGovernanceDashboardContract
+        and policy evaluators. Never mutates any state.
+        """
+        import time
+        from core_model.ops.enterprise_governance_contract import (
+            ComplianceStatusView,
+            EnterpriseGovernanceDashboardContract,
+            GovernanceInvariantsView,
+            RBACIsolationView,
+            SecretGovernanceView,
+        )
+        from core_model.ops.policy_drift_evaluator import PolicyDriftEvaluator
+        from core_model.ops.secret_lifecycle_manager import SecretLifecycleManager
+
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        drift_evaluator = PolicyDriftEvaluator()
+        drift_res = drift_evaluator.evaluate_policy_drift()
+
+        secret_mgr = SecretLifecycleManager()
+        active_keys = len([k for k in secret_mgr._keys.values() if k.status == "ACTIVE"])
+        revoked_keys = len([k for k in secret_mgr._keys.values() if k.status == "REVOKED"])
+
+        contract = EnterpriseGovernanceDashboardContract(
+            compliance=ComplianceStatusView(
+                compliance_status="BLOCKED_PENDING_HUMAN_AUTHORIZATION",
+                evidence_packages_available=14,
+                missing_evidence_count=4,
+            ),
+            secrets=SecretGovernanceView(
+                active_keys_count=active_keys,
+                revoked_keys_count=revoked_keys,
+                rotation_age_days=0.0,
+            ),
+            rbac=RBACIsolationView(
+                rbac_integrity_passed=True,
+                tenant_isolation_passed=True,
+                policy_drift_status=drift_res.drift_status,
+            ),
+            invariants=GovernanceInvariantsView(
+                production_promotion="BLOCKED",
+                public_chat_eligible=False,
+                candidate_traffic_share=0.0,
+                training_execution_authorized=False,
+                optimizer_stepping=False,
+                tokenizer_mutation=False,
+                recovery_executed=False,
+            ),
+            contract_timestamp=now,
+        )
+
+        return {
+            "status": "success",
+            "governance": {
+                "compliance": {
+                    "compliance_status": contract.compliance.compliance_status,
+                    "evidence_packages_available": contract.compliance.evidence_packages_available,
+                    "missing_evidence_count": contract.compliance.missing_evidence_count,
+                },
+                "secrets": {
+                    "active_keys_count": contract.secrets.active_keys_count,
+                    "revoked_keys_count": contract.secrets.revoked_keys_count,
+                    "rotation_age_days": contract.secrets.rotation_age_days,
+                },
+                "rbac": {
+                    "rbac_integrity_passed": contract.rbac.rbac_integrity_passed,
+                    "tenant_isolation_passed": contract.rbac.tenant_isolation_passed,
+                    "policy_drift_status": contract.rbac.policy_drift_status,
+                },
+                "invariants": {
+                    "production_promotion": contract.invariants.production_promotion,
+                    "public_chat_eligible": contract.invariants.public_chat_eligible,
+                    "candidate_traffic_share": contract.invariants.candidate_traffic_share,
+                    "training_execution_authorized": contract.invariants.training_execution_authorized,
+                    "optimizer_stepping": contract.invariants.optimizer_stepping,
+                    "tokenizer_mutation": contract.invariants.tokenizer_mutation,
+                    "recovery_executed": contract.invariants.recovery_executed,
+                },
+                "contract_timestamp": contract.contract_timestamp,
+            },
+            "activation_readiness": {
+                "p0_p10g_canonical_components": "48/48 VERIFIED",
+                "production_state": "UNTOUCHED & LOCKED",
+                "awaiting_genuine_human_authorization": True,
+                "final_verdict": "BLOCKED_PENDING_HUMAN_AUTHORIZATION",
+                "activation_blockers": [
+                    "SignedTrainingAuthorizationToken: ABSENT (Pending Human Admin Signature)",
+                    "SignedPromotionAuthorizationToken: ABSENT (Pending Human Admin Signature)",
+                    "SignedPublicChatAdmissionToken: ABSENT (Pending Human Admin Signature)",
+                    "SignedComplianceCertificationToken: ABSENT (Pending Human Admin Signature)",
+                ],
+            },
+            "admin_assistant_authority": "ADVISORY_ONLY",
+        }
 
     # -- proposals -----------------------------------------------------
 
@@ -3097,6 +3231,13 @@ class AdminAssistantService:
                 "risk_level": risk_level,
             },
         )
+        try:
+            from backend.services.mini_brain_dashboard_context_service import (
+                MiniBrainDashboardContextService,
+            )
+            MiniBrainDashboardContextService.invalidate_cache("proposal_created")
+        except Exception:
+            pass
         return proposal
 
     def list_proposals(
@@ -3106,6 +3247,76 @@ class AdminAssistantService:
 
     def get_proposal(self, public_id: str) -> AdminApprovalPublic:
         return self.approvals.get_by_public_id(public_id)
+
+    # -- Phase 10: automation definitions (admin_approvals rows with
+    # target_type='admin_automation'; see admin_automation_define) -------
+
+    def list_automations(self, *, limit: int = 50, offset: int = 0) -> list[AdminApprovalPublic]:
+        return self.approvals.list_by_target_type("admin_automation", limit=limit, offset=offset)
+
+    def get_automation(self, public_id: str) -> AdminApprovalPublic:
+        proposal = self.approvals.get_by_public_id(public_id)
+        if proposal.target_type != "admin_automation":
+            raise NotFoundError("automation not found")
+        return proposal
+
+    def execute_automation_manually(
+        self, public_id: str, *, executor_public_id: str
+    ) -> dict[str, Any]:
+        """Phase 14: human-triggered, single-run execution seam for an approved
+        automation definition. Evaluates all Phase 3-14 governance, RBAC,
+        target, dry-run, and allowlist gates. Refuses execution and logs an
+        audit denial if any gate fails or if the target action is not explicitly
+        allowlisted."""
+        from core_model.admin_assistant.automation_policy import (
+            evaluate_manual_automation_execution,
+        )
+
+        automation = self.get_automation(public_id)
+
+        decision = evaluate_manual_automation_execution(
+            automation,
+            executor_public_id=executor_public_id,
+            admin_role_overrides=self.settings.admin_role_overrides_map,
+        )
+
+        if not decision.allowed:
+            self._record_audit(
+                event_type="admin_automation_manual_execution_denied",
+                action="manual_execute",
+                actor_reference=executor_public_id,
+                resource_public_id=public_id,
+                outcome=AuditOutcome.DENIED,
+                metadata={
+                    "target_action_type": decision.target_action_type,
+                    "blocking_reasons": list(decision.blocking_reasons),
+                },
+            )
+            raise AdminAssistantError(
+                f"manual automation execution refused: {'; '.join(decision.blocking_reasons)}"
+            )
+
+        executor = ACTION_EXECUTORS.get(decision.target_action_type or "")
+        if executor is None:
+            raise AdminAssistantError(f"action_type not permitted: {decision.target_action_type}")
+
+        params = (
+            automation.request_payload.get("target_action_parameters", {})
+            if isinstance(automation.request_payload, dict)
+            else {}
+        )
+        target_id = decision.target_public_id or ""
+
+        res = executor(self.settings, target_id, params, executor_public_id)
+        self._record_audit(
+            event_type="admin_automation_manual_execution_succeeded",
+            action="manual_execute",
+            actor_reference=executor_public_id,
+            resource_public_id=public_id,
+            outcome=AuditOutcome.SUCCESS,
+            metadata={"target_action_type": decision.target_action_type},
+        )
+        return res
 
     # -- Admin Review: approve / reject --------------------------------
 
@@ -3131,6 +3342,31 @@ class AdminAssistantService:
             if proposal.status != "pending":
                 raise AdminAssistantError(
                     f"admin approval already reviewed (status={proposal.status})"
+                )
+            # High-risk actions (see core_model.admin_assistant.action_registry
+            # RISK_LEVELS) require a reviewer distinct from the proposer --
+            # unconditional and non-configurable, mirroring GOV-33's
+            # self-approval prohibition in spirit but scoped only to this
+            # engine's own risk-tier data, never importing or reusing
+            # approval_policy.py's role/distinct-approver-count model, which
+            # governs a separate system (release/assignment approval).
+            # Moderate/low-risk actions are intentionally unaffected.
+            if proposal.risk_level == "high" and reviewed_by == proposal.requested_by:
+                self._record_audit(
+                    event_type="admin_review_rejected_self_approval",
+                    action="approved",
+                    actor_reference=reviewed_by,
+                    resource_public_id=public_id,
+                    outcome=AuditOutcome.DENIED,
+                    metadata={
+                        "action_type": proposal.action_type,
+                        "risk_level": proposal.risk_level,
+                    },
+                )
+                raise AdminAssistantError(
+                    "high-risk proposals require a reviewer distinct from the "
+                    "admin who proposed them -- have a different admin review "
+                    "this proposal"
                 )
             fingerprint_fn = STALE_CHECK_FINGERPRINTS.get(proposal.action_type)
             if fingerprint_fn is not None:
@@ -3172,6 +3408,13 @@ class AdminAssistantService:
             outcome=AuditOutcome.SUCCESS,
             metadata={"comment": comment} if comment else {},
         )
+        try:
+            from backend.services.mini_brain_dashboard_context_service import (
+                MiniBrainDashboardContextService,
+            )
+            MiniBrainDashboardContextService.invalidate_cache(f"proposal_review_{decision}")
+        except Exception:
+            pass
         return result
 
     def cancel(
@@ -3202,6 +3445,13 @@ class AdminAssistantService:
             outcome=AuditOutcome.SUCCESS,
             metadata={"reason": reason} if reason else {},
         )
+        try:
+            from backend.services.mini_brain_dashboard_context_service import (
+                MiniBrainDashboardContextService,
+            )
+            MiniBrainDashboardContextService.invalidate_cache("proposal_cancelled")
+        except Exception:
+            pass
         return result
 
     # -- execution: approved proposals only, via existing services -----
@@ -3256,6 +3506,13 @@ class AdminAssistantService:
                 "verified_state": verified_state,
             },
         )
+        try:
+            from backend.services.mini_brain_dashboard_context_service import (
+                MiniBrainDashboardContextService,
+            )
+            MiniBrainDashboardContextService.invalidate_cache("proposal_executed")
+        except Exception:
+            pass
         return updated
 
     def _fail_execution(

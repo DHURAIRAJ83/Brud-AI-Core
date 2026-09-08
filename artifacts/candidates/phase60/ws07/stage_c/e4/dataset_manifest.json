@@ -1,0 +1,9 @@
+{
+  "dataset_split": "E3-E",
+  "base_dataset_sha256": "f682ddf82e750449792f8148be50ccb235506d16a0732fb8dc3fa2e9f4935920",
+  "e3_expansion_sha256": "cb1387ebc92c6554fa0bd6a3b076728142b295c7e3b334670a2f5547da17c391",
+  "train_records": 1670,
+  "val_records": 210,
+  "test_records": 208,
+  "synthetic_ratio_pct": 4.5
+}

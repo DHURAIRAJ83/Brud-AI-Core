@@ -1,0 +1,36 @@
+{
+  "audit_date": "2026-09-01",
+  "checkpoints": {
+    "phase59": {
+      "path": "artifacts/candidates/phase59/checkpoints/checkpoint_best.pt",
+      "sha256": "a5218b5bdb94d3b218896f3021d7f7d5298023036d350bf8a2d5e3b70423371a",
+      "size_bytes": 6376854,
+      "state_dict_keys": 27,
+      "pe_in_state_dict": false,
+      "parameters": 528128
+    },
+    "ws05": {
+      "path": "artifacts/candidates/phase60/checkpoints/checkpoint_best.pt",
+      "sha256": "30dbb8927c0c61c786683c06eebf8a2718054a4cf1df25ece47f97ca7c605421",
+      "size_bytes": 6442143,
+      "state_dict_keys": 28,
+      "pe_in_state_dict": true,
+      "pe_shape": [1, 128, 128],
+      "parameters": 528128
+    }
+  },
+  "tokenizer_v2": {
+    "model_path": "data/tokenizers/versions/tok/v2/tokenizer.model",
+    "model_sha256": "65342625ebb88eaab0996f0f6c5f3ef24ae9fd3203bc8377a0db353601e9ffd4",
+    "vocab_size": 1024,
+    "byte_fallback": true,
+    "compatible_context_lengths": [128, 512, 1024]
+  },
+  "migration_strategy": {
+    "function": "load_checkpoint_safely",
+    "pe_key_action": "filter_unexpected_buffer",
+    "telemetry_emitted": ["loaded_keys_count", "unexpected_keys", "missing_keys", "shape_mismatches"],
+    "e4_compatibility": "FULLY_COMPATIBLE_WITH_PE_FILTER",
+    "e5_compatibility": "STRUCTURAL_SCALING_INITIALIZATION"
+  }
+}

@@ -27,7 +27,15 @@ from starlette.responses import JSONResponse, Response
 from backend.core.config import Settings
 from backend.services.public_chat_rate_limiter import check_rate_limit
 
-_EXEMPT_PATHS = {"/api/health", "/api/version"}
+_EXEMPT_PATHS = {
+    "/health",
+    "/ready",
+    "/status",
+    "/api/health",
+    "/api/ready",
+    "/api/status",
+    "/api/version",
+}
 
 
 class GlobalRateLimitMiddleware(BaseHTTPMiddleware):

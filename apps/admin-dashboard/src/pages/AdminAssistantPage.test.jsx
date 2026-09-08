@@ -10,6 +10,7 @@ vi.mock('../services/api.js', () => ({
   assistantProposals: vi.fn(),
   createAssistantProposal: vi.fn(),
   executeAssistantProposal: vi.fn(),
+  getGovernanceStatus: vi.fn(),
   reviewAssistantProposal: vi.fn(),
   assistantLanguagePreference: vi.fn(),
   setAssistantLanguagePreference: vi.fn(),
@@ -27,6 +28,18 @@ const OVERVIEW_RESPONSE = {
 function mockDefaults() {
   api.assistantOverview.mockResolvedValue(OVERVIEW_RESPONSE)
   api.assistantActions.mockResolvedValue({ action_types: ['dataset_record_review'] })
+  api.getGovernanceStatus.mockResolvedValue({
+    admin_assistant_authority: 'ADVISORY_ONLY',
+    activation_readiness: {
+      p0_p10g_canonical_components: '48/48 Verified',
+      production_state: 'LOCKED',
+      final_verdict: 'READY',
+    },
+    governance: {
+      compliance: { compliance_status: 'COMPLIANT' },
+      invariants: { training_execution_authorized: false },
+    },
+  })
   api.assistantLanguagePreference.mockResolvedValue({ response_language: 'auto', updated_at: null })
   api.setAssistantLanguagePreference.mockResolvedValue({ response_language: 'tamil', updated_at: '2026-01-01' })
 }

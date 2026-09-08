@@ -1,0 +1,27 @@
+{
+  "workstream_name": "Phase 61 WS22 True New Source Acquisition + Global Content-Level Deduplication + 4.36M Token Gap Elimination",
+  "audit_date": "2026-09-01",
+  "governance_state": {
+    "training_execution_authorized": false,
+    "optimizer_stepping": false,
+    "weight_mutation": false,
+    "candidate_traffic_share": 0.0,
+    "is_public_chat_eligible": false,
+    "production_promotion": "BLOCKED",
+    "production_merge": "BLOCKED"
+  },
+  "ws22_summary": {
+    "verified_baseline_tokens": 5140476,
+    "historical_unique_candidate_tokens": 499132,
+    "stage3_v001_candidate_records": 1785,
+    "stage3_v001_candidate_tokens": 499132,
+    "projected_total_tokens": 5639608,
+    "projected_synthetic_ratio": 6.25,
+    "deficit_10m": 4360392,
+    "token_crosscheck_status": "PASSED (Method A == Method B == Method C)",
+    "stage3_v001_file_path": "data/candidate/foundation_stage3_v001/stage3_candidate_v001.jsonl",
+    "rc_v006_file_path": "data/candidate/foundation_10m_rc_v006/foundation_10m_rc_v006.jsonl",
+    "ws22_status": "WS22_QUALIFIED_PENDING_HUMAN_APPROVAL",
+    "reproducibility": "PASS"
+  }
+}

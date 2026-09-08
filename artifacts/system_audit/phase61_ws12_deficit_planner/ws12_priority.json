@@ -1,0 +1,34 @@
+{
+  "ranking": [
+    {
+      "rank": 1,
+      "domain": "ta",
+      "name": "Tamil Prose & Literature",
+      "rationale": "Largest domain deficit (17.05M tokens); fundamental anchor language"
+    },
+    {
+      "rank": 2,
+      "domain": "tgl",
+      "name": "Tanglish (Latin Script)",
+      "rationale": "Highest relative deficit (99.73% deficit)"
+    },
+    {
+      "rank": 3,
+      "domain": "structured",
+      "name": "Structured Knowledge",
+      "rationale": "Essential terminology & glossaries (4.90M deficit)"
+    },
+    {
+      "rank": 4,
+      "domain": "mixed",
+      "name": "Mixed Code-Switching",
+      "rationale": "Conversational code-switching (4.91M deficit)"
+    },
+    {
+      "rank": 5,
+      "domain": "en",
+      "name": "English Technical/Edu",
+      "rationale": "Deprioritized in early stages (currently 87.34% of corpus)"
+    }
+  ]
+}

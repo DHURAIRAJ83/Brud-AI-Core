@@ -1,0 +1,11 @@
+{
+  "risks": [
+    {
+      "id": "RISK-WS12-01",
+      "category": "Semantic Deduplication Absence",
+      "description": "Semantic deduplication is NOT_IMPLEMENTED, creating duplicate concept risk during large-scale translation augmentation.",
+      "severity": "HIGH",
+      "mitigation": "Implement semantic deduplication before Stage 2 (10M -> 25M) expansion."
+    }
+  ]
+}

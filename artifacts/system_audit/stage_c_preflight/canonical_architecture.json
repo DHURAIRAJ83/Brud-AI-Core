@@ -1,0 +1,53 @@
+{
+  "audit_date": "2026-09-01",
+  "canonical_components": {
+    "model_implementation": {
+      "file": "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+      "class": "BrudSmallV2Model",
+      "line": 75,
+      "impl_hash": "6aecf087c213d4506129",
+      "pe_persistent": false,
+      "state_dict_keys": 27,
+      "parameter_count": 528128
+    },
+    "training_engine": {
+      "file": "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+      "function": "run_training_experiment",
+      "optimizer": "AdamW (lr=5e-4, weight_decay=0.01)",
+      "scheduler": "CosineAnnealingWithWarmup",
+      "hardware_guards": ["torch.set_num_threads(2)", "max_rss_2048mb", "swap_target_0mb"]
+    },
+    "checkpoint_writer": {
+      "file": "artifacts/candidates/phase60/ws07/e3/run_e3_experiments.py",
+      "function": "atomic_save_checkpoint",
+      "protocol": "two_phase_tmp_rename"
+    },
+    "evaluation_engine": {
+      "file": "artifacts/candidates/phase60/run_capability_evaluation_ws06.py",
+      "function": "run_capability_probes",
+      "probe_count": 24,
+      "evaluation_modes": ["raw_weights_greedy", "controlled_theta1.25_3gram"]
+    },
+    "inference_runtime": {
+      "file": "core_model/inference_runtime/generation_engine.py",
+      "class": "GenerationEngine"
+    }
+  },
+  "e4_context_scaling_spec": {
+    "max_seq_len": 512,
+    "parameter_count": 528128,
+    "pe_buffer_shape": [1, 512, 128],
+    "pe_persistent": false
+  },
+  "e5_architecture_scaling_spec": {
+    "max_seq_len": 512,
+    "num_layers": 4,
+    "d_model": 256,
+    "num_heads": 8,
+    "head_dim": 32,
+    "d_ff": 768,
+    "vocab_size": 1024,
+    "trainable_parameters": 3159040,
+    "parameter_expansion_factor": 5.98
+  }
+}

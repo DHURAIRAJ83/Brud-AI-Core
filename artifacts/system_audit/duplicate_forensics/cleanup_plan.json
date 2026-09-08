@@ -1,0 +1,129 @@
+{
+  "audit_date": "2026-09-01",
+  "cleanup_plan_version": "1.0",
+  "repository_mutation_now": false,
+  "total_items": 14,
+  "phases": {
+    "P0_before_e4_e5": {
+      "description": "Must complete before E4/E5 training begins",
+      "items": [
+        {
+          "id": "P0-01",
+          "action": "DOCUMENT AND VERIFY",
+          "target": "E4/E5 training runners",
+          "detail": "All E4/E5 runners must use strict=False when loading WS05 checkpoint, OR the WS05 checkpoint must be pre-processed to strip the pe key from state_dict",
+          "safe_to_remove_old": false,
+          "automated": false,
+          "requires_human_approval": true
+        },
+        {
+          "id": "P0-02",
+          "action": "CREATE NEW MODULE",
+          "target": "core_model/architecture/brud_small_v2.py",
+          "detail": "Extract canonical BrudSmallV2Model from run_e3_experiments.py into a shared module. Use E3 runner version (persistent=False, controlled generate())",
+          "safe_to_remove_old": false,
+          "automated": false,
+          "requires_human_approval": true
+        },
+        {
+          "id": "P0-03",
+          "action": "CREATE NEW MODULE",
+          "target": "core_model/training/brud_training_engine.py",
+          "detail": "Extract canonical training loop from run_e3_experiments.py into a shared module",
+          "safe_to_remove_old": false,
+          "automated": false,
+          "requires_human_approval": true
+        }
+      ]
+    },
+    "P1_before_production": {
+      "description": "Should consolidate before public production deployment",
+      "items": [
+        {
+          "id": "P1-01",
+          "action": "CONSOLIDATE",
+          "classes": ["HardwareProbeResponse", "IngestProviderResultsRequest", "ProviderOutput", "RagAdminReviewRequest"],
+          "target": "backend/models/shared.py",
+          "detail": "Create shared.py and move these 4 identical classes; update imports in source files",
+          "safe_to_remove_old": true,
+          "automated": false,
+          "requires_human_approval": true
+        },
+        {
+          "id": "P1-02",
+          "action": "CONSOLIDATE (PARTIAL)",
+          "class": "AdminReviewRequest",
+          "detail": "Move 11-copy identical version to shared.py; keep 3-copy specialized version in its modules",
+          "safe_to_remove_old": true,
+          "automated": false,
+          "requires_human_approval": true
+        }
+      ]
+    },
+    "P2_after_e6": {
+      "description": "Technical debt cleanup after E6",
+      "items": [
+        {
+          "id": "P2-01",
+          "action": "ARCHIVE",
+          "target": "backend/database/repositories/phase2.py",
+          "safe_to_remove": true
+        },
+        {
+          "id": "P2-02",
+          "action": "CONSOLIDATE",
+          "class": "VoiceAudioDecodeError",
+          "target": "backend/exceptions/voice_exceptions.py (new)",
+          "safe_to_remove": true
+        },
+        {
+          "id": "P2-03",
+          "action": "CONSOLIDATE",
+          "class": "FakeUploadFile",
+          "target": "tests/conftest.py",
+          "safe_to_remove": true
+        },
+        {
+          "id": "P2-04",
+          "action": "ARCHIVE",
+          "target": "core_model/inference/__init__.py",
+          "detail": "Remove import from core_model/__init__.py first",
+          "safe_to_remove": true
+        }
+      ]
+    },
+    "P3_historical_cold_storage": {
+      "description": "Historical archiving — no urgency",
+      "items": [
+        {
+          "id": "P3-01",
+          "action": "ARCHIVE TO COLD STORAGE",
+          "target": "data/core_models/checkpoints/adapter-it-at-*",
+          "size_gb": 3.8,
+          "safe_to_remove": true
+        },
+        {
+          "id": "P3-02",
+          "action": "ARCHIVE",
+          "target": "phase59_ws*.md (root level, ~40 files)",
+          "destination": "docs/historical/phase59/",
+          "safe_to_remove": true
+        },
+        {
+          "id": "P3-03",
+          "action": "KEEP + DOCUMENT",
+          "target": "CreateSessionRequest x12",
+          "reason": "Intentional specialization — correct by design",
+          "safe_to_remove": false
+        },
+        {
+          "id": "P3-04",
+          "action": "KEEP + DOCUMENT",
+          "target": "GuardAction, GovernedRecord, OpenDomainStatus phase-versioned files",
+          "reason": "Phase audit trail required",
+          "safe_to_remove": false
+        }
+      ]
+    }
+  }
+}

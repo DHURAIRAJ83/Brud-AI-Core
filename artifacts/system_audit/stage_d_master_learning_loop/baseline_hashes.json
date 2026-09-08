@@ -1,0 +1,37 @@
+{
+  "WS05 Baseline Checkpoint": {
+    "path": "artifacts/candidates/phase60/checkpoints/checkpoint_best.pt",
+    "sha256": "30dbb8927c0c61c786683c06eebf8a2718054a4cf1df25ece47f97ca7c605421",
+    "size_bytes": 6442143
+  },
+  "Tokenizer v2 Model": {
+    "path": "data/tokenizers/versions/tok/v2/tokenizer.model",
+    "sha256": "65342625ebb88eaab0996f0f6c5f3ef24ae9fd3203bc8377a0db353601e9ffd4",
+    "size_bytes": 256436
+  },
+  "Production DB": {
+    "path": "data/database/brud_ai.db",
+    "sha256": "34376318d92febf1dbbea10f5106220d37cfe6f0a1ab7b1489f0e01767d4f729",
+    "size_bytes": 11096064
+  },
+  "E3-E Sealed Dataset": {
+    "path": "artifacts/candidates/phase60/ws07/e3/data/phase60_ws07_e3_dataset_v001.jsonl",
+    "sha256": "cb1387ebc92c6554fa0bd6a3b076728142b295c7e3b334670a2f5547da17c391",
+    "size_bytes": 99694
+  },
+  "Runtime Governance": {
+    "path": "core_model/release/phase44_runtime_governance.py",
+    "sha256": "27b3fb717897464f60fa154396feb9fcdc23c96cdf80043011b486186be36392",
+    "size_bytes": 7349
+  },
+  "E4 Checkpoint": {
+    "path": "artifacts/candidates/phase60/ws07/stage_c/e4/checkpoint_best.pt",
+    "sha256": "9c9c339a57d4e66d1a010d4ffd11a6f030315baacc86b564604c792ece79eb97",
+    "size_bytes": 2122941
+  },
+  "E5 Checkpoint": {
+    "path": "artifacts/candidates/phase60/ws07/stage_c/e5/checkpoint_best.pt",
+    "sha256": "e38b433d784e7dfa368c8e7ba667d1bcde48650c17689473a8fdaa572db408a9",
+    "size_bytes": 12655357
+  }
+}

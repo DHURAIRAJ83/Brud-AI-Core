@@ -1,0 +1,9 @@
+{
+  "training_execution_authorized": false,
+  "optimizer_stepping": false,
+  "weight_mutation": false,
+  "candidate_traffic_share": 0.0,
+  "is_public_chat_eligible": false,
+  "production_promotion": "BLOCKED",
+  "production_merge": "BLOCKED"
+}

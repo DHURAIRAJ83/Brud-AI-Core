@@ -273,6 +273,25 @@ class CoreModelService:
         with self.repository.transaction() as connection:
             return public_row(self.repository.version(connection, public_id))
 
+    # Phase 2.7E: the one small, genuinely reusable seam a real training
+    # caller (MB-22's `MiniBrainTrainingEngineService`) needs to turn a
+    # Core Model Version identity into a real, trainable `BrudModelConfig`
+    # -- wraps the same `_config_for_version` this service's own
+    # `initialize()`/`verify_architecture()`/`smoke_test()` already use,
+    # rather than a second caller reimplementing the row-to-config
+    # conversion. Deliberately returns the full public version row
+    # alongside the config, since a real caller also needs
+    # `lifecycle_status` (to enforce its own eligibility gate) and
+    # `tokenizer_version_public_id` (for real tokenizer identity) without
+    # a second round trip.
+    ELIGIBLE_FOR_REAL_TRAINING = {"architecture_verified", "smoke_tested", "staging", "active"}
+
+    def model_config_for_version(self, public_id: str) -> tuple[BrudModelConfig, dict[str, Any]]:
+        with self.repository.transaction() as connection:
+            row = self.repository.version(connection, public_id)
+            config = self._config_for_version(connection, row)
+            return config, public_row(row)
+
     def initialize(self, public_id: str, admin_id: str) -> dict[str, Any]:
         import torch
 

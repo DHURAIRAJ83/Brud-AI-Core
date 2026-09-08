@@ -1,0 +1,5 @@
+{
+  "verdict": "P10B_ACTIVATION_READINESS_VERIFIED",
+  "activation_readiness": "PRODUCTION_READY_PENDING_HUMAN_AUTHORIZATION",
+  "production_state": "UNTOUCHED_AND_LOCKED"
+}

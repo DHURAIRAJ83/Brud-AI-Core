@@ -1,0 +1,7 @@
+{
+  "total_route_modules": 94,
+  "connected_api_functions": 120,
+  "governance_route": "/api/admin/assistant/governance-status",
+  "chat_route": "/api/admin/mini-brain/llm-runtime/chat",
+  "grounded_chat_route": "/api/admin/mini-brain/llm-runtime/grounded-chat"
+}

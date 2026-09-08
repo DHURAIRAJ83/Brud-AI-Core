@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "source_id": "SRC-WS04-CANDIDATE-FILES",
+      "source_name": "Full Workspace Approved Dataset JSONL Collection (843 Files)",
+      "status": "APPROVED",
+      "license": "CC-BY-4.0 / Public Domain / CC-BY-SA-4.0",
+      "accepted_records": 2894,
+      "subword_tokens": 232847
+    }
+  ]
+}

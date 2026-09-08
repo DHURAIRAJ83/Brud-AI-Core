@@ -1,0 +1,9 @@
+{
+  "system_governance_status": "P0-P10G Canonical (48/48 Verified)",
+  "production_state": "UNTOUCHED & LOCKED",
+  "final_verdict": "BLOCKED_PENDING_HUMAN_AUTHORIZATION",
+  "training_authorized": false,
+  "promotion_blocked": true,
+  "public_chat_eligible": false,
+  "compliance_blocked": true
+}

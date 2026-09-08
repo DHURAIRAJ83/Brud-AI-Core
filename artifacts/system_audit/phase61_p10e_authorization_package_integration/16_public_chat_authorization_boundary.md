@@ -1,0 +1,3 @@
+# 16 PUBLIC CHAT AUTHORIZATION BOUNDARY AUDIT
+
+- Status: `PUBLIC_CHAT_ELIGIBLE = FALSE`, `CANDIDATE_TRAFFIC_SHARE = 0.0`. Fail-closed public chat gate enforced.

@@ -3,7 +3,8 @@
 from fastapi import APIRouter, Depends, Query
 
 from backend.api.auth import AdminDependency, CsrfDependency, require_admin
-from backend.api.dependencies import SettingsDependency
+from backend.api.dependencies import PoolDependency, SettingsDependency
+from backend.database.connection_pool import ConnectionPool
 from backend.database.repositories.base_training import BaseTrainingRepository
 from backend.database.repositories.pretraining import PretrainingRepository
 from backend.models.base_training import (
@@ -22,10 +23,25 @@ router = APIRouter(
 )
 
 
-def service(settings) -> BaseTrainingService:
+def service(settings, pool: ConnectionPool | None = None) -> BaseTrainingService:
+    """Phase 7C-33/7C-34: `pool` defaults to `None`, so every existing call
+    site below that still says `service(settings)` (unchanged) keeps
+    today's exact unpooled behavior. `experiment()`/`create_experiment()`
+    (Phase 7C-33) and `generate_profile()`/`tokenizer_evaluate()`
+    (Phase 7C-34) were opted into the shared app-instance pool (via
+    `PoolDependency`, which resolves to `None` for any app instance that
+    never went through `create_app()`'s lifespan override) -- the latter
+    two deliberately chosen because they reach the previously-fixed
+    TokenizerService nested chains (`processor_for_version`/
+    `evaluate_suitability`, Phase 7C-20/7C-22) via `connection=` propagation,
+    proving that fix still holds when the outer connection comes from a
+    real pool. This is not a signal that the rest of this file needs
+    converting in one phase -- remaining routes are deliberately left
+    unpooled pending their own evidence."""
+
     return BaseTrainingService(
-        BaseTrainingRepository(settings.resolved_database_path),
-        PretrainingRepository(settings.resolved_database_path),
+        BaseTrainingRepository(settings.resolved_database_path, pool=pool),
+        PretrainingRepository(settings.resolved_database_path, pool=pool),
         settings,
     )
 
@@ -44,14 +60,17 @@ async def experiments(
 
 @router.post("/experiments")
 async def create_experiment(
-    payload: BaseTrainingExperimentCreate, settings: SettingsDependency, admin: CsrfDependency
+    payload: BaseTrainingExperimentCreate,
+    settings: SettingsDependency,
+    admin: CsrfDependency,
+    pool: PoolDependency,
 ):
-    return service(settings).create_experiment(payload, admin.admin.public_id)
+    return service(settings, pool).create_experiment(payload, admin.admin.public_id)
 
 
 @router.get("/experiments/{public_id}")
-async def experiment(public_id: str, settings: SettingsDependency):
-    return service(settings).get_experiment(public_id)
+async def experiment(public_id: str, settings: SettingsDependency, pool: PoolDependency):
+    return service(settings, pool).get_experiment(public_id)
 
 
 @router.patch("/experiments/{public_id}")
@@ -68,8 +87,10 @@ async def patch_experiment(
 
 
 @router.post("/experiments/{public_id}/profile")
-async def generate_profile(public_id: str, settings: SettingsDependency, admin: CsrfDependency):
-    return service(settings).generate_profile(public_id, admin.admin.public_id)
+async def generate_profile(
+    public_id: str, settings: SettingsDependency, admin: CsrfDependency, pool: PoolDependency
+):
+    return service(settings, pool).generate_profile(public_id, admin.admin.public_id)
 
 
 @router.get("/experiments/{public_id}/profile")
@@ -81,8 +102,10 @@ async def profile(public_id: str, settings: SettingsDependency):
 
 
 @router.post("/experiments/{public_id}/tokenizer-evaluate")
-async def tokenizer_evaluate(public_id: str, settings: SettingsDependency, admin: CsrfDependency):
-    return service(settings).evaluate_tokenizer(public_id, admin.admin.public_id)
+async def tokenizer_evaluate(
+    public_id: str, settings: SettingsDependency, admin: CsrfDependency, pool: PoolDependency
+):
+    return service(settings, pool).evaluate_tokenizer(public_id, admin.admin.public_id)
 
 
 @router.get("/experiments/{public_id}/tokenizer-evaluation")

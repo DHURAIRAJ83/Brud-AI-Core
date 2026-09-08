@@ -25,6 +25,7 @@ from core_model.admin_assistant.dataset_verification_help import (
 from core_model.admin_assistant.localization import localize
 
 ADMIN_ID = "00000000-0000-0000-0000-000000000001"
+OTHER_ADMIN_ID = "00000000-0000-0000-0000-000000000002"
 
 NEW_ACTIONS = (
     "create_dataset_verification_case",
@@ -88,6 +89,7 @@ def _run_action(
     target_public_id,
     payload,
     summary,
+    reviewer=ADMIN_ID,
 ):
     proposal = assistant.propose(
         action_type=action_type,
@@ -97,7 +99,7 @@ def _run_action(
         requested_by=ADMIN_ID,
         summary=summary,
     )
-    assistant.review(proposal.public_id, decision="approved", reviewed_by=ADMIN_ID, comment=None)
+    assistant.review(proposal.public_id, decision="approved", reviewed_by=reviewer, comment=None)
     return assistant.execute(proposal.public_id, executor_public_id=ADMIN_ID)
 
 
@@ -211,6 +213,8 @@ def test_full_verification_lifecycle_through_admin_assistant_pipeline(settings: 
     )
     assert "rag_use" in assessed.execution_result["items"]
 
+    # review_dataset_permission is risk_level="high" -- reviewer must
+    # differ from the proposer (ADMIN_ID).
     reviewed = _run_action(
         assistant,
         action_type="review_dataset_permission",
@@ -221,6 +225,7 @@ def test_full_verification_lifecycle_through_admin_assistant_pipeline(settings: 
             "reason": "Licence file confirms CC-BY-4.0 permits RAG use",
         },
         summary="review rag_use",
+        reviewer=OTHER_ADMIN_ID,
     )
     assert reviewed.execution_result["status"] == "approved"
 
@@ -264,6 +269,8 @@ def test_record_dataset_withdrawal_notice_end_to_end(settings: Settings) -> None
     )
     case_public_id = created.execution_result["public_id"]
 
+    # record_dataset_withdrawal_notice is risk_level="high" -- reviewer must
+    # differ from the proposer (ADMIN_ID).
     notice = _run_action(
         assistant,
         action_type="record_dataset_withdrawal_notice",
@@ -271,6 +278,7 @@ def test_record_dataset_withdrawal_notice_end_to_end(settings: Settings) -> None
         target_public_id=case_public_id,
         payload={"notice_type": "licence_changed", "notice_text": "Rights holder changed terms"},
         summary="withdrawal notice",
+        reviewer=OTHER_ADMIN_ID,
     )
     assert notice.execution_result["impact_status"] == "assessed"
 

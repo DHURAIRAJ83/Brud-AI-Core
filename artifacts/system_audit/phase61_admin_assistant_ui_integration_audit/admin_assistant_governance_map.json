@@ -1,0 +1,18 @@
+{
+  "canonical_engines_present": 48,
+  "p1_p10g_backend_modules": [
+    "core_model/training/signed_training_gate.py",
+    "core_model/eval/production_promotion_gate.py",
+    "core_model/eval/production_release_registry.py",
+    "core_model/eval/public_chat_admission_gate.py",
+    "core_model/ops/production_observability_safety_engine.py",
+    "core_model/ops/recovery_authorization_gate.py",
+    "core_model/ops/compliance_certification_gate.py",
+    "core_model/ops/enterprise_governance_contract.py",
+    "core_model/ops/policy_drift_evaluator.py",
+    "core_model/ops/secret_lifecycle_manager.py",
+    "core_model/ops/rbac_governance_engine.py",
+    "core_model/ops/tenant_security_policy_engine.py"
+  ],
+  "ui_integration_status": "NOT_CONNECTED"
+}

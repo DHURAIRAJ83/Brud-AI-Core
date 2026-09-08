@@ -1,0 +1,69 @@
+{
+  "audit_date": "2026-09-01",
+  "risks": [
+    {
+      "risk_id": "RSK-01",
+      "category": "Model",
+      "title": "Premature Promotion of Small Candidate to Public Users",
+      "severity": "CRITICAL",
+      "mitigation_status": "MITIGATED_IN_CODE",
+      "details": "candidate_traffic_share is locked to 0.0, promotion barred in code"
+    },
+    {
+      "risk_id": "RSK-02",
+      "category": "Model",
+      "title": "Context Attention Saturation (T=128 tokens)",
+      "severity": "HIGH",
+      "mitigation_status": "PENDING_STAGE_C",
+      "details": "Requires WS07 Stage C (E4 Context Scaling to T=512)"
+    },
+    {
+      "risk_id": "RSK-03",
+      "category": "Data",
+      "title": "Synthetic Data Domination of Human Nuance",
+      "severity": "HIGH",
+      "mitigation_status": "MITIGATED_IN_CODE",
+      "details": "Enforced 8:1 synthetic volume cap and mandatory human review queue"
+    },
+    {
+      "risk_id": "RSK-04",
+      "category": "Inference",
+      "title": "Repetition Degeneration in Raw Weights",
+      "severity": "HIGH",
+      "mitigation_status": "MITIGATED_IN_DECODING",
+      "details": "Inference-assisted decoding eliminates 3-gram repetition to 0.0000"
+    },
+    {
+      "risk_id": "RSK-05",
+      "category": "Security",
+      "title": "Admin Role Storage in Config Overrides",
+      "severity": "MEDIUM",
+      "mitigation_status": "CONTROLLED",
+      "details": "Fails closed to AdminRole.ADMIN; two-person review enforced on high risk"
+    },
+    {
+      "risk_id": "RSK-06",
+      "category": "Infrastructure",
+      "title": "Host CPU Resource Starvation",
+      "severity": "MEDIUM",
+      "mitigation_status": "MITIGATED_IN_CODE",
+      "details": "Bounded to 2 CPU threads and 2 GB RAM hard ceiling"
+    },
+    {
+      "risk_id": "RSK-07",
+      "category": "RAG",
+      "title": "Heuristic N-gram Embedding Inaccuracy",
+      "severity": "MEDIUM",
+      "mitigation_status": "PLANNED_ROADMAP",
+      "details": "Tolerable for keyword matching; roadmap item P2 to add bi-encoder"
+    },
+    {
+      "risk_id": "RSK-08",
+      "category": "Deployment",
+      "title": "Lack of Docker Containerization",
+      "severity": "MEDIUM",
+      "mitigation_status": "PLANNED_ROADMAP",
+      "details": "Roadmap item P2: author production Dockerfile and compose manifests"
+    }
+  ]
+}

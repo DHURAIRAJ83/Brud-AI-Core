@@ -100,3 +100,20 @@ def tiny_preset(vocabulary_size: int, **overrides: object) -> BrudModelConfig:
     config = BrudModelConfig(**data)
     config.validate()
     return config
+
+
+def production_preset(vocabulary_size: int, **overrides: object) -> BrudModelConfig:
+    data = {
+        "vocabulary_size": vocabulary_size,
+        "context_length": 1024,
+        "hidden_size": 512,
+        "intermediate_size": 1536,
+        "num_hidden_layers": 8,
+        "num_attention_heads": 8,
+        "num_key_value_heads": 8,
+    }
+    data.update(overrides)
+    config = BrudModelConfig(**data)
+    config.validate()
+    return config
+

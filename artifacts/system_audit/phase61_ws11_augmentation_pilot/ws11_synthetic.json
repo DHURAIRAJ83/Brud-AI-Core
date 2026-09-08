@@ -1,0 +1,6 @@
+{
+  "pilot_synthetic_candidates": 200,
+  "pilot_native_candidates": 100,
+  "isolation_status": "ISOLATED_IN_CANDIDATE_DIR",
+  "production_corpus_synthetic_ratio": 0.0
+}

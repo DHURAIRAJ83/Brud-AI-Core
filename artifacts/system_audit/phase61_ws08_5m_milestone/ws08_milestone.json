@@ -1,0 +1,9 @@
+{
+  "milestone_gate_name": "GATE B \u2014 5,000,000 TOKENIZER-V2 TOKENS",
+  "current_tokens": 4924354,
+  "target_tokens": 5000000,
+  "token_deficit": 75646,
+  "completion_pct": 98.48708,
+  "reproducibility": "PASSED (Token Delta=0, Record Delta=0, Hash Delta=0)",
+  "gate_decision": "MILESTONE_5M_STATUS = NOT_READY"
+}

@@ -1,0 +1,5 @@
+{
+  "rbac_integrity_passed": true,
+  "admin_assistant_authority": "ADVISORY_ONLY",
+  "privileged_mutations_blocked": true
+}

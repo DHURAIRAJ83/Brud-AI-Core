@@ -1,0 +1,95 @@
+{
+  "audit_date": "2026-09-01",
+  "risks": [
+    {
+      "risk_id": "RSK-E2E-01",
+      "category": "Model",
+      "title": "Premature Promotion to Public Users",
+      "severity": "CRITICAL",
+      "probability": "Low",
+      "mitigation_status": "MITIGATED_IN_CODE",
+      "details": "candidate_traffic_share=0.0, is_public_chat_eligible=false, production_promotion=BLOCKED in phase44_runtime_governance.py"
+    },
+    {
+      "risk_id": "RSK-E2E-02",
+      "category": "Model",
+      "title": "Context Attention Saturation (T=128 tokens)",
+      "severity": "HIGH",
+      "probability": "High",
+      "mitigation_status": "PENDING_STAGE_C",
+      "details": "Multi-turn dialogue and document RAG fail beyond 128 tokens. Requires WS07 Stage C E4 scaling to T=512."
+    },
+    {
+      "risk_id": "RSK-E2E-03",
+      "category": "Model",
+      "title": "Capacity Bottleneck (528k params)",
+      "severity": "HIGH",
+      "probability": "High",
+      "mitigation_status": "PENDING_STAGE_C",
+      "details": "Under-parameterized model failing 23/24 capability probes. Requires WS07 Stage C E5 scaling to ~3.2M params."
+    },
+    {
+      "risk_id": "RSK-E2E-04",
+      "category": "Inference",
+      "title": "Greedy Repetition Loops in Raw Weights",
+      "severity": "HIGH",
+      "probability": "High",
+      "mitigation_status": "MITIGATED_IN_DECODING",
+      "details": "theta=1.25 + no_repeat_ngram_size=3 drops 3-gram repetition to 0.0000. Must be wired into InferenceRuntimeService."
+    },
+    {
+      "risk_id": "RSK-E2E-05",
+      "category": "Data",
+      "title": "Synthetic Data Domination",
+      "severity": "HIGH",
+      "probability": "Medium",
+      "mitigation_status": "MITIGATED_IN_CODE",
+      "details": "Enforced 8:1 synthetic volume cap and mandatory human review queue in dataset_expansion_validator.py"
+    },
+    {
+      "risk_id": "RSK-E2E-06",
+      "category": "Security",
+      "title": "Admin Role Stored in Env Config",
+      "severity": "MEDIUM",
+      "probability": "Medium",
+      "mitigation_status": "CONTROLLED",
+      "details": "Fails closed to AdminRole.ADMIN; high-risk proposals enforce two-person verification drill."
+    },
+    {
+      "risk_id": "RSK-E2E-07",
+      "category": "Infrastructure",
+      "title": "Host CPU Starvation During Training",
+      "severity": "MEDIUM",
+      "probability": "Medium",
+      "mitigation_status": "MITIGATED_IN_CODE",
+      "details": "torch.set_num_threads(2) and 2GB RAM hard ceiling enforced. Peak observed: 479.27 MB."
+    },
+    {
+      "risk_id": "RSK-E2E-08",
+      "category": "RAG",
+      "title": "Heuristic N-gram Embedding Inaccuracy",
+      "severity": "MEDIUM",
+      "probability": "High",
+      "mitigation_status": "PLANNED_ROADMAP",
+      "details": "Character n-gram hashing trick cannot resolve conceptual paraphrases. Roadmap P2: integrate trained bi-encoder."
+    },
+    {
+      "risk_id": "RSK-E2E-09",
+      "category": "Deployment",
+      "title": "No Docker Containerization",
+      "severity": "MEDIUM",
+      "probability": "High",
+      "mitigation_status": "PLANNED_ROADMAP",
+      "details": "Zero Dockerfile/docker-compose.yml in repo. Manual environment setup required. Roadmap P2."
+    },
+    {
+      "risk_id": "RSK-E2E-10",
+      "category": "Codebase",
+      "title": "53 Duplicate Class Names Across Runners",
+      "severity": "LOW",
+      "probability": "Low",
+      "mitigation_status": "INFORMATIONAL",
+      "details": "BrudSmallV2Model in 4 runner scripts, CreateSessionRequest across 12 Mini Brain models. No runtime conflict."
+    }
+  ]
+}

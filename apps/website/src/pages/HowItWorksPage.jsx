@@ -68,7 +68,7 @@ export default function HowItWorksPage() {
 
       <section className="section-sm">
         <div className="container">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-12)', alignItems: 'start' }}>
+          <div className="grid-2" style={{ alignItems: 'start', gap: 'var(--space-8)' }}>
 
             {/* Flow diagram */}
             <div>

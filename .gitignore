@@ -85,6 +85,7 @@ test-results/
 playwright-report/
 coverage/
 .vitest/
+*.e2e-state.json
 
 # OS cruft
 .DS_Store

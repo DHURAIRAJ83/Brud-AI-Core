@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1 --port 5175",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5175",
-    "test": "vitest run"
+    "preview:e2e": "vite preview --host 127.0.0.1 --port 5176 --strictPort",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "react": "19.2.8",
@@ -15,6 +17,7 @@
     "react-router-dom": "^6.27.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
